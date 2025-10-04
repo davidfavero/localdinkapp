@@ -13,6 +13,13 @@ export type Court = {
   isFavorite?: boolean;
 };
 
+export type Group = {
+  id: string;
+  name: string;
+  avatarUrl: string;
+  members: Player[];
+};
+
 export type RsvpStatus = 'CONFIRMED' | 'DECLINED' | 'PENDING';
 
 export type GameSession = {

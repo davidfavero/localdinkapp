@@ -1,4 +1,4 @@
-import type { Player, Court, GameSession } from '@/lib/types';
+import type { Player, Court, GameSession, Group } from '@/lib/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export const players: Player[] = [
@@ -17,6 +17,27 @@ export const courts: Court[] = [
   { id: 'c2', name: 'Mountain View Tennis', location: 'Mountain View, CA', isFavorite: true },
   { id: 'c3', name: 'Cupertino Sports Center', location: 'Cupertino, CA' },
   { id: 'c4', name: 'Mitchell Park', location: 'Palo Alto, CA', isFavorite: true },
+];
+
+export const groups: Group[] = [
+    { 
+        id: 'g1', 
+        name: 'Weekend Warriors', 
+        avatarUrl: PlaceHolderImages.find(p => p.id === 'group1')?.imageUrl || '', 
+        members: [players[0], players[1], players[2], players[4]] 
+    },
+    { 
+        id: 'g2', 
+        name: 'Morning Dinkers', 
+        avatarUrl: PlaceHolderImages.find(p => p.id === 'group2')?.imageUrl || '', 
+        members: [players[3], players[5], players[6]] 
+    },
+    { 
+        id: 'g3', 
+        name: 'South Bay Paddlers', 
+        avatarUrl: PlaceHolderImages.find(p => p.id === 'group3')?.imageUrl || '', 
+        members: [players[0], players[2], players[3], players[5], players[7]] 
+    },
 ];
 
 export const gameSessions: GameSession[] = [

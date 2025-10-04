@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, MapPin, User, Menu, Plus } from 'lucide-react';
+import { Home, Users, MapPin, User, Menu, Plus, UsersRound } from 'lucide-react';
 import { PickleballPaddleIcon } from '@/components/icons/pickleball-paddle-icon';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -13,6 +13,7 @@ import { players } from '@/lib/data';
 const navItems = [
   { href: '/dashboard', icon: Home, label: 'Dashboard' },
   { href: '/dashboard/players', icon: Users, label: 'Players' },
+  { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
   { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
   { href: '/dashboard/profile', icon: User, label: 'Profile' },
 ];
@@ -20,6 +21,7 @@ const navItems = [
 const pageTitles: { [key: string]: string } = {
   '/dashboard': 'Dashboard',
   '/dashboard/players': 'Players',
+  '/dashboard/groups': 'Groups',
   '/dashboard/courts': 'Courts',
   '/dashboard/profile': 'My Profile',
 };

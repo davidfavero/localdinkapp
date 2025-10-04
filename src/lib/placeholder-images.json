@@ -47,6 +47,24 @@
       "description": "James Brown avatar",
       "imageUrl": "https://images.unsplash.com/photo-1556157382-97eda2d62296?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxtYW4lMjBwcm9mZXNzaW9uYWx8ZW58MHx8fHwxNzU5NTQ0MjY5fDA&ixlib=rb-4.1.0&q=80&w=1080",
       "imageHint": "man professional"
+    },
+    {
+      "id": "group1",
+      "description": "Weekend Warriors group avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1715090364721-953518f93528?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxncm91cCUyMGZ1bnxlbnwwfHx8fDE3NTk1ODg4ODl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "group fun"
+    },
+    {
+      "id": "group2",
+      "description": "Morning Dinkers group avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1702122150234-ad537328c674?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxzdW5yaXNlJTIwY29mZmVlfGVufDB8fHx8MTc1OTU0OTkyNHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "sunrise coffee"
+    },
+    {
+      "id": "group3",
+      "description": "South Bay Paddlers group avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1750701257660-5eb77d3cce03?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw4fHxwYWRkbGVzJTIwd2F0ZXJ8ZW58MHx8fHwxNzU5NTg4ODg5fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "paddles water"
     }
   ]
 }
