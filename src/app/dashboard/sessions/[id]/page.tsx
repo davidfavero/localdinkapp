@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/user-avatar';
-import { Calendar, MapPin, Users, UserCheck, UserX, UserClock, LogOut } from 'lucide-react';
+import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut } from 'lucide-react';
 import type { Player, RsvpStatus } from '@/lib/types';
 import { handleCancellationAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -26,7 +26,7 @@ import {
 
 const statusInfo: { [key in RsvpStatus]: { icon: React.ElementType, text: string, color: string } } = {
   CONFIRMED: { icon: UserCheck, text: 'Confirmed', color: 'text-green-500' },
-  PENDING: { icon: UserClock, text: 'Pending', color: 'text-yellow-500' },
+  PENDING: { icon: Clock, text: 'Pending', color: 'text-yellow-500' },
   DECLINED: { icon: UserX, text: 'Declined', color: 'text-red-500' },
 };
 
