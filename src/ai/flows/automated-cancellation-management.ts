@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { sendSmsTool } from '../tools/sms';
 
 const HandleCancellationInputSchema = z.object({
   gameSessionId: z.string().describe('The ID of the game session being cancelled.'),
@@ -35,7 +36,8 @@ const handleCancellationPrompt = ai.definePrompt({
   name: 'handleCancellationPrompt',
   input: {schema: HandleCancellationInputSchema},
   output: {schema: HandleCancellationOutputSchema},
-  prompt: `{{cancelledPlayerName}} has cancelled from the pickleball game scheduled for {{gameTime}} at {{courtName}}.\n\nOriginal Players: {{#each originalPlayerNames}}{{{this}}}, {{/each}}\nAlternates: {{#each alternatePlayerNames}}{{{this}}}, {{/each}}\n\nNotify an alternate to fill the spot. Respond to the other players about this cancellation.  If no alternates are available, inform the other players that the spot cannot be filled.  If there are no alternates, respond with no alternate player.  The alternate will be notified via SMS.
+  tools: [sendSmsTool],
+  prompt: `{{cancelledPlayerName}} has cancelled from the pickleball game scheduled for {{gameTime}} at {{courtName}}.\n\nOriginal Players: {{#each originalPlayerNames}}{{{this}}}, {{/each}}\nAlternates: {{#each alternatePlayerNames}}{{{this}}}, {{/each}}\n\nNotify an alternate to fill the spot using the sendSmsTool. The phone number for the alternate is not available, so use a placeholder like "555-555-5555". Respond to the other players about this cancellation.  If no alternates are available, inform the other players that the spot cannot be filled.  If there are no alternates, respond with no alternate player.  The alternate will be notified via SMS.
 \nMake sure to include the new list of players in the response. If an alternate is added, make sure to include them in the list.  Do not include the cancelled player in the new list.\n\nFinal Answer:`,
 });
 
