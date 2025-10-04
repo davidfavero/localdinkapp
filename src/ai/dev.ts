@@ -1,1 +1,7 @@
-// Flows will be imported for their side effects in this file.
+import { config } from 'dotenv';
+config();
+
+import '@/ai/flows/automated-cancellation-management.ts';
+import '@/ai/flows/automated-rsvp-with-ai.ts';
+import '@/ai/flows/name-disambiguation.ts';
+import '@/ai/flows/profile-preference-extraction.ts';

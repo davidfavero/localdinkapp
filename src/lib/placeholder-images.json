@@ -1,3 +1,52 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "user1",
+      "description": "Current user avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1484863137850-59afcfe05386?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxwZXJzb24lMjBzbWlsaW5nfGVufDB8fHx8MTc1OTU0MTgzMnww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person smiling"
+    },
+    {
+      "id": "user2",
+      "description": "Alex Johnson avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1695485121912-25c7ea05119c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxtYW4lMjBvdXRkb29yc3xlbnwwfHx8fDE3NTk1NzAzODF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "man outdoors"
+    },
+    {
+      "id": "user3",
+      "description": "Maria Garcia avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHx3b21hbiUyMHBvcnRyYWl0fGVufDB8fHx8MTc1OTUyMDY3NXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "woman portrait"
+    },
+    {
+      "id": "user4",
+      "description": "Chen Wei avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1557744685-8228ebbb5ad5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxwZXJzb24lMjBnbGFzc2VzfGVufDB8fHx8MTc1OTU1MjIwNHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person glasses"
+    },
+    {
+      "id": "user5",
+      "description": "Sarah Miller avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1583813611092-d9158078a457?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHx3b21hbiUyMG5hdHVyZXxlbnwwfHx8fDE3NTk1ODYwODJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "woman nature"
+    },
+    {
+      "id": "user6",
+      "description": "David Smith avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1694706196058-c93065eac37a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxtYW4lMjBjaXR5c2NhcGV8ZW58MHx8fHwxNzU5NTE0Njg4fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "man cityscape"
+    },
+    {
+      "id": "user7",
+      "description": "Emily White avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1598625873873-52f9aefd7d9d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHx3b21hbiUyMGxhdWdoaW5nfGVufDB8fHx8MTc1OTQ3OTkyOHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "woman laughing"
+    },
+    {
+      "id": "user8",
+      "description": "James Brown avatar",
+      "imageUrl": "https://images.unsplash.com/photo-1556157382-97eda2d62296?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxtYW4lMjBwcm9mZXNzaW9uYWx8ZW58MHx8fHwxNzU5NTQ0MjY5fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "man professional"
+    }
+  ]
 }
