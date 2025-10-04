@@ -19,6 +19,7 @@ import { Sparkles } from 'lucide-react';
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
+  dinkRating: z.string().optional(),
   doublesPreference: z.boolean().default(true),
   homeCourt: z.string().optional(),
   availability: z.string().optional(),
@@ -36,6 +37,7 @@ export default function ProfilePage() {
     resolver: zodResolver(profileSchema),
     defaultValues: {
       name: currentUser?.name || '',
+      dinkRating: '4.25',
       doublesPreference: true,
       homeCourt: courts.find(c => c.isHome)?.id || '',
       availability: 'Weekdays after 5 PM, flexible on weekends.',
@@ -149,6 +151,22 @@ export default function ProfilePage() {
                     <FormControl>
                       <Input placeholder="Your Name" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="dinkRating"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dink Rating</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. 4.5 or DUPR 4.5" {...field} />
+                    </FormControl>
+                     <FormDescription>
+                      Add your own rating, perhaps your DUPR rating, here to help you align with other players of your level.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
