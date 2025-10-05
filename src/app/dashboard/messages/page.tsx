@@ -41,7 +41,9 @@ export default function MessagesPage() {
       try {
         const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
         const response = await chatAction({ message: input.trim(), history });
-        setMessages(prev => [...prev, { sender: 'robin', text: response }]);
+        if (response.confirmationText) {
+          setMessages(prev => [...prev, { sender: 'robin', text: response.confirmationText! }]);
+        }
       } catch (error) {
         setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
       } finally {

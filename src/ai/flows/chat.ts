@@ -8,62 +8,61 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { ChatInput, ChatInputSchema, ChatOutput } from '@/lib/types';
+import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema } from '@/lib/types';
+import { disambiguateName } from './name-disambiguation';
 
 export async function chat(input: ChatInput): Promise<ChatOutput> {
-  return chatFlow(input);
+  // TODO: In a real app, you would get the list of known players from your database.
+  const knownPlayers = ['John True', 'Robert Smith', 'Steve Jones', 'Mike Williams', 'Dave Davis', 'Sarah Green', 'Emily Brown'];
+
+  const { players, date, time, location, confirmationText } = await chatFlow(input);
+
+  if (confirmationText) {
+    return { confirmationText };
+  }
+
+  // Disambiguate player names
+  const disambiguatedPlayers = await Promise.all(
+    players.map(async (player) => {
+      const result = await disambiguateName({ playerName: player, knownPlayers });
+      return result.disambiguatedName;
+    })
+  );
+  
+  const response = `Great! I'll schedule a game for ${date} at ${time} at ${location || 'your home court'}. I will invite: ${disambiguatedPlayers.join(', ')}. Does that look right?`;
+
+  return { confirmationText: response };
 }
 
-const chatPrompt = `You are Robin, an AI scheduling assistant who manages pickleball game invitations and confirmations between an Organizer and a group of players.
-
-Your job is to:
-
-1. Receive a scheduling request from the Organizer (including time, date, location, and a list of players to invite).
-2. Confirm the details back to the Organizer to ensure accuracy before contacting players. When confirming, you MUST repeat the exact time, date, location, and the full list of player names you were given.
-3. Send invitations to the appropriate players, asking if they’d like to play at the specified time and location.
-4. As players respond:
-    * Accepting players are added to the game roster until all slots are filled.
-    * Once the roster is full, notify all invitees that the game is confirmed and the list is closed.
-5. If a player cancels, Robin will:
-    * Re-open the roster.
-    * Re-invite players who were previously unavailable or unresponsive to fill the open spot.
-    * Notify the Organizer when the slot is filled again.
-
-Rules and tone:
-
-* Always confirm details before taking action. Extract details directly from the user's message. Do not invent details.
-* If a location is not specified, assume it will be at the organizer's home court.
-* Understand relative dates (e.g., "tomorrow," "next Friday"). For time, assume the organizer's local time zone.
-* Communicate clearly, briefly, and naturally (like a friendly coordinator).
-* Maintain a record of invitations, responses, and roster status for each session.
-* Never overbook or double-book a player.
-* When in doubt, clarify with the Organizer rather than assuming.
-
-Conversation History:
-{{#each history}}
-- {{sender}}: {{text}}
-{{/each}}
-
-New User Message:
-- user: {{{message}}}
-
-Your Response:
-- robin:`;
 
 const chatFlow = ai.defineFlow(
   {
     name: 'chatFlow',
     inputSchema: ChatInputSchema,
-    outputSchema: z.string(),
+    outputSchema: ChatOutputSchema,
   },
   async (input) => {
     const { text } = await ai.generate({
-      prompt: chatPrompt,
-      input: input,
+      prompt: `You are Robin, an AI scheduling assistant who manages pickleball game invitations. Your job is to extract scheduling details from the user's message.
+
+- Extract the players' names, the date, the time, and the location for the game.
+- For dates, convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
+- If a location is not specified, you can leave it blank.
+- If the user's message is not a scheduling request, just have a friendly conversation and put your response in the 'confirmationText' field.
+- If you have extracted details, DO NOT generate a confirmation text. The calling function will do that. Just return the extracted details.
+
+Conversation History:
+${input.history.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
+
+New User Message:
+- user: ${input.message}
+`,
       model: 'googleai/gemini-2.5-flash',
+      output: {
+        schema: ChatOutputSchema,
+      },
       config: {
-        // Lower temperature for more predictable, less creative responses
-        temperature: 0.3,
+        temperature: 0.2,
       },
     });
 

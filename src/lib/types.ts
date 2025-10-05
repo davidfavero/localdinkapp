@@ -44,13 +44,25 @@ export interface Message {
   text: string;
 }
 
+export const ChatHistorySchema = z.object({
+  sender: z.enum(['user', 'robin']),
+  text: z.string(),
+});
+export type ChatHistory = z.infer<typeof ChatHistorySchema>;
+
+
 export const ChatInputSchema = z.object({
   message: z.string().describe("The user's message."),
-  history: z.array(z.object({
-    sender: z.enum(['user', 'robin']),
-    text: z.string(),
-  })).describe('The conversation history.'),
+  history: z.array(ChatHistorySchema).describe('The conversation history.'),
 });
 export type ChatInput = z.infer<typeof ChatInputSchema>;
 
-export type ChatOutput = string;
+
+export const ChatOutputSchema = z.object({
+  players: z.array(z.string()).optional().describe('The names of the players to invite.'),
+  date: z.string().optional().describe('The date of the game.'),
+  time: z.string().optional().describe('The time of the game.'),
+  location: z.string().optional().describe('The location of the game.'),
+  confirmationText: z.string().optional().describe("Robin's confirmation or conversational response.")
+})
+export type ChatOutput = z.infer<typeof ChatOutputSchema>
