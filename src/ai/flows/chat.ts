@@ -17,25 +17,31 @@ export async function chat(input: ChatInput): Promise<ChatOutput> {
   const knownPlayers = knownPlayersData.map(p => ({name: p.name, phone: p.phone || ''}));
   const knownPlayerNames = knownPlayers.map(p => p.name);
 
-  const { players, date, time, location, confirmationText } = await chatFlow(input);
+  // The flow now returns tool outputs and other details.
+  const flowResult = await chatFlow(input);
 
-  if (confirmationText) {
-    return { confirmationText };
+  // Case 1: The AI had a conversational response without using tools.
+  if (flowResult.confirmationText) {
+    return { confirmationText: flowResult.confirmationText };
   }
   
-  if (!players || players.length === 0) {
+  const invitedPlayers = flowResult.players;
+
+  // Case 2: The AI tried to schedule but couldn't identify players.
+  if (!invitedPlayers || invitedPlayers.length === 0) {
     return { confirmationText: "I'm sorry, I didn't catch who is playing. Could you list the players for the game?" };
   }
 
-  // Disambiguate player names
+  // Case 3: The AI successfully identified players and sent SMS invitations.
+  // We construct the confirmation text here, after the flow has run.
   const disambiguatedPlayers = await Promise.all(
-    players.map(async (player) => {
+    invitedPlayers.map(async (player) => {
       const result = await disambiguateName({ playerName: player, knownPlayers: knownPlayerNames });
       return result.disambiguatedName;
     })
   );
   
-  const response = `Great! I'll schedule a game for ${date || 'a yet to be determined date'} at ${time || 'a yet to be determined time'} at ${location || 'your home court'}. I have sent SMS invitations to: ${disambiguatedPlayers.join(', ')}. Does that look right?`;
+  const response = `Great! I'll schedule a game for ${flowResult.date || 'a yet to be determined date'} at ${flowResult.time || 'a yet to be determined time'} at ${flowResult.location || 'your home court'}. I have sent SMS invitations to: ${disambiguatedPlayers.join(', ')}. Does that look right?`;
 
   return { confirmationText: response };
 }
@@ -56,10 +62,11 @@ const chatFlow = ai.defineFlow(
 - Extract the players' names, the date, the time, and the location for the game.
 - For dates, convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
 - If a location is not specified, you can leave it blank.
-- After extracting the details, use the 'sendSmsTool' to send an invitation to each player.
+- Look up the phone number for each player from the provided list of known players.
+- After extracting the details, use the 'sendSmsTool' to send an invitation to each player's phone number.
 - The SMS message should be friendly, include the game details (date, time, location), and ask them to respond with YES or NO. It must also include a link to https://localdink.app/join for them to manage their profile.
 - If the user's message is not a scheduling request, just have a friendly conversation and put your response in the 'confirmationText' field. In this case, do not use the tool.
-- If you have extracted details and sent the SMS messages, DO NOT generate a confirmation text. The calling function will do that. Just return the extracted details.
+- If you have extracted details and sent the SMS messages, DO NOT generate a confirmation text. Just return the extracted details. The calling function will handle the confirmation message.
 
 Conversation History:
 ${input.history.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
