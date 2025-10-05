@@ -13,7 +13,7 @@ const navItems = [
   { href: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
-  { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
+  { href: '/dashboard/players', icon: UsersRound, label: 'Players' },
   { href: '/dashboard/profile', icon: User, label: 'Profile' },
 ];
 
