@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MessageSquare, User, UsersRound, MapPin } from 'lucide-react';
+import { MessageSquare, UsersRound, MapPin, User } from 'lucide-react';
 import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
@@ -14,7 +14,7 @@ const navItems = [
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/players', icon: UsersRound, label: 'Players' },
-  { href: '/dashboard/profile', icon: User, label: 'Profile' },
+  { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
 ];
 
 export default function DashboardLayout({
@@ -26,7 +26,9 @@ export default function DashboardLayout({
 
   return (
     <div className="flex flex-col min-h-screen w-full">
-      <main className="flex-1 overflow-auto mb-24">{children}</main>
+       <main className="flex-1 overflow-auto p-4 md:p-6 mb-20">
+        {children}
+      </main>
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">

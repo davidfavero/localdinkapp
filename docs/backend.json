@@ -6,10 +6,6 @@
       "type": "object",
       "description": "Represents a user profile in the LocalDink application.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the user profile."
-        },
         "firstName": {
           "type": "string",
           "description": "The user's first name."
@@ -27,20 +23,13 @@
           "type": "string",
           "description": "The user's phone number for SMS notifications."
         },
-        "defaultDoubles": {
+        "doublesPreference": {
           "type": "boolean",
           "description": "Default preference for doubles games."
         },
         "homeCourtId": {
           "type": "string",
-          "description": "Reference to the user's preferred home court. (Relationship: UserProfile 1:N Court)."
-        },
-        "groupdIds": {
-          "type": "array",
-          "description": "References to Groups. (Relationship: UserProfile N:N Group)",
-          "items": {
-            "type": "string"
-          }
+          "description": "Reference to the user's preferred home court."
         },
         "availability": {
           "type": "string",
@@ -48,7 +37,6 @@
         }
       },
       "required": [
-        "id",
         "firstName",
         "lastName",
         "email"
@@ -60,17 +48,13 @@
       "type": "object",
       "description": "Represents a scheduled pickleball game session.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the game session."
-        },
         "organizerId": {
           "type": "string",
-          "description": "Reference to the UserProfile who organized the game. (Relationship: UserProfile 1:N GameSession)"
+          "description": "Reference to the UserProfile who organized the game."
         },
         "courtId": {
           "type": "string",
-          "description": "Reference to the Court where the game is played. (Relationship: Court 1:N GameSession)"
+          "description": "Reference to the Court where the game is played."
         },
         "startTime": {
           "type": "string",
@@ -81,29 +65,23 @@
           "type": "number",
           "description": "The duration of the game session in minutes."
         },
-        "playerIds": {
-          "type": "array",
-          "description": "References to UserProfiles participating in the game session. (Relationship: UserProfile N:N GameSession)",
-          "items": {
-            "type": "string"
-          }
-        },
         "isDoubles": {
           "type": "boolean",
           "description": "Indicates whether the game session is doubles or singles."
         },
         "status": {
           "type": "string",
-          "description": "The current status of the game session (e.g., scheduled, confirmed, cancelled)."
+          "description": "The current status of the game session (e.g., scheduled, confirmed, cancelled).",
+          "enum": ["scheduled", "confirmed", "cancelled"]
         }
       },
       "required": [
-        "id",
         "organizerId",
         "courtId",
         "startTime",
         "durationMinutes",
-        "isDoubles"
+        "isDoubles",
+        "status"
       ]
     },
     "Court": {
@@ -112,10 +90,6 @@
       "type": "object",
       "description": "Represents a pickleball court.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the court."
-        },
         "name": {
           "type": "string",
           "description": "The name of the court."
@@ -130,7 +104,6 @@
         }
       },
       "required": [
-        "id",
         "name",
         "location"
       ]
@@ -141,10 +114,6 @@
       "type": "object",
       "description": "Represents a group of players.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the group."
-        },
         "name": {
           "type": "string",
           "description": "The name of the group."
@@ -152,19 +121,24 @@
         "description": {
           "type": "string",
           "description": "A description of the group."
-        },
-        "memberIds": {
-          "type": "array",
-          "description": "References to UserProfiles who are members of the group. (Relationship: UserProfile N:N Group)",
-          "items": {
-            "type": "string"
-          }
         }
       },
       "required": [
-        "id",
         "name"
       ]
+    },
+    "GamePlayer": {
+      "title": "GamePlayer",
+      "description": "Represents a player's participation in a game session.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "The player's RSVP status.",
+          "enum": ["CONFIRMED", "DECLINED", "PENDING"]
+        }
+      },
+      "required": ["status"]
     }
   },
   "auth": {
@@ -174,72 +148,41 @@
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Collection of user profiles, indexed by user ID. Used for storing personal user information.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user."
-            }
-          ]
-        }
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/UserProfile"
       },
-      {
-        "path": "/gameSessions/{gameSessionId}",
-        "definition": {
-          "entityName": "GameSession",
-          "schema": {
-            "$ref": "#/backend/entities/GameSession"
-          },
-          "description": "Collection of game sessions. Includes denormalized 'organizerId' to simplify authorization rules and queries. Supports QAPs by allowing listing of all game sessions with security rules that validate access based on user roles or group memberships.",
-          "params": [
-            {
-              "name": "gameSessionId",
-              "description": "The unique identifier of the game session."
-            }
-          ]
-        }
+      "description": "Stores user profile information."
+    },
+    "/courts/{courtId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Court"
       },
-      {
-        "path": "/courts/{courtId}",
-        "definition": {
-          "entityName": "Court",
-          "schema": {
-            "$ref": "#/backend/entities/Court"
-          },
-          "description": "Collection of court documents.",
-          "params": [
-            {
-              "name": "courtId",
-              "description": "The unique identifier of the court."
-            }
-          ]
-        }
+      "description": "List of all available pickleball courts."
+    },
+    "/groups/{groupId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Group"
       },
-      {
-        "path": "/groups/{groupId}",
-        "definition": {
-          "entityName": "Group",
-          "schema": {
-            "$ref": "#/backend/entities/Group"
-          },
-          "description": "Collection of group documents.",
-          "params": [
-            {
-              "name": "groupId",
-              "description": "The unique identifier of the group."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "The Firestore structure is designed to support the LocalDink application's core features, emphasizing secure and scalable data management. User profiles, game sessions, courts, and groups are organized into top-level collections for easy access and management. User-specific data, like game sessions organized by a user, is nested under the `/users/{userId}` path to ensure clear ownership and simplified security rules. Authorization independence is achieved through denormalization; for instance, the `GameSession` includes the `organizerId`, eliminating the need for rules to fetch user data to validate ownership. Groups are top-level collections, ensuring that group management is independent of individual users, promoting scalability and ease of access for collaborative features.  To further enhance security and query performance, especially for listing game sessions, the structure avoids deeply nested subcollections where possible, opting instead for top-level collections with appropriate indexing and security rules."
+      "description": "A group of players."
+    },
+    "/groups/{groupId}/members/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/UserProfile"
+      },
+      "description": "A member of a group."
+    },
+    "/game-sessions/{sessionId}": {
+      "schema": {
+        "$ref": "#/backend/entities/GameSession"
+      },
+      "description": "Represents a scheduled game."
+    },
+    "/game-sessions/{sessionId}/players/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/GamePlayer"
+      },
+      "description": "Represents a player in a game session."
+    }
   }
 }
