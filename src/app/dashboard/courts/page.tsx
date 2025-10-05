@@ -1,16 +1,30 @@
 'use client';
 
-import { courts } from '@/lib/data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Star, Home, Plus } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useCollection, useFirestore } from '@/firebase';
+import { collection, query } from 'firebase/firestore';
+import type { Court } from '@/lib/types';
+import { useMemoFirebase } from '@/firebase/provider';
 
 export default function CourtsPage() {
+  const firestore = useFirestore();
+  const courtsQuery = useMemoFirebase(
+    () => (firestore ? query(collection(firestore, 'courts')) : null),
+    [firestore]
+  );
+  const { data: courts, isLoading } = useCollection<Court>(courtsQuery);
+
   return (
     <div className="space-y-6">
-       <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Courts</h2>
         <Button>
           <Plus className="-ml-1 mr-2 h-4 w-4" />
@@ -18,7 +32,18 @@ export default function CourtsPage() {
         </Button>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {courts.map((court) => (
+        {isLoading &&
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="h-6 w-3/4 rounded-md bg-muted animate-pulse" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-4 w-1/2 rounded-md bg-muted animate-pulse" />
+              </CardContent>
+            </Card>
+          ))}
+        {courts?.map((court) => (
           <Card key={court.id}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">

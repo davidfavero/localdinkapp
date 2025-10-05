@@ -5,7 +5,8 @@ export type Player = {
   name: string;
   avatarUrl: string;
   phone?: string;
-  isCurrentUser?: boolean;
+  // isCurrentUser is deprecated, use useUser() hook instead
+  isCurrentUser?: boolean; 
 };
 
 export type Court = {
@@ -20,7 +21,7 @@ export type Group = {
   id: string;
   name: string;
   avatarUrl: string;
-  members: Player[];
+  members: string[]; // Now an array of user IDs
 };
 
 export type RsvpStatus = 'CONFIRMED' | 'DECLINED' | 'PENDING';
