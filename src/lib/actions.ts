@@ -2,6 +2,8 @@
 
 import { extractProfilePreferences, ProfilePreferenceExtractionInput, ProfilePreferenceExtractionOutput } from "@/ai/flows/profile-preference-extraction";
 import { handleCancellation, HandleCancellationInput, HandleCancellationOutput } from "@/ai/flows/automated-cancellation-management";
+import { chat, ChatInput, ChatOutput } from "@/ai/flows/chat";
+
 
 export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
@@ -25,5 +27,15 @@ export async function handleCancellationAction(
   } catch (error) {
     console.error("Error in handleCancellationAction:", error);
     throw new Error("Failed to handle cancellation with AI.");
+  }
+}
+
+export async function chatAction(input: ChatInput): Promise<ChatOutput> {
+  try {
+    const result = await chat(input);
+    return result;
+  } catch (error) {
+    console.error("Error in chatAction:", error);
+    throw new Error("Failed to get response from AI.");
   }
 }

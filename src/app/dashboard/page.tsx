@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mic, Send, User } from 'lucide-react';
+import { Mic, Send, User, Sparkles } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
 import { players } from '@/lib/data';
+import { chatAction } from '@/lib/actions';
+import { RobinIcon } from '@/components/icons/robin-icon';
 
 interface Message {
   sender: 'user' | 'robin';
@@ -20,16 +22,34 @@ export default function DashboardPage() {
     },
   ]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const currentUser = players.find((p) => p.isCurrentUser);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSend = async () => {
     if (input.trim()) {
-      setMessages([...messages, { sender: 'user', text: input.trim() }]);
-      // Simulate Robin's response
-      setTimeout(() => {
-        setMessages(prev => [...prev, { sender: 'robin', text: `I've received your message: "${input.trim()}". I'm still learning how to respond!` }]);
-      }, 1000);
+      const newUserMessage: Message = { sender: 'user', text: input.trim() };
+      setMessages(prev => [...prev, newUserMessage]);
       setInput('');
+      setIsLoading(true);
+
+      try {
+        const history = [...messages, newUserMessage];
+        const response = await chatAction({ message: input.trim(), history });
+        setMessages(prev => [...prev, { sender: 'robin', text: response }]);
+      } catch (error) {
+        setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -52,7 +72,7 @@ export default function DashboardPage() {
           >
             {message.sender === 'robin' && (
                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent">
-                <User className="h-5 w-5" />
+                <RobinIcon className="h-6 w-6" />
                </div>
             )}
             <div
@@ -69,6 +89,17 @@ export default function DashboardPage() {
              )}
           </div>
         ))}
+         {isLoading && (
+          <div className="flex items-end gap-2 justify-start">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent">
+              <Sparkles className="h-5 w-5 animate-spin" />
+            </div>
+            <div className="max-w-xs md:max-w-md rounded-2xl p-3 bg-muted text-foreground rounded-bl-none">
+              <p className="animate-pulse">Robin is thinking...</p>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
       </div>
 
        <div className="p-4 bg-background/80 backdrop-blur-sm border-t fixed bottom-[76px] left-0 right-0">
@@ -79,11 +110,12 @@ export default function DashboardPage() {
             <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSend()}
                 placeholder="Type a message..."
                 className="flex-1"
+                disabled={isLoading}
             />
-            <Button size="icon" onClick={handleSend} disabled={!input.trim()}>
+            <Button size="icon" onClick={handleSend} disabled={!input.trim() || isLoading}>
                 <Send />
             </Button>
          </div>
