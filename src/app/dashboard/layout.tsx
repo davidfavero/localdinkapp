@@ -14,7 +14,7 @@ const navItems = [
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
-  { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
+  { href: '/dashboard/profile', icon: User, label: 'Profile' },
 ];
 
 export default function DashboardLayout({
@@ -34,7 +34,7 @@ export default function DashboardLayout({
           ))}
         </div>
       </div>
-    )
+    );
   }
 
   return (

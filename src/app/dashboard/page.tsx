@@ -8,11 +8,8 @@ import { UserAvatar } from '@/components/user-avatar';
 import { players } from '@/lib/data';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
-
-interface Message {
-  sender: 'user' | 'robin';
-  text: string;
-}
+import type { Message } from '@/lib/types';
+import Link from 'next/link';
 
 export default function DashboardPage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -42,7 +39,7 @@ export default function DashboardPage() {
       setIsLoading(true);
 
       try {
-        const history = [...messages, newUserMessage];
+        const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
         const response = await chatAction({ message: input.trim(), history });
         setMessages(prev => [...prev, { sender: 'robin', text: response }]);
       } catch (error) {
@@ -58,11 +55,15 @@ export default function DashboardPage() {
        <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
           <h1 className="text-xl font-bold text-foreground font-headline">LocalDink</h1>
           <div className="flex items-center gap-4">
-              {currentUser && <UserAvatar player={currentUser} className="h-8 w-8" />}
+              {currentUser && (
+                <Link href="/dashboard/profile">
+                  <UserAvatar player={currentUser} className="h-8 w-8" />
+                </Link>
+              )}
           </div>
        </header>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-[152px]">
         {messages.map((message, index) => (
           <div
             key={index}

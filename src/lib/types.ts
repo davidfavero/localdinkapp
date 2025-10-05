@@ -39,6 +39,11 @@ export type GameSession = {
   alternates: Player[];
 };
 
+export interface Message {
+  sender: 'user' | 'robin';
+  text: string;
+}
+
 export const ChatInputSchema = z.object({
   message: z.string().describe("The user's message."),
   history: z.array(z.object({
