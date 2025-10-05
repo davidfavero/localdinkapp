@@ -10,15 +10,19 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
+import { players as knownPlayersData } from '@/lib/data';
 
 export async function chat(input: ChatInput): Promise<ChatOutput> {
-  // TODO: In a real app, you would get the list of known players from your database.
-  const knownPlayers = ['John True', 'Robert Smith', 'Steve Jones', 'Mike Williams', 'Dave Davis', 'Sarah Green', 'Emily Brown'];
+  const knownPlayers = knownPlayersData.map(p => p.name);
 
   const { players, date, time, location, confirmationText } = await chatFlow(input);
 
   if (confirmationText) {
     return { confirmationText };
+  }
+  
+  if (!players || players.length === 0) {
+    return { confirmationText: "I'm sorry, I didn't catch who is playing. Could you list the players for the game?" };
   }
 
   // Disambiguate player names
@@ -29,7 +33,7 @@ export async function chat(input: ChatInput): Promise<ChatOutput> {
     })
   );
   
-  const response = `Great! I'll schedule a game for ${date} at ${time} at ${location || 'your home court'}. I will invite: ${disambiguatedPlayers.join(', ')}. Does that look right?`;
+  const response = `Great! I'll schedule a game for ${date || 'a yet to be determined date'} at ${time || 'a yet to be determined time'} at ${location || 'your home court'}. I will invite: ${disambiguatedPlayers.join(', ')}. Does that look right?`;
 
   return { confirmationText: response };
 }
@@ -42,7 +46,7 @@ const chatFlow = ai.defineFlow(
     outputSchema: ChatOutputSchema,
   },
   async (input) => {
-    const { text } = await ai.generate({
+    const { output } = await ai.generate({
       prompt: `You are Robin, an AI scheduling assistant who manages pickleball game invitations. Your job is to extract scheduling details from the user's message.
 
 - Extract the players' names, the date, the time, and the location for the game.
@@ -66,6 +70,6 @@ New User Message:
       },
     });
 
-    return text;
+    return output!;
   }
 );
