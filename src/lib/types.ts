@@ -5,8 +5,10 @@ export type Player = {
   name: string;
   avatarUrl: string;
   phone?: string;
-  // isCurrentUser is deprecated, use useUser() hook instead
   isCurrentUser?: boolean; 
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 };
 
 export type Court = {
