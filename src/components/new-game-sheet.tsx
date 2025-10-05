@@ -37,7 +37,7 @@ import { useMemoFirebase } from '@/firebase/provider';
 const gameSchema = z.object({
   courtId: z.string().min(1, 'Please select a court.'),
   date: z.date({ required_error: 'Please select a date.' }),
-  time: z.string().regex(/^(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/i, 'Invalid time format (e.g., 8:30 AM).'),
+  time: z.string().regex(/^(0?[1-9]|1[0-2]):[0-5][0-9]\s(AM|PM)$/i, 'Invalid time format (e.g., 8:30 AM).'),
   isDoubles: z.boolean().default(true),
 });
 
@@ -108,7 +108,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
         title: 'Game Created!',
         description: 'Your new game session has been scheduled.',
       });
-      form.reset();
+      form.reset({ isDoubles: true, time: '05:00 PM' });
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error creating game:', error);
@@ -132,98 +132,105 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-6">
-            <FormField
-              control={form.control}
-              name="courtId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Court</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!courts}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a court" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {courts?.map((court) => (
-                        <SelectItem key={court.id} value={court.id}>
-                          {court.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="date"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Date</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={'outline'}
-                          className={cn(
-                            'w-full justify-start text-left font-normal',
-                            !field.value && 'text-muted-foreground'
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) => date < new Date() || date < new Date('1900-01-01')}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="time"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Time</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., 5:00 PM" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+            <div className="space-y-6 py-6 flex-1">
+              <FormField
                 control={form.control}
-                name="isDoubles"
+                name="courtId"
                 render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Game Type</FormLabel>
-                        <FormControl>
-                            <div className="flex gap-4 mt-2">
-                                <Button type="button" variant={field.value ? 'default' : 'outline'} onClick={() => field.onChange(true)} className="flex-1">Doubles</Button>
-                                <Button type="button" variant={!field.value ? 'default' : 'outline'} onClick={() => field.onChange(false)} className="flex-1">Singles</Button>
-                            </div>
-                        </FormControl>
-                         <FormMessage />
-                    </FormItem>
+                  <FormItem>
+                    <FormLabel>Court</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!courts}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a court" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {courts?.map((court) => (
+                          <SelectItem key={court.id} value={court.id}>
+                            {court.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
                 )}
-            />
+              />
+
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Date</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant={'outline'}
+                            className={cn(
+                              'w-full justify-start text-left font-normal',
+                              !field.value && 'text-muted-foreground'
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="time"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Time</FormLabel>
+                    <FormControl>
+                      <Input type="text" placeholder="e.g., 5:00 PM" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                  control={form.control}
+                  name="isDoubles"
+                  render={({ field }) => (
+                      <FormItem>
+                          <FormLabel>Game Type</FormLabel>
+                          <Select onValueChange={(value) => field.onChange(value === 'true')} defaultValue={String(field.value)}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="true">Doubles</SelectItem>
+                              <SelectItem value="false">Singles</SelectItem>
+                            </SelectContent>
+                          </Select>
+                           <FormMessage />
+                      </FormItem>
+                  )}
+              />
+            </div>
             
             <SheetFooter>
               <SheetClose asChild>
