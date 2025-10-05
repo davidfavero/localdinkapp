@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mic, Send, User, Sparkles } from 'lucide-react';
+import { Mic, Send, Sparkles } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
 import { players } from '@/lib/data';
 import { chatAction } from '@/lib/actions';
