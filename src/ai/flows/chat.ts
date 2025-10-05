@@ -19,11 +19,12 @@ export async function chat(input: ChatInput): Promise<ChatOutput> {
 
   // 1. Call the AI to extract structured data from the user's message.
   const { output: extractedDetails } = await ai.generate({
-    prompt: `You are Robin, an AI scheduling assistant. Your job is to extract scheduling details from the user's message.
-- Extract the players' names, the date, the time, and the location for the game.
-- For dates, convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
-- If a location is not specified, you can leave it blank.
-- If the user's message is not a scheduling request, just have a friendly conversation and put your response in the 'confirmationText' field.
+    prompt: `You are Robin, an AI scheduling assistant for a pickleball app called LocalDink. Your primary job is to help users schedule games by extracting details from their messages and having a friendly, brief conversation.
+
+- Your main goal is to extract the players' names, the date, the time, and the location for the game.
+- For dates, always convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
+- If a detail is missing, ask a clarifying question.
+- If the user's message is not a scheduling request, just have a friendly conversation. In this case, put your full response in the 'confirmationText' field and do not return any other fields.
 
 Conversation History:
 ${input.history.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
@@ -69,14 +70,30 @@ New User Message:
   const playersWithPhones = invitedPlayers.filter(p => p.phone);
   const playerNames = invitedPlayers.map(p => p.name);
 
-  // 5. Send SMS invitations.
-  const smsBody = `Game invitation! You're invited to a pickleball game on ${date || 'a date to be determined'} at ${time || 'a time to be determined'} at ${location || 'a court to be determined'}. Respond YES or NO. Manage your profile at https://localdink.app/join`;
-  for (const player of playersWithPhones) {
-    await sendSmsTool({ to: player.phone!, body: smsBody });
+  // 5. Send SMS invitations if we have everything we need.
+  let smsSent = false;
+  if (date && time && location && players.length > 0) {
+    const smsBody = `Pickleball Game Invitation! You're invited to a game on ${date} at ${time} at ${location}. Respond YES or NO. Manage your profile at https://localdink.app/join`;
+    for (const player of playersWithPhones) {
+      // In a real app, you might not want to await this to speed up the response,
+      // but for now, we'll await to ensure it sends.
+      await sendSmsTool({ to: player.phone!, body: smsBody });
+    }
+    smsSent = true;
   }
   
   // 6. Construct the final confirmation text for the UI.
-  const response = `Great! I'll schedule a game for ${date || 'a yet to be determined date'} at ${time || 'a yet to be determined time'} at ${location || 'your home court'}. I have sent SMS invitations to: ${playerNames.join(', ')}. Does that look right?`;
+  let responseText = '';
+  if (smsSent) {
+     responseText = `Great! I've scheduled the game and sent SMS invitations to: ${playerNames.join(', ')}. Does that look right?`;
+  } else {
+     let missingInfo = [];
+     if (!date) missingInfo.push('date');
+     if (!time) missingInfo.push('time');
+     if (!location) missingInfo.push('location');
+     responseText = `Got it. I have ${playerNames.join(', ')} down. What about the ${missingInfo.join(' and ')}?`;
+  }
+  
 
-  return { confirmationText: response };
+  return { confirmationText: responseText };
 }
