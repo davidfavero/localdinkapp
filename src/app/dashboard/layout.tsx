@@ -6,6 +6,8 @@ import { MessageSquare, User, UsersRound } from 'lucide-react';
 import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
+import { GameSessionCard } from '@/components/game-session-card';
+import { gameSessions } from '@/lib/data';
 
 const navItems = [
   { href: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
@@ -21,6 +23,19 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+
+  if (pathname === '/dashboard/games') {
+    return (
+      <div className="space-y-4 p-4">
+        <h2 className="text-2xl font-bold tracking-tight">Upcoming Games</h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {gameSessions.map((session) => (
+            <GameSessionCard key={session.id} session={session} />
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col min-h-screen w-full">

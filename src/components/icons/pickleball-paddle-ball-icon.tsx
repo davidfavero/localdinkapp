@@ -14,12 +14,13 @@ export function PickleballPaddleBallIcon(props: SVGProps<SVGSVGElement>) {
       strokeLinejoin="round"
       {...props}
     >
-      <path d="m14.68 7.76-1.42 1.42"/>
-      <path d="m11.84 10.6-1.42 1.42"/>
-      <path d="m7.12 15.32-1.42 1.42"/>
-      <path d="m10.42 12.02-1.42 1.42"/>
-      <path d="M16.1,9.18a4.82,4.82,0,0,0-6.82,0,4.82,4.82,0,0,0,0,6.82l5.4,5.4a1,1,0,0,0,1.42,0l1.42-1.42a1,1,0,0,0,0-1.42Z"/>
-      <circle cx="16" cy="16" r="2" />
+        <path d="M16.1,9.18a4.82,4.82,0,0,0-6.82,0,4.82,4.82,0,0,0,0,6.82l5.4,5.4a1,1,0,0,0,1.42,0l1.42-1.42a1,1,0,0,0,0-1.42Z"/>
+        <circle cx="16" cy="16" r="2" />
+        <circle cx="8" cy="8" r="4" />
+        <circle cx="8" cy="6" r="0.5" fill="currentColor" stroke="none" />
+        <circle cx="8" cy="10" r="0.5" fill="currentColor" stroke="none" />
+        <circle cx="6" cy="8" r="0.5" fill="currentColor" stroke="none" />
+        <circle cx="10" cy="8" r="0.5" fill="currentColor" stroke="none" />
     </svg>
   );
 }
