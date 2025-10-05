@@ -1,8 +1,11 @@
+'use client';
+
 import { courts } from '@/lib/data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MapPin, Star, Home, Plus } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 export default function CourtsPage() {
   return (
@@ -58,11 +61,3 @@ export default function CourtsPage() {
     </div>
   );
 }
-
-// Dummy components to prevent compile errors since they're not in the base scaffold
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"

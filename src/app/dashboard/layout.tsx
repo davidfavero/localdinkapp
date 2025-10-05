@@ -13,7 +13,7 @@ const navItems = [
   { href: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
-  { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
+  { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
   { href: '/dashboard/profile', icon: User, label: 'Profile' },
 ];
 
@@ -24,22 +24,9 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
 
-  if (pathname === '/dashboard/games') {
-    return (
-      <div className="space-y-4 p-4">
-        <h2 className="text-2xl font-bold tracking-tight">Upcoming Games</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {gameSessions.map((session) => (
-            <GameSessionCard key={session.id} session={session} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col min-h-screen w-full">
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto mb-24">{children}</main>
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
