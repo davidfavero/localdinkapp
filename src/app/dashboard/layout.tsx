@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MessageSquare, User, UsersRound } from 'lucide-react';
+import { MessageSquare, User, UsersRound, MapPin } from 'lucide-react';
 import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
@@ -14,7 +14,7 @@ const navItems = [
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
-  { href: '/dashboard/profile', icon: User, label: 'Profile' },
+  { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
 ];
 
 export default function DashboardLayout({
