@@ -2,7 +2,7 @@ import type { Player, Court, GameSession, Group } from '@/lib/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export const players: Player[] = [
-  { id: 'p1', name: 'Robert Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, phone: '555-0101' },
+  { id: 'p1', name: 'Robert Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, phone: '404-538-9332' },
   { id: 'p2', name: 'Alex Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '', phone: '555-0102' },
   { id: 'p3', name: 'Maria Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '', phone: '555-0103' },
   { id: 'p4', name: 'Chen Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '', phone: '555-0104' },
