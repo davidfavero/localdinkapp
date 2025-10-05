@@ -39,7 +39,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex flex-col min-h-screen w-full">
-      <main className="flex-1 overflow-auto pb-24">{children}</main>
+      <main className="flex-1 overflow-auto">{children}</main>
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">

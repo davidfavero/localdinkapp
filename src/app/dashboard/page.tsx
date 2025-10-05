@@ -63,7 +63,7 @@ export default function DashboardPage() {
           </div>
        </header>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-[152px]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
         {messages.map((message, index) => (
           <div
             key={index}
