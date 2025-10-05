@@ -50,7 +50,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       const result = await handleCancellationAction({
         gameSessionId: session.id,
         cancelledPlayerName: currentUser.name,
-        alternatePlayerNames: session.alternates.map(p => p.name),
+        alternates: session.alternates.map(p => ({ name: p.name, phone: p.phone || '' })),
         originalPlayerNames: session.players.map(p => p.player.name),
         courtName: session.court.name,
         gameTime: `${session.date} at ${session.time}`,

@@ -12,10 +12,15 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import { sendSmsTool } from '../tools/sms';
 
+const AlternatePlayerSchema = z.object({
+  name: z.string().describe('The name of the alternate player.'),
+  phone: z.string().optional().describe('The phone number of the alternate player.'),
+});
+
 const HandleCancellationInputSchema = z.object({
   gameSessionId: z.string().describe('The ID of the game session being cancelled.'),
   cancelledPlayerName: z.string().describe('The name of the player who cancelled.'),
-  alternatePlayerNames: z.array(z.string()).describe('An array of names of alternate players who can fill the spot.'),
+  alternates: z.array(AlternatePlayerSchema).describe('An array of alternate players with their names and phone numbers.'),
   originalPlayerNames: z.array(z.string()).describe('An array of names of original players in the game.'),
   courtName: z.string().describe('The name of the court where the game is scheduled.'),
   gameTime: z.string().describe('The time the game is scheduled for.'),
@@ -37,8 +42,26 @@ const handleCancellationPrompt = ai.definePrompt({
   input: {schema: HandleCancellationInputSchema},
   output: {schema: HandleCancellationOutputSchema},
   tools: [sendSmsTool],
-  prompt: `{{cancelledPlayerName}} has cancelled from the pickleball game scheduled for {{gameTime}} at {{courtName}}.\n\nOriginal Players: {{#each originalPlayerNames}}{{{this}}}, {{/each}}\nAlternates: {{#each alternatePlayerNames}}{{{this}}}, {{/each}}\n\nNotify an alternate to fill the spot using the sendSmsTool. The phone number for the alternate is not available, so use a placeholder like "555-555-5555". Respond to the other players about this cancellation.  If no alternates are available, inform the other players that the spot cannot be filled.  If there are no alternates, respond with no alternate player.  The alternate will be notified via SMS.
-\nMake sure to include the new list of players in the response. If an alternate is added, make sure to include them in the list.  Do not include the cancelled player in the new list.\n\nFinal Answer:`,
+  prompt: `A player has cancelled. Your task is to manage the cancellation and notify an alternate player via SMS.
+
+Game Details:
+- Cancelled Player: {{cancelledPlayerName}}
+- Game Time: {{gameTime}}
+- Location: {{courtName}}
+- Original Players: {{#each originalPlayerNames}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
+
+Available Alternates:
+{{#each alternates}}
+- Name: {{{name}}}, Phone: {{{phone}}}
+{{/each}}
+
+Instructions:
+1.  Check if there are any alternates available.
+2.  If alternates exist, select the *first* one from the list.
+3.  Use the 'sendSmsTool' to send an SMS to that alternate's phone number. The SMS should be friendly and invite them to the game, mentioning the time and location.
+4.  Your final response message (for the user in the app) should confirm the cancellation, state which alternate was notified (e.g., "I've sent an SMS to [Alternate's Name] to see if they can fill the spot."), and list the new lineup of players.
+5.  If no alternates are available, your final response message should simply state that the player has been removed and that no alternates were available to invite.
+`,
 });
 
 const handleCancellationFlow = ai.defineFlow(
@@ -49,8 +72,8 @@ const handleCancellationFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await handleCancellationPrompt(input);
-    // Basic logic to determine who was notified.  This can be made more sophisticated.
-    const alternateNotified = input.alternatePlayerNames.length > 0 ? input.alternatePlayerNames[0] : undefined;
+    // Basic logic to determine who was notified. This can be made more sophisticated.
+    const alternateNotified = input.alternates.length > 0 ? input.alternates[0].name : undefined;
     return {
       message: output!.message,
       alternateNotified: alternateNotified,
