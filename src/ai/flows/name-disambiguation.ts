@@ -44,13 +44,15 @@ const prompt = ai.definePrompt({
 
   If the player name is a full name and it matches one of the known players, return that full name.
 
-  If the player name is a first name, find the known player whose first name matches the given name. If there is only one match, return that full name. If there are multiple matches, return the full name of the most active player.
-
-  If no match is found, return the original player name.
+  If the player name is a first name, find the known player whose first name matches the given name. 
+  - If there is only one match, return that full name.
+  - If there are multiple matches, return a question asking the user to clarify which player they mean, like "Do you mean Robert Smith or Robert Thomas?".
+  - If there are no matches, return the original player name.
 
   Player Name: {{{playerName}}}
   Known Players: {{#each knownPlayers}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
-  \n  Disambiguated Name:`, // Ensure a newline character before "Disambiguated Name:"
+  
+  Disambiguated Name:`,
 });
 
 const disambiguateNameFlow = ai.defineFlow(
