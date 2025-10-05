@@ -63,10 +63,10 @@ const chatFlow = ai.defineFlow(
 - For dates, convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
 - If a location is not specified, you can leave it blank.
 - Look up the phone number for each player from the provided list of known players.
-- After extracting the details, use the 'sendSmsTool' to send an invitation to each player's phone number.
+- After extracting the details, you MUST use the 'sendSmsTool' to send an invitation to each extracted player's phone number.
 - The SMS message should be friendly, include the game details (date, time, location), and ask them to respond with YES or NO. It must also include a link to https://localdink.app/join for them to manage their profile.
 - If the user's message is not a scheduling request, just have a friendly conversation and put your response in the 'confirmationText' field. In this case, do not use the tool.
-- If you have extracted details and sent the SMS messages, DO NOT generate a confirmation text. Just return the extracted details. The calling function will handle the confirmation message.
+- If you have extracted details and sent the SMS messages, DO NOT generate a confirmation text. You must only return the extracted details (players, date, time, location). The calling function will handle the confirmation message.
 
 Conversation History:
 ${input.history.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
