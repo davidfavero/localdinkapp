@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
-import { useAuth, useFirestore, useCollection } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -32,13 +32,12 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import type { Court } from '@/lib/types';
-import { useMemoFirebase } from '@/firebase/provider';
 
 const gameSchema = z.object({
   courtId: z.string().min(1, 'Please select a court.'),
   date: z.date({ required_error: 'Please select a date.' }),
   time: z.string().regex(/^(0?[1-9]|1[0-2]):[0-5][0-9]\s(AM|PM)$/i, 'Invalid time format (e.g., 8:30 AM).'),
-  isDoubles: z.boolean().default(true),
+  isDoubles: z.string().default('true'),
 });
 
 type GameFormValues = z.infer<typeof gameSchema>;
@@ -46,24 +45,20 @@ type GameFormValues = z.infer<typeof gameSchema>;
 interface NewGameSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  courts: Court[];
+  isLoadingCourts: boolean;
 }
 
-export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
+export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: NewGameSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
 
-  const courtsQuery = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'courts') : null),
-    [firestore]
-  );
-  const { data: courts, isLoading: isLoadingCourts } = useCollection<Court>(courtsQuery);
-
   const form = useForm<GameFormValues>({
     resolver: zodResolver(gameSchema),
     defaultValues: {
-      isDoubles: true,
+      isDoubles: 'true',
       time: '05:00 PM',
     },
   });
@@ -98,7 +93,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
         courtId: data.courtId,
         organizerId: user.uid,
         startTime: Timestamp.fromDate(startTime),
-        isDoubles: data.isDoubles,
+        isDoubles: data.isDoubles === 'true',
         durationMinutes: 120, // Default duration
         status: 'scheduled',
         playerIds: [user.uid] // Initially, only organizer is a player
@@ -108,7 +103,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
         title: 'Game Created!',
         description: 'Your new game session has been scheduled.',
       });
-      form.reset({ isDoubles: true, time: '05:00 PM' });
+      form.reset({ isDoubles: 'true', time: '05:00 PM', courtId: '', date: undefined });
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error creating game:', error);
@@ -132,7 +127,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full overflow-y-auto">
             <div className="space-y-6 py-6 flex-1">
               <FormField
                 control={form.control}
@@ -140,7 +135,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Court</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoadingCourts || !courts}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingCourts}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder={isLoadingCourts ? "Loading courts..." : "Select a court"} />
@@ -215,7 +210,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
                   render={({ field }) => (
                       <FormItem>
                           <FormLabel>Game Type</FormLabel>
-                          <Select onValueChange={(value) => field.onChange(value === 'true')} defaultValue={String(field.value)}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue />
@@ -232,7 +227,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
               />
             </div>
             
-            <SheetFooter>
+            <SheetFooter className="mt-auto pt-6">
               <SheetClose asChild>
                 <Button type="button" variant="outline">Cancel</Button>
               </SheetClose>

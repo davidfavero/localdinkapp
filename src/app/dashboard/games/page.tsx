@@ -33,13 +33,20 @@ export default function GamesPage() {
     [firestore]
   );
   
-  const { data: rawSessions, isLoading } = useCollection(sessionsQuery);
+  const { data: rawSessions, isLoading: isLoadingSessions } = useCollection(sessionsQuery);
   const [hydratedSessions, setHydratedSessions] = useState<GameSession[]>([]);
   const [isHydrating, setIsHydrating] = useState(true);
 
+  const courtsQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'courts') : null),
+    [firestore]
+  );
+  const { data: courts, isLoading: isLoadingCourts } = useCollection<Court>(courtsQuery);
+
+
   useEffect(() => {
     if (!rawSessions || !firestore) {
-      if (!isLoading) setIsHydrating(false);
+      if (!isLoadingSessions) setIsHydrating(false);
       return;
     };
     
@@ -85,7 +92,7 @@ export default function GamesPage() {
 
     hydrate();
 
-  }, [rawSessions, firestore, isLoading])
+  }, [rawSessions, firestore, isLoadingSessions])
 
 
   return (
@@ -98,22 +105,27 @@ export default function GamesPage() {
         </Button>
       </div>
 
-      <NewGameSheet open={isSheetOpen} onOpenChange={setIsSheetOpen} />
+      <NewGameSheet 
+        open={isSheetOpen} 
+        onOpenChange={setIsSheetOpen}
+        courts={courts || []}
+        isLoadingCourts={isLoadingCourts}
+      />
 
-      {(isLoading || isHydrating) && (
+      {(isLoadingSessions || isHydrating) && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Array.from({length: 3}).map((_, i) => <LoadingGameCard key={i} />)}
         </div>
       )}
 
-      {!isLoading && !isHydrating && hydratedSessions.length === 0 && (
+      {!isLoadingSessions && !isHydrating && hydratedSessions.length === 0 && (
           <div className="text-center py-12 border-2 border-dashed rounded-lg">
             <h3 className="text-xl font-medium text-muted-foreground">No Games Scheduled</h3>
             <p className="text-muted-foreground mt-2">Create a new game or ask Robin to schedule one for you.</p>
           </div>
       )}
 
-      {!isLoading && !isHydrating && hydratedSessions.length > 0 && (
+      {!isLoadingSessions && !isHydrating && hydratedSessions.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {hydratedSessions.map((session) => (
               <GameSessionCard key={session.id} session={session} />
