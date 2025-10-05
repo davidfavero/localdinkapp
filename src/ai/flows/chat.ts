@@ -4,23 +4,11 @@
  * @fileOverview A conversational AI flow for the LocalDink assistant, Robin.
  *
  * - chat - A function that handles conversational chat with the user.
- * - ChatInput - The input type for the chat function.
- * - ChatOutput - The return type for the chat function.
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
-
-export const ChatInputSchema = z.object({
-  message: z.string().describe('The user\'s message.'),
-  history: z.array(z.object({
-    sender: z.enum(['user', 'robin']),
-    text: z.string(),
-  })).describe('The conversation history.'),
-});
-export type ChatInput = z.infer<typeof ChatInputSchema>;
-
-export type ChatOutput = string;
+import { z } from 'zod';
+import { ChatInput, ChatInputSchema, ChatOutput } from '@/lib/actions';
 
 export async function chat(input: ChatInput): Promise<ChatOutput> {
   return chatFlow(input);

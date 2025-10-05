@@ -1,8 +1,20 @@
 'use server';
 
+import { z } from 'zod';
 import { extractProfilePreferences, ProfilePreferenceExtractionInput, ProfilePreferenceExtractionOutput } from "@/ai/flows/profile-preference-extraction";
 import { handleCancellation, HandleCancellationInput, HandleCancellationOutput } from "@/ai/flows/automated-cancellation-management";
-import { chat, ChatInput, ChatOutput } from "@/ai/flows/chat";
+import { chat } from "@/ai/flows/chat";
+
+export const ChatInputSchema = z.object({
+  message: z.string().describe("The user's message."),
+  history: z.array(z.object({
+    sender: z.enum(['user', 'robin']),
+    text: z.string(),
+  })).describe('The conversation history.'),
+});
+export type ChatInput = z.infer<typeof ChatInputSchema>;
+
+export type ChatOutput = string;
 
 
 export async function extractPreferencesAction(
