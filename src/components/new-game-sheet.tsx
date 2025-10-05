@@ -58,7 +58,7 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
     () => (firestore ? collection(firestore, 'courts') : null),
     [firestore]
   );
-  const { data: courts } = useCollection<Court>(courtsQuery);
+  const { data: courts, isLoading: isLoadingCourts } = useCollection<Court>(courtsQuery);
 
   const form = useForm<GameFormValues>({
     resolver: zodResolver(gameSchema),
@@ -140,10 +140,10 @@ export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Court</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!courts}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoadingCourts || !courts}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a court" />
+                          <SelectValue placeholder={isLoadingCourts ? "Loading courts..." : "Select a court"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
