@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type Player = {
   id: string;
   name: string;
@@ -36,3 +38,14 @@ export type GameSession = {
   }[];
   alternates: Player[];
 };
+
+export const ChatInputSchema = z.object({
+  message: z.string().describe("The user's message."),
+  history: z.array(z.object({
+    sender: z.enum(['user', 'robin']),
+    text: z.string(),
+  })).describe('The conversation history.'),
+});
+export type ChatInput = z.infer<typeof ChatInputSchema>;
+
+export type ChatOutput = string;

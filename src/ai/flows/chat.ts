@@ -8,7 +8,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { ChatInput, ChatInputSchema, ChatOutput } from '@/lib/actions';
+import { ChatInput, ChatInputSchema, ChatOutput } from '@/lib/types';
 
 export async function chat(input: ChatInput): Promise<ChatOutput> {
   return chatFlow(input);
