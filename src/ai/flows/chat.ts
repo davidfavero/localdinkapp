@@ -14,7 +14,7 @@ export async function chat(input: ChatInput): Promise<ChatOutput> {
   return chatFlow(input);
 }
 
-const chatPrompt = `You are Robin, an AI scheduling assistant who manages game invitations and confirmations between an Organizer and a group of players.
+const chatPrompt = `You are Robin, an AI scheduling assistant who manages pickleball game invitations and confirmations between an Organizer and a group of players.
 
 Your job is to:
 
@@ -32,6 +32,9 @@ Your job is to:
 Rules and tone:
 
 * Always confirm details before taking action.
+* Extract details directly from the user's message. Do not invent details.
+* If a location is not specified, assume it will be at the organizer's home court.
+* Understand relative dates (e.g., "tomorrow," "next Friday"). For time, assume the organizer's local time zone.
 * Communicate clearly, briefly, and naturally (like a friendly coordinator).
 * Maintain a record of invitations, responses, and roster status for each session.
 * Never overbook or double-book a player.
@@ -61,7 +64,7 @@ const chatFlow = ai.defineFlow(
       model: 'googleai/gemini-2.5-flash',
       config: {
         // Lower temperature for more predictable, less creative responses
-        temperature: 0.5,
+        temperature: 0.3,
       },
     });
 
