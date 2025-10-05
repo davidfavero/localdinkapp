@@ -19,6 +19,7 @@ import { Sparkles } from 'lucide-react';
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
+  phone: z.string().optional(),
   dinkRating: z.string().optional(),
   doublesPreference: z.boolean().default(true),
   homeCourt: z.string().optional(),
@@ -37,6 +38,7 @@ export default function ProfilePage() {
     resolver: zodResolver(profileSchema),
     defaultValues: {
       name: currentUser?.name || '',
+      phone: currentUser?.phone || '',
       dinkRating: '4.25',
       doublesPreference: true,
       homeCourt: courts.find(c => c.isHome)?.id || '',
@@ -150,6 +152,19 @@ export default function ProfilePage() {
                     <FormLabel>Display Name</FormLabel>
                     <FormControl>
                       <Input placeholder="Your Name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. 555-123-4567" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

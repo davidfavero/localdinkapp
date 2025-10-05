@@ -2,14 +2,14 @@ import type { Player, Court, GameSession, Group } from '@/lib/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export const players: Player[] = [
-  { id: 'p1', name: 'You', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true },
-  { id: 'p2', name: 'Alex Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '' },
-  { id: 'p3', name: 'Maria Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '' },
-  { id: 'p4', name: 'Chen Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '' },
-  { id: 'p5', name: 'Sarah Miller', avatarUrl: PlaceHolderImages.find(p => p.id === 'user5')?.imageUrl || '' },
-  { id: 'p6', name: 'David Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user6')?.imageUrl || '' },
-  { id: 'p7', name: 'Emily White', avatarUrl: PlaceHolderImages.find(p => p.id === 'user7')?.imageUrl || '' },
-  { id: 'p8', name: 'James Brown', avatarUrl: PlaceHolderImages.find(p => p.id === 'user8')?.imageUrl || '' },
+  { id: 'p1', name: 'You', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, phone: '555-0101' },
+  { id: 'p2', name: 'Alex Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '', phone: '555-0102' },
+  { id: 'p3', name: 'Maria Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '', phone: '555-0103' },
+  { id: 'p4', name: 'Chen Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '', phone: '555-0104' },
+  { id: 'p5', name: 'Sarah Miller', avatarUrl: PlaceHolderImages.find(p => p.id === 'user5')?.imageUrl || '', phone: '555-0105' },
+  { id: 'p6', name: 'David Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user6')?.imageUrl || '', phone: '555-0106' },
+  { id: 'p7', name: 'Emily White', avatarUrl: PlaceHolderImages.find(p => p.id === 'user7')?.imageUrl || '', phone: '555-0107' },
+  { id: 'p8', name: 'James Brown', avatarUrl: PlaceHolderImages.find(p => p.id === 'user8')?.imageUrl || '', phone: '555-0108' },
 ];
 
 export const courts: Court[] = [

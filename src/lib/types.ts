@@ -2,6 +2,7 @@ export type Player = {
   id: string;
   name: string;
   avatarUrl: string;
+  phone?: string;
   isCurrentUser?: boolean;
 };
 
