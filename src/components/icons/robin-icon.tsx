@@ -5,17 +5,11 @@ export function RobinIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      fill="currentColor"
       {...props}
     >
-      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-      <path d="M12 12c-2 0-4-1-4-4 0-2 2-4 4-4s4 2 4 4c0 3-2 4-4 4z" />
-      <path d="M14 14c0 2-1 4-4 4-2 0-4-2-4-4" />
-      <path d="M15 9.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" />
+      <path d="M18.5,7.57L14.2,13.23L13.5,12.15L12.55,14.35L11.83,12.7L9.3,17.27L6.5,12.77L4.5,15.77L3.5,14L2,17H22L18.5,7.57Z" />
+      <path d="M12,11.5A2.5,2.5 0 0,0 14.5,9A2.5,2.5 0 0,0 12,6.5A2.5,2.5 0 0,0 9.5,9A2.5,2.5 0 0,0 12,11.5Z" />
     </svg>
   );
 }

@@ -27,13 +27,13 @@ export default function LandingPage() {
                 <RobinIcon className="h-6 w-6 text-primary" />
                 <p className="font-semibold text-primary">Meet Robin, your AI scheduler</p>
               </div>
-              <h2 className="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 font-headline bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              <h2 className="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 font-headline bg-gradient-to-r from-primary to-green-700 bg-clip-text text-transparent">
                 Never miss a game.
               </h2>
               <p className="text-lg md:text-xl text-muted-foreground max-w-lg mb-8">
                 LocalDink uses AI to effortlessly schedule your pickleball matches, manage RSVPs, and find substitutes, so you can focus on playing.
               </p>
-              <Button asChild size="lg" className="bg-gradient-to-r from-primary to-secondary text-primary-foreground hover:opacity-90 transition-opacity shadow-lg">
+              <Button asChild size="lg" className="bg-gradient-to-r from-primary to-green-700 text-primary-foreground hover:opacity-90 transition-opacity shadow-lg">
                 <Link href="/dashboard">
                   Schedule Your First Game <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
@@ -44,7 +44,7 @@ export default function LandingPage() {
                 <div className="relative">
                     <RobinIcon className="h-64 w-64 text-primary opacity-10" />
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                        <div className="w-80 h-80 rounded-full bg-gradient-to-br from-primary via-accent to-secondary animate-spin-slow" style={{ animationDuration: '10s' }} />
+                        <div className="w-80 h-80 rounded-full bg-gradient-to-br from-primary via-accent to-green-700 animate-spin-slow" style={{ animationDuration: '10s' }} />
                     </div>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-sm p-8 rounded-full">
                         <PickleballPaddleIcon className="w-48 h-48 text-background drop-shadow-2xl" />
