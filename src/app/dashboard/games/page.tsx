@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { GameSessionCard } from '@/components/game-session-card';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -8,7 +8,6 @@ import { useCollection, useFirestore } from '@/firebase';
 import { collection, query, getDoc, doc } from 'firebase/firestore';
 import type { GameSession, Player, Court } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
-import { useEffect } from 'react';
 import { NewGameSheet } from '@/components/new-game-sheet';
 
 // A placeholder for when data is loading to avoid showing an empty state.
@@ -25,7 +24,6 @@ const LoadingGameCard = () => (
     </div>
 );
 
-
 export default function GamesPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const firestore = useFirestore();
@@ -36,26 +34,37 @@ export default function GamesPage() {
   );
   
   const { data: rawSessions, isLoading } = useCollection(sessionsQuery);
-  
   const [hydratedSessions, setHydratedSessions] = useState<GameSession[]>([]);
+  const [isHydrating, setIsHydrating] = useState(true);
 
   useEffect(() => {
-    if (!rawSessions || !firestore) return;
+    if (!rawSessions || !firestore) {
+      if (!isLoading) setIsHydrating(false);
+      return;
+    };
+    
+    setIsHydrating(true);
 
     const hydrate = async () => {
         const hydrated = await Promise.all(rawSessions.map(async (session: any) => {
             
             // This is a simplified hydration. In a real app, you might want to batch these reads.
-            const courtSnap = await getDoc(doc(firestore, 'courts', session.courtId));
-            const court = { id: courtSnap.id, ...courtSnap.data() } as Court;
+            const courtSnap = session.courtId ? await getDoc(doc(firestore, 'courts', session.courtId)) : null;
+            const court = courtSnap?.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
 
-            const organizerSnap = await getDoc(doc(firestore, 'users', session.organizerId));
-            const organizer = { id: organizerSnap.id, ...organizerSnap.data() } as Player;
+            const organizerSnap = session.organizerId ? await getDoc(doc(firestore, 'users', session.organizerId)) : null;
+            const organizer = organizerSnap?.exists() ? { id: organizerSnap.id, ...organizerSnap.data() } as Player : { id: 'unknown', name: 'Unknown Organizer', avatarUrl: '' };
             
-            // For now, we'll represent players and alternates by their IDs.
-            // A more complex implementation would fetch their full profiles.
-            const players = session.playerIds?.map((id: string) => ({ player: { id, name: 'Player', avatarUrl: '' }, status: 'CONFIRMED' })) || [];
-            const alternates = session.alternateIds?.map((id: string) => ({ id, name: 'Alternate', avatarUrl: '' })) || [];
+            const playerPromises = (session.playerIds || []).map(async (id: string) => {
+                const playerSnap = await getDoc(doc(firestore, 'users', id));
+                const playerData = playerSnap.exists() ? { id: playerSnap.id, ...playerSnap.data() } as Player : { id, name: 'Unknown Player', avatarUrl: '' };
+                // Placeholder status, a real app would store this in the session
+                return { player: playerData, status: 'CONFIRMED' as const };
+            });
+            const players = await Promise.all(playerPromises);
+            
+            // For now, alternates are empty.
+            const alternates: Player[] = [];
 
             const sessionDate = session.startTime?.toDate ? session.startTime.toDate() : new Date();
 
@@ -63,7 +72,7 @@ export default function GamesPage() {
                 id: session.id,
                 court,
                 organizer,
-                date: sessionDate.toLocaleDateString([], { weekday: 'long' }),
+                date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
                 time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
                 type: session.isDoubles ? 'Doubles' : 'Singles',
                 players: players,
@@ -71,30 +80,46 @@ export default function GamesPage() {
             } as GameSession
         }));
         setHydratedSessions(hydrated);
+        setIsHydrating(false);
     }
 
     hydrate();
 
-  }, [rawSessions, firestore])
+  }, [rawSessions, firestore, isLoading])
 
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Upcoming Games</h2>
-        <NewGameSheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-            <Button onClick={() => setIsSheetOpen(true)}>
-              <Plus className="-ml-1 mr-2 h-4 w-4" />
-              New Game
-            </Button>
-        </NewGameSheet>
+        <Button onClick={() => setIsSheetOpen(true)}>
+          <Plus className="-ml-1 mr-2 h-4 w-4" />
+          New Game
+        </Button>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {isLoading && Array.from({length: 3}).map((_, i) => <LoadingGameCard key={i} />)}
-        {hydratedSessions.map((session) => (
-          <GameSessionCard key={session.id} session={session} />
-        ))}
-      </div>
+
+      <NewGameSheet open={isSheetOpen} onOpenChange={setIsSheetOpen} />
+
+      {(isLoading || isHydrating) && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({length: 3}).map((_, i) => <LoadingGameCard key={i} />)}
+        </div>
+      )}
+
+      {!isLoading && !isHydrating && hydratedSessions.length === 0 && (
+          <div className="text-center py-12 border-2 border-dashed rounded-lg">
+            <h3 className="text-xl font-medium text-muted-foreground">No Games Scheduled</h3>
+            <p className="text-muted-foreground mt-2">Create a new game or ask Robin to schedule one for you.</p>
+          </div>
+      )}
+
+      {!isLoading && !isHydrating && hydratedSessions.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {hydratedSessions.map((session) => (
+              <GameSessionCard key={session.id} session={session} />
+            ))}
+        </div>
+      )}
     </div>
   );
 }

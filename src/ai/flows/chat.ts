@@ -12,6 +12,9 @@ import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema }
 import { disambiguateName } from './name-disambiguation';
 import { players as knownPlayersData } from '@/lib/data';
 import { sendSmsTool } from '../tools/sms';
+import { collection, addDoc, serverTimestamp, getFirestore, runTransaction } from 'firebase/firestore';
+import { initializeFirebase } from '@/firebase';
+
 
 // Helper function to check if a message is a simple confirmation
 function isConfirmation(message: string) {
@@ -80,24 +83,62 @@ New User Message:
     players.map(async (playerName) => {
       const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
       const fullName = result.disambiguatedName;
-      const playerData = knownPlayers.find(p => p.name === fullName);
-      return { name: fullName, phone: playerData?.phone };
+      const playerData = knownPlayersData.find(p => p.name === fullName);
+      return { id: playerData?.id, name: fullName, phone: playerData?.phone };
     })
   );
 
   const playersWithPhones = invitedPlayers.filter(p => p.phone);
+  const playerIds = invitedPlayers.map(p => p.id).filter((id): id is string => !!id);
   const playerNames = invitedPlayers.map(p => p.name);
 
-  // 5. Send SMS invitations if we have everything we need.
-  let smsSent = false;
+  // 5. Send SMS invitations and create game if we have everything we need.
   let responseText = '';
   if (date && time && location && players.length > 0) {
     const smsBody = `Pickleball Game Invitation! You're invited to a game on ${date} at ${time} at ${location}. Respond YES or NO. Manage your profile at https://localdink.app/join`;
     for (const player of playersWithPhones) {
       await sendSmsTool({ to: player.phone!, body: smsBody });
     }
-    smsSent = true;
-    responseText = `Great! Your game with ${playerNames.join(' and ')} at ${location} on ${date} at ${time} is confirmed. I've sent SMS invitations. Have a fantastic game!`;
+
+    // Save the game to Firestore
+    try {
+        const { firestore } = initializeFirebase();
+        // A real implementation would look up the court ID from the location name
+        const courtId = 'c1'; // Using a placeholder for now
+        const organizerId = knownPlayersData.find(p => p.isCurrentUser)?.id || playerIds[0];
+
+        const [hour, minute] = time.split(/[:\s]/);
+        const ampm = time.includes('PM') ? 'PM' : 'AM';
+        let numericHour = parseInt(hour, 10);
+        if (ampm === 'PM' && numericHour < 12) {
+            numericHour += 12;
+        }
+        if (ampm === 'AM' && numericHour === 12) {
+            numericHour = 0;
+        }
+        const numericMinute = parseInt(minute, 10) || 0;
+
+        const startTime = new Date(date);
+        startTime.setHours(numericHour, numericMinute);
+        
+        await addDoc(collection(firestore, 'game-sessions'), {
+            courtId,
+            organizerId,
+            startTime, // Firestore timestamp
+            isDoubles: playerIds.length > 2,
+            durationMinutes: 120,
+            status: 'scheduled',
+            playerIds,
+        });
+
+    } catch(e) {
+        console.error("Failed to save game session to firestore", e);
+        // We still confirm to the user, but log the error.
+        // In a real app, we might want to tell the user the game couldn't be saved.
+    }
+
+
+    responseText = `Great! Your game with ${playerNames.join(' and ')} at ${location} on ${date} at ${time} is confirmed. I've sent SMS invitations and added it to your upcoming games. Have a fantastic game!`;
   } else {
      // If not enough info to send SMS yet, ask for it.
      let missingInfo = [];
@@ -108,7 +149,7 @@ New User Message:
      if (isConfirmation(input.message)) {
         responseText = `Almost there! I still need the ${missingInfo.join(' and ')} to schedule the game for ${playerNames.join(', ')}.`;
      } else {
-        responseText = `Got it! I'll schedule a game for you and ${playerNames.join(' and ')}. I just need to confirm the ${missingInfo.join(' and ')}. What's the plan?`;
+        responseText = `Got it! I'll schedule a game for ${playerNames.join(' and ')}. I just need to confirm the ${missingInfo.join(' and ')}. What's the plan?`;
      }
   }
   

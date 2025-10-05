@@ -1,15 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { useAuth, useFirestore, useCollection } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Select,
@@ -29,9 +30,8 @@ import {
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Calendar as CalendarIcon, Users } from 'lucide-react';
 import { format } from 'date-fns';
-import type { Court, Player } from '@/lib/types';
+import type { Court } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
 
 const gameSchema = z.object({
@@ -44,16 +44,15 @@ const gameSchema = z.object({
 type GameFormValues = z.infer<typeof gameSchema>;
 
 interface NewGameSheetProps {
-  children: React.ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function NewGameSheet({ children, open, onOpenChange }: NewGameSheetProps) {
+export function NewGameSheet({ open, onOpenChange }: NewGameSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const courtsQuery = useMemoFirebase(
     () => (firestore ? collection(firestore, 'courts') : null),
@@ -78,7 +77,6 @@ export function NewGameSheet({ children, open, onOpenChange }: NewGameSheetProps
     reset,
     formState: { errors },
   } = form;
-  const dateValue = watch('date');
 
   const onSubmit = async (data: GameFormValues) => {
     if (!firestore || !user) {
@@ -90,17 +88,17 @@ export function NewGameSheet({ children, open, onOpenChange }: NewGameSheetProps
       return;
     }
 
-    setIsLoading(true);
+    setIsCreating(true);
 
     try {
       const [hours, minutes] = data.time.split(':').map(Number);
       const startTime = new Date(data.date);
-      startTime.setHours(hours, minutes);
+      startTime.setHours(hours, minutes, 0, 0);
 
       await addDoc(collection(firestore, 'game-sessions'), {
         courtId: data.courtId,
         organizerId: user.uid,
-        startTime: serverTimestamp(), // Will be set to the server's time
+        startTime: Timestamp.fromDate(startTime),
         isDoubles: data.isDoubles,
         durationMinutes: 120, // Default duration
         status: 'scheduled',
@@ -121,13 +119,12 @@ export function NewGameSheet({ children, open, onOpenChange }: NewGameSheetProps
         description: error.message || 'Could not create the game session.',
       });
     } finally {
-      setIsLoading(false);
+      setIsCreating(false);
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      {children}
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Create a New Game</SheetTitle>
@@ -136,49 +133,62 @@ export function NewGameSheet({ children, open, onOpenChange }: NewGameSheetProps
           </SheetDescription>
         </SheetHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 py-6">
-          <div>
-            <Label htmlFor="courtId">Court</Label>
-            <Select onValueChange={(value) => setValue('courtId', value)} disabled={!courts}>
-              <SelectTrigger id="courtId">
-                <SelectValue placeholder="Select a court" />
-              </SelectTrigger>
-              <SelectContent>
-                {courts?.map((court) => (
-                  <SelectItem key={court.id} value={court.id}>
-                    {court.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.courtId && <p className="text-red-500 text-sm mt-1">{errors.courtId.message}</p>}
-          </div>
+          <Controller
+            name="courtId"
+            control={control}
+            render={({ field }) => (
+              <div className="space-y-1">
+                <Label>Court</Label>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!courts}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a court" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courts?.map((court) => (
+                      <SelectItem key={court.id} value={court.id}>
+                        {court.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.courtId && <p className="text-red-500 text-sm mt-1">{errors.courtId.message}</p>}
+              </div>
+            )}
+          />
 
-          <div>
-            <Label>Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant={'outline'}
-                  className={cn(
-                    'w-full justify-start text-left font-normal',
-                    !dateValue && 'text-muted-foreground'
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateValue ? format(dateValue, 'PPP') : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={dateValue}
-                  onSelect={(day) => day && setValue('date', day)}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-            {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date.message}</p>}
-          </div>
+          <Controller
+            name="date"
+            control={control}
+            render={({ field }) => (
+              <div className="space-y-1">
+                <Label>Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={'outline'}
+                      className={cn(
+                        'w-full justify-start text-left font-normal',
+                        !field.value && 'text-muted-foreground'
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date.message}</p>}
+              </div>
+            )}
+          />
+
 
           <div>
             <Label htmlFor="time">Time</Label>
@@ -196,10 +206,10 @@ export function NewGameSheet({ children, open, onOpenChange }: NewGameSheetProps
           
           <SheetFooter>
             <SheetClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button type="button" variant="outline">Cancel</Button>
             </SheetClose>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Creating...' : 'Create Game'}
+            <Button type="submit" disabled={isCreating}>
+              {isCreating ? 'Creating...' : 'Create Game'}
             </Button>
           </SheetFooter>
         </form>
