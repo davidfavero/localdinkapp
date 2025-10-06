@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Sparkles, Database, AlertCircle, Camera, Upload } from 'lucide-react';
-import { collection, query, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, doc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { Court, Player } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
@@ -25,6 +25,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
+import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 
 const profileSchema = z.object({
@@ -140,7 +141,7 @@ export default function ProfilePage() {
       const downloadURL = await getDownloadURL(snapshot.ref);
       
       const userRef = doc(firestore, 'users', user.uid);
-      await updateDoc(userRef, { avatarUrl: downloadURL });
+      updateDocumentNonBlocking(userRef, { avatarUrl: downloadURL });
 
       toast({
         title: 'Avatar Updated',
@@ -159,7 +160,6 @@ export default function ProfilePage() {
     }
   }, [imageToCrop, user, storage, firestore, toast]);
 
-
   async function onSubmit(data: ProfileFormValues) {
     if (!firestore || !user) {
       toast({
@@ -170,32 +170,24 @@ export default function ProfilePage() {
       return;
     }
 
-    try {
-      const userRef = doc(firestore, 'users', user.uid);
-      const [firstName, ...lastNameParts] = data.name.split(' ');
-      const lastName = lastNameParts.join(' ');
-      
-      await updateDoc(userRef, {
-        firstName,
-        lastName,
-        phone: data.phone,
-        dinkRating: data.dinkRating,
-        doublesPreference: data.doublesPreference,
-        homeCourtId: data.homeCourtId,
-        availability: data.availability,
-      });
+    const userRef = doc(firestore, 'users', user.uid);
+    const [firstName, ...lastNameParts] = data.name.split(' ');
+    const lastName = lastNameParts.join(' ');
+    
+    updateDocumentNonBlocking(userRef, {
+      firstName,
+      lastName,
+      phone: data.phone,
+      dinkRating: data.dinkRating,
+      doublesPreference: data.doublesPreference,
+      homeCourtId: data.homeCourtId,
+      availability: data.availability,
+    });
 
-      toast({
-        title: 'Profile Updated',
-        description: 'Your preferences have been saved.',
-      });
-    } catch (error: any) {
-        toast({
-          variant: 'destructive',
-          title: 'Update Failed',
-          description: error.message || 'Could not save your profile.',
-        });
-    }
+    toast({
+      title: 'Profile Updated',
+      description: 'Your preferences have been saved.',
+    });
   }
 
   async function handleExtractPreferences() {
@@ -273,37 +265,39 @@ export default function ProfilePage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
 
-           <div className="flex justify-center">
+          <div className="flex justify-center">
             <div className="relative group h-32 w-32">
-              {currentUser ? (
-                <UserAvatar player={currentUser} className="h-32 w-32 text-4xl rounded-full z-0" />
-              ) : (
-                <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center text-3xl z-0">
-                  <Camera/>
-                </div>
-              )}
-          
-              <button
-                type="button"
-                onClick={handleAvatarClick}
-                disabled={isUploading}
-                aria-label="Change avatar"
-                className="absolute inset-0 z-10 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
-              >
-                {isUploading ? (
-                  <Upload className="h-8 w-8 text-white animate-pulse" />
+              <div className="relative group h-32 w-32">
+                {currentUser ? (
+                  <UserAvatar player={currentUser} className="h-32 w-32 text-4xl rounded-full z-0" />
                 ) : (
-                  <Camera className="h-8 w-8 text-white" />
+                  <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center text-3xl z-0">
+                    <Camera/>
+                  </div>
                 )}
-              </button>
-          
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                className="hidden"
-                accept="image/png, image/jpeg, image/webp"
-              />
+            
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
+                  disabled={isUploading}
+                  aria-label="Change avatar"
+                  className="absolute inset-0 z-10 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+                >
+                  {isUploading ? (
+                    <Upload className="h-8 w-8 text-white animate-pulse" />
+                  ) : (
+                    <Camera className="h-8 w-8 text-white" />
+                  )}
+                </button>
+            
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/webp"
+                />
+              </div>
             </div>
           </div>
 
@@ -452,7 +446,7 @@ export default function ProfilePage() {
               <CardHeader>
                   <CardTitle>Developer Settings</CardTitle>
                   <CardDescription>Actions for helping with app development.</CardDescription>
-              </CardHeader>
+              </Header>
               <CardContent>
                  <Alert>
                     <AlertCircle className="h-4 w-4" />
@@ -478,5 +472,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-    
