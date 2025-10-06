@@ -446,7 +446,7 @@ export default function ProfilePage() {
               <CardHeader>
                   <CardTitle>Developer Settings</CardTitle>
                   <CardDescription>Actions for helping with app development.</CardDescription>
-              </Header>
+              </CardHeader>
               <CardContent>
                  <Alert>
                     <AlertCircle className="h-4 w-4" />
