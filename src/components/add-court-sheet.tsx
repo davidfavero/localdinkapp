@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -35,7 +34,6 @@ interface AddCourtSheetProps {
 export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isCreating, setIsCreating] = useState(false);
 
   const form = useForm<CourtFormValues>({
     resolver: zodResolver(courtSchema),
@@ -44,6 +42,8 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       location: '',
     },
   });
+
+  const { isSubmitting } = form.formState;
 
   const onSubmit = async (data: CourtFormValues) => {
     if (!firestore) {
@@ -55,7 +55,6 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       return;
     }
 
-    setIsCreating(true);
     try {
       await addDoc(collection(firestore, 'courts'), data);
 
@@ -64,7 +63,7 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
         description: `${data.name} has been added to your courts.`,
       });
       form.reset();
-      onOpenChange(false);
+      onOpenChange(false); // Close the sheet on success
     } catch (error: any) {
       console.error('Error creating court:', error);
       toast({
@@ -72,8 +71,6 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
         title: 'Uh oh! Something went wrong.',
         description: error.message || 'Could not add the court.',
       });
-    } finally {
-      setIsCreating(false);
     }
   };
 
@@ -87,7 +84,7 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 flex flex-col justify-between">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 flex flex-col justify-between space-y-8">
             <div className="flex-1 space-y-6 py-6">
               <FormField
                 control={form.control}
@@ -119,12 +116,12 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
             </div>
             <SheetFooter>
               <SheetClose asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="outline" disabled={isSubmitting}>
                   Cancel
                 </Button>
               </SheetClose>
-              <Button type="submit" disabled={isCreating}>
-                {isCreating ? 'Adding...' : 'Add Court'}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Adding...' : 'Add Court'}
               </Button>
             </SheetFooter>
           </form>
