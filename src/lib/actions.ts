@@ -5,7 +5,7 @@ import { handleCancellation, HandleCancellationInput, HandleCancellationOutput }
 import { chat } from "@/ai/flows/chat";
 import type { ChatInput, ChatOutput } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from '@/lib/data';
-import { collection, writeBatch, getDocs, query, where, getFirestore } from 'firebase/firestore';
+import { collection, writeBatch, getDocs, doc, getFirestore } from 'firebase/firestore';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { firebaseConfig } from "@/firebase/config";
 
@@ -65,15 +65,15 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
     const batch = writeBatch(firestore);
 
     // Seed Users
-    const usersCollection = collection(firestore, 'users');
-    const existingUsersSnap = await getDocs(query(usersCollection));
+    const usersCollectionRef = collection(firestore, 'users');
+    const existingUsersSnap = await getDocs(usersCollectionRef);
     const existingEmails = new Set(existingUsersSnap.docs.map(doc => doc.data().email));
 
     let usersAdded = 0;
     mockPlayers.forEach(player => {
         const email = `${player.firstName?.toLowerCase()}.${player.lastName?.toLowerCase()}@example.com`;
         if (!existingEmails.has(email)) {
-            const userRef = collection(firestore, 'users').doc();
+            const userRef = doc(usersCollectionRef); // Correct syntax
              batch.set(userRef, {
                 firstName: player.firstName,
                 lastName: player.lastName,
@@ -86,14 +86,14 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
     });
 
     // Seed Courts
-    const courtsCollection = collection(firestore, 'courts');
-    const existingCourtsSnap = await getDocs(courtsCollection);
+    const courtsCollectionRef = collection(firestore, 'courts');
+    const existingCourtsSnap = await getDocs(courtsCollectionRef);
     const existingCourtNames = new Set(existingCourtsSnap.docs.map(doc => doc.data().name));
     
     let courtsAdded = 0;
     mockCourts.forEach(court => {
         if (!existingCourtNames.has(court.name)) {
-            const courtRef = collection(firestore, 'courts').doc();
+            const courtRef = doc(courtsCollectionRef); // Correct syntax
             batch.set(courtRef, {
                 name: court.name,
                 location: court.location,
