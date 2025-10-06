@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useFirestore, useUser, useStorage } from '@/firebase';
+import { useFirestore, useUser, useStorage, errorEmitter } from '@/firebase';
 import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -25,6 +25,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 
 const profileSchema = z.object({
@@ -123,44 +124,72 @@ export default function ProfilePage() {
     }
   };
   
-  const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
+ const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
     if (!imageToCrop || !user || !storage || !firestore) {
       console.log('preconditions failed', { hasImage: !!imageToCrop, hasUser: !!user, hasStorage: !!storage, hasFirestore: !!firestore });
       toast({ variant: 'destructive', title: 'Not ready', description: 'Missing auth or Firebase instances.' });
       return;
     }
-  
-    const dataUrl = imageToCrop;            // snapshot before clearing
+
+    const dataUrl = imageToCrop;
     setIsUploading(true);
     setImageToCrop(null);
-  
+
     try {
       console.log('[1] cropping…');
-      const blob = await getCroppedImg(dataUrl, croppedAreaPixels);
-      console.log('[1] crop ok', { size: blob?.size, type: blob?.type });
-  
+      const croppedImageBlob = await getCroppedImg(dataUrl, croppedAreaPixels);
+      if (!croppedImageBlob) throw new Error('Failed to crop image.');
+      console.log('[1] crop ok', { size: croppedImageBlob?.size, type: croppedImageBlob?.type });
+
       console.log('[2] uploading…');
-      const fileRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
-      const snap = await uploadBytes(fileRef, blob!);
-      console.log('[2] upload ok', snap.metadata);
-  
+      const avatarRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
+      const snapshot = await uploadBytes(avatarRef, croppedImageBlob);
+      console.log('[2] upload ok', snapshot.metadata);
+      
       console.log('[3] getDownloadURL…');
-      const url = await getDownloadURL(snap.ref);
-      console.log('[3] url ok', url);
-  
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('[3] url ok', downloadURL);
+
       console.log('[4] updateDoc…');
       const userRef = doc(firestore, 'users', user.uid);
-      await updateDoc(userRef, { avatarUrl: url }); // AWAIT so we see errors
-      console.log('[4] firestore ok');
-  
-      toast({ title: 'Avatar Updated', description: 'Saved.' });
-    } catch (err: any) {
-      console.error('SAVE FAILED →', err?.code || err?.message || err);
-      toast({ variant: 'destructive', title: 'Save failed', description: err?.code || err?.message || 'Unknown error' });
+      
+      const payload = { avatarUrl: downloadURL };
+
+      updateDoc(userRef, payload)
+        .then(() => {
+          console.log('[4] firestore ok');
+          toast({
+            title: 'Avatar Updated',
+            description: 'Your new profile picture has been saved.',
+          });
+        })
+        .catch((error) => {
+            console.error('SAVE FAILED →', error);
+            const permissionError = new FirestorePermissionError({
+              path: userRef.path,
+              operation: 'update',
+              requestResourceData: payload,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+            toast({
+              variant: 'destructive',
+              title: 'Update Failed',
+              description: 'Could not save your new avatar. Check permissions and try again.',
+            });
+        });
+
+    } catch (error: any) {
+      console.error('Error updating avatar:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: error?.message ?? 'Could not save your new avatar. Please try again.',
+      });
     } finally {
       setIsUploading(false);
     }
   }, [imageToCrop, user, storage, firestore, toast]);
+
 
   async function onSubmit(data: ProfileFormValues) {
     if (!firestore || !user) {
@@ -279,8 +308,12 @@ export default function ProfilePage() {
 
           <div className="flex justify-center">
             <div className="relative group h-32 w-32">
-                {currentUser ? (
-                  <UserAvatar player={currentUser} className="h-32 w-32 text-4xl rounded-full z-0" />
+                {isUploading ? (
+                  <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center text-3xl z-0">
+                    <Upload className="h-12 w-12 text-muted-foreground animate-pulse" />
+                  </div>
+                ) : currentUser ? (
+                  <UserAvatar player={currentUser} className="h-32 w-32 text-4xl" />
                 ) : (
                   <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center text-3xl z-0">
                     <Camera/>
@@ -294,11 +327,7 @@ export default function ProfilePage() {
                   aria-label="Change avatar"
                   className="absolute inset-0 z-10 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
                 >
-                  {isUploading ? (
-                    <Upload className="h-8 w-8 text-white animate-pulse" />
-                  ) : (
-                    <Camera className="h-8 w-8 text-white" />
-                  )}
+                  <Camera className="h-8 w-8 text-white" />
                 </button>
             
                 <input
