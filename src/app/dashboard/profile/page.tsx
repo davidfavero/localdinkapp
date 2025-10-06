@@ -124,39 +124,39 @@ export default function ProfilePage() {
   };
   
   const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
-    if (!imageToCrop || !user || !storage || !firestore) return;
-
-    // 1) snapshot current image BEFORE clearing state
-    const dataUrl = imageToCrop;
-
+    if (!imageToCrop || !user || !storage || !firestore) {
+      console.log('preconditions failed', { hasImage: !!imageToCrop, hasUser: !!user, hasStorage: !!storage, hasFirestore: !!firestore });
+      toast({ variant: 'destructive', title: 'Not ready', description: 'Missing auth or Firebase instances.' });
+      return;
+    }
+  
+    const dataUrl = imageToCrop;            // snapshot before clearing
     setIsUploading(true);
-    setImageToCrop(null); // close dialog
-
+    setImageToCrop(null);
+  
     try {
-      const croppedImageBlob = await getCroppedImg(dataUrl, croppedAreaPixels);
-      if (!croppedImageBlob) throw new Error('Failed to crop image.');
-
-      const avatarRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
-
-      // 2) upload then get URL
-      const snapshot = await uploadBytes(avatarRef, croppedImageBlob);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-
-      // 3) await Firestore update so errors surface
+      console.log('[1] cropping…');
+      const blob = await getCroppedImg(dataUrl, croppedAreaPixels);
+      console.log('[1] crop ok', { size: blob?.size, type: blob?.type });
+  
+      console.log('[2] uploading…');
+      const fileRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
+      const snap = await uploadBytes(fileRef, blob!);
+      console.log('[2] upload ok', snap.metadata);
+  
+      console.log('[3] getDownloadURL…');
+      const url = await getDownloadURL(snap.ref);
+      console.log('[3] url ok', url);
+  
+      console.log('[4] updateDoc…');
       const userRef = doc(firestore, 'users', user.uid);
-      await updateDoc(userRef, { avatarUrl: downloadURL });
-
-      toast({
-        title: 'Avatar Updated',
-        description: 'Your new profile picture has been saved.',
-      });
-    } catch (error: any) {
-      console.error('Error updating avatar:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Update Failed',
-        description: error?.message ?? 'Could not save your new avatar. Please try again.',
-      });
+      await updateDoc(userRef, { avatarUrl: url }); // AWAIT so we see errors
+      console.log('[4] firestore ok');
+  
+      toast({ title: 'Avatar Updated', description: 'Saved.' });
+    } catch (err: any) {
+      console.error('SAVE FAILED →', err?.code || err?.message || err);
+      toast({ variant: 'destructive', title: 'Save failed', description: err?.code || err?.message || 'Unknown error' });
     } finally {
       setIsUploading(false);
     }
