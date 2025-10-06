@@ -23,15 +23,7 @@ export function ImageCropDialog({ image, onCropComplete, onClose }: ImageCropDia
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  const onCropChange = useCallback((location: {x: number, y: number}) => {
-    setCrop(location);
-  }, []);
-
-  const onZoomChange = useCallback((newZoom: number) => {
-    setZoom(newZoom);
-  }, []);
-
-  const onRealCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
+  const onRealCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
     setCroppedAreaPixels(croppedAreaPixels);
   }, []);
 
@@ -54,9 +46,10 @@ export function ImageCropDialog({ image, onCropComplete, onClose }: ImageCropDia
             zoom={zoom}
             aspect={1}
             cropShape="round"
-            onCropChange={onCropChange}
-            onZoomChange={onZoomChange}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
             onCropComplete={onRealCropComplete}
+            showGrid
           />
         </div>
         <div className="space-y-2">
@@ -71,10 +64,10 @@ export function ImageCropDialog({ image, onCropComplete, onClose }: ImageCropDia
             />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSave}>Save</Button>
+          <Button type="button" onClick={handleSave}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
