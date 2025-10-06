@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, useStorage } from '@/firebase';
 import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -14,13 +14,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Database, AlertCircle, Camera } from 'lucide-react';
+import { Sparkles, Database, AlertCircle, Camera, Upload } from 'lucide-react';
 import { collection, query, doc, updateDoc } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { Court, Player } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { UserAvatar } from '@/components/user-avatar';
+import { ImageCropDialog } from '@/components/image-crop-dialog';
+import { getCroppedImg } from '@/lib/crop-image';
+import type { Area } from 'react-easy-crop';
 
 
 const profileSchema = z.object({
@@ -41,7 +45,12 @@ export default function ProfilePage() {
   const [isSeeding, setIsSeeding] = useState(false);
   const { user } = useUser();
   const firestore = useFirestore();
+  const storage = useStorage();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
 
   const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
   const { data: players } = useCollection<Player>(playersQuery);
@@ -76,47 +85,76 @@ export default function ProfilePage() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !user || !firestore) return;
+    if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+    if (!file.type.startsWith('image/')) {
+        toast({
+            variant: 'destructive',
+            title: 'Invalid File Type',
+            description: 'Please select an image file (e.g., PNG, JPG).',
+        });
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
       toast({
         variant: 'destructive',
         title: 'Image Too Large',
-        description: 'Please select an image smaller than 2MB.',
+        description: 'Please select an image smaller than 5MB.',
       });
       return;
     }
-
+    
     const reader = new FileReader();
+    reader.addEventListener('load', () => {
+        setImageToCrop(reader.result as string);
+    });
     reader.readAsDataURL(file);
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      try {
-        const userRef = doc(firestore, 'users', user.uid);
-        await updateDoc(userRef, { avatarUrl: dataUrl });
-        toast({
-          title: 'Avatar Updated',
-          description: 'Your new profile picture has been saved.',
-        });
-      } catch (error: any) {
-        console.error('Error updating avatar:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Update Failed',
-          description: 'Could not save your new avatar. Please try again.',
-        });
+    
+    // Reset file input to allow re-selecting the same file
+    if(fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
+  };
+  
+  const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
+    if (!imageToCrop || !user || !storage || !firestore) return;
+
+    setIsUploading(true);
+    setImageToCrop(null); // Close dialog
+
+    try {
+      const croppedImageBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      if (!croppedImageBlob) {
+        throw new Error('Failed to crop image.');
       }
-    };
-    reader.onerror = () => {
+
+      const avatarRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
+      const snapshot = await uploadBytes(avatarRef, croppedImageBlob);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      const userRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userRef, { avatarUrl: downloadURL });
+
+      toast({
+        title: 'Avatar Updated',
+        description: 'Your new profile picture has been saved.',
+      });
+
+    } catch (error: any) {
+      console.error('Error updating avatar:', error);
       toast({
         variant: 'destructive',
-        title: 'Error Reading File',
-        description: 'There was an issue processing your image.',
+        title: 'Update Failed',
+        description: 'Could not save your new avatar. Please try again.',
       });
-    };
-  };
+    } finally {
+      setIsUploading(false);
+    }
+  }, [imageToCrop, user, storage, firestore, toast]);
+
 
   async function onSubmit(data: ProfileFormValues) {
     if (!firestore || !user) {
@@ -216,6 +254,13 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      {imageToCrop && (
+        <ImageCropDialog 
+            image={imageToCrop}
+            onCropComplete={handleCropComplete}
+            onClose={() => setImageToCrop(null)}
+        />
+      )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
 
@@ -225,9 +270,14 @@ export default function ProfilePage() {
               <Button
                 type="button"
                 onClick={handleAvatarClick}
+                disabled={isUploading}
                 className="absolute inset-0 h-full w-full bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
-                <Camera className="h-8 w-8 text-white" />
+                {isUploading ? (
+                  <Upload className="h-8 w-8 text-white animate-pulse" />
+                ) : (
+                  <Camera className="h-8 w-8 text-white" />
+                )}
                 <span className="sr-only">Change Avatar</span>
               </Button>
               <input
@@ -235,7 +285,7 @@ export default function ProfilePage() {
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"
-                accept="image/png, image/jpeg"
+                accept="image/png, image/jpeg, image/webp"
               />
             </div>
           </div>
