@@ -10,7 +10,6 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
-import { sendSmsTool } from '../tools/sms';
 
 // Helper function to check if a message is a simple confirmation
 function isConfirmation(message: string) {
@@ -110,4 +109,3 @@ New User Message:
     
     return { ...extractedDetails, confirmationText: responseText };
   }
-);
