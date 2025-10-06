@@ -25,6 +25,7 @@ const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
   lastName: z.string().min(1, 'Last name is required.'),
   email: z.string().email('Invalid email address.'),
+  phone: z.string().optional(),
 });
 
 type PlayerFormValues = z.infer<typeof playerSchema>;
@@ -45,6 +46,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       firstName: '',
       lastName: '',
       email: '',
+      phone: '',
     },
   });
 
@@ -137,6 +139,20 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
                     <FormLabel>Email</FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="john.doe@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input type="tel" placeholder="e.g., 555-123-4567" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
