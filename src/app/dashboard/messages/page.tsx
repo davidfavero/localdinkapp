@@ -48,30 +48,26 @@ export default function MessagesPage() {
   const handleSend = async () => {
     if (input.trim()) {
       const newUserMessage: Message = { sender: 'user', text: input.trim() };
-      const newMessages = [...messages, newUserMessage];
-      setMessages(newMessages);
       const currentInput = input;
+      
+      // Use a functional state update to ensure we have the latest messages
+      setMessages(prevMessages => [...prevMessages, newUserMessage]);
       setInput('');
       setIsLoading(true);
 
       try {
-        const history = messages.map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
+        // Pass the latest state to the action
+        const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
         const response = await chatAction({ message: currentInput.trim(), history });
         
         let responseText = response.confirmationText || "I'm not sure how to respond to that.";
 
-        // If the user's input was a confirmation and the response does NOT ask another question,
-        // it means the final action was taken.
-        const wasConfirmation = isConfirmation(currentInput);
-        const isFinalConfirmation = wasConfirmation && !responseText.includes('?');
+        const newRobinMessage: Message = { sender: 'robin', text: responseText };
 
-        const finalMessages = isFinalConfirmation
-          ? [...newMessages, { sender: 'robin', text: responseText }]
-          : [...newMessages, { sender: 'robin', text: responseText }];
-
-        setMessages(finalMessages);
+        setMessages(prevMessages => [...prevMessages, newRobinMessage]);
         
       } catch (error) {
+        console.error("Error in chat action:", error);
         setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
       } finally {
         setIsLoading(false);

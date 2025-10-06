@@ -76,11 +76,12 @@ export async function chatAction(input: ChatInput): Promise<ChatOutput> {
         
         const { date, time, location, invitedPlayers, currentUser } = result;
         
-        const otherPlayerNames = invitedPlayers.filter(p => p.id !== currentUser.id).map(p => p.name).join(' and ');
+        const otherPlayers = invitedPlayers.filter(p => p.id !== currentUser.id);
+        const otherPlayerNames = otherPlayers.map(p => p.name).join(' and ');
         
         const smsBody = `Pickleball Game Invitation! You're invited to a game on ${date} at ${time} at ${location}. Respond YES or NO. Manage your profile at https://localdink.app/join`;
-        for (const player of invitedPlayers) {
-            if(player.id !== currentUser?.id && player.phone) { 
+        for (const player of otherPlayers) {
+            if(player.phone) { 
                 await sendSmsTool({ to: player.phone!, body: smsBody });
             }
         }
