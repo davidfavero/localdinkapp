@@ -87,8 +87,8 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
-            <div className="flex-1 overflow-y-auto pr-6 -mr-6 space-y-6 py-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 flex flex-col justify-between">
+            <div className="flex-1 space-y-6 py-6">
               <FormField
                 control={form.control}
                 name="name"
@@ -117,7 +117,7 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
                 )}
               />
             </div>
-            <SheetFooter className="mt-auto">
+            <SheetFooter>
               <SheetClose asChild>
                 <Button type="button" variant="outline">
                   Cancel
