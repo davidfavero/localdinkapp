@@ -23,51 +23,55 @@ export function ImageCropDialog({ image, onCropComplete, onClose }: ImageCropDia
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  const onRealCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
-    setCroppedAreaPixels(croppedAreaPixels);
+  const handleComplete = useCallback((_croppedArea: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels);
   }, []);
 
-  const handleSave = () => {
-    if (croppedAreaPixels) {
-      onCropComplete(croppedAreaPixels);
-    }
-  };
-
   return (
-    <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-md">
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>Crop Your Profile Picture</DialogTitle>
         </DialogHeader>
-        <div className="relative h-64 w-full bg-muted">
+
+        <div className="relative h-[360px] w-full bg-muted">
           <Cropper
             image={image}
             crop={crop}
             zoom={zoom}
-            aspect={1}
-            cropShape="round"
             onCropChange={setCrop}
             onZoomChange={setZoom}
-            onCropComplete={onRealCropComplete}
+            onCropComplete={handleComplete}
+            cropShape="round"
+            aspect={1}
             showGrid
           />
         </div>
+
         <div className="space-y-2">
-            <label htmlFor="zoom" className="text-sm font-medium">Zoom</label>
-            <Slider
-                id="zoom"
-                min={1}
-                max={3}
-                step={0.1}
-                value={[zoom]}
-                onValueChange={(value) => setZoom(value[0])}
-            />
+          <label htmlFor="zoom" className="text-sm font-medium">Zoom</label>
+          <Slider
+            id="zoom"
+            min={1}
+            max={3}
+            step={0.1}
+            value={[zoom]}
+            onValueChange={(value) => setZoom(value[0])}
+          />
         </div>
+
         <DialogFooter>
-          <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            type="button"
+            onClick={() => {
+              if (croppedAreaPixels) {
+                onCropComplete(croppedAreaPixels);
+              }
+            }}
+          >
+            Save
           </Button>
-          <Button type="button" onClick={handleSave}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
