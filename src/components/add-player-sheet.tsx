@@ -63,13 +63,12 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
     setIsCreating(true);
 
     try {
-      // A real app might have more complex logic for avatar URLs
       const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
       const randomAvatar = PlaceHolderImages.find(p => p.id === avatarIds[Math.floor(Math.random() * avatarIds.length)]);
 
       await addDoc(collection(firestore, 'users'), {
         ...data,
-        name: `${data.firstName} ${data.lastName}`, // For compatibility with existing components
+        name: `${data.firstName} ${data.lastName}`,
         avatarUrl: randomAvatar?.imageUrl || '',
       });
 
@@ -93,7 +92,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
+      <SheetContent className="flex flex-col">
         <SheetHeader>
           <SheetTitle>Add a New Player</SheetTitle>
           <SheetDescription>
@@ -101,8 +100,8 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full overflow-y-auto">
-            <div className="space-y-6 py-6 flex-1">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto pr-6 -mr-6 space-y-6 py-6">
               <FormField
                 control={form.control}
                 name="firstName"
