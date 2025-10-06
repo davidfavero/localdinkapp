@@ -68,7 +68,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
 
       await addDoc(collection(firestore, 'users'), {
         ...data,
-        name: `${data.firstName} ${data.lastName}`,
+        name: `${data.firstName} ${data.lastName}`, // Keep for compatibility if needed elsewhere
         avatarUrl: randomAvatar?.imageUrl || '',
       });
 
@@ -149,7 +149,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
+                    <FormLabel>Phone Number (US)</FormLabel>
                     <FormControl>
                       <Input type="tel" placeholder="e.g., 555-123-4567" {...field} />
                     </FormControl>
@@ -158,10 +158,11 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
                 )}
               />
             </div>
-            
-            <SheetFooter className="mt-auto pt-6">
+            <SheetFooter className="mt-auto">
               <SheetClose asChild>
-                <Button type="button" variant="outline">Cancel</Button>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
               </SheetClose>
               <Button type="submit" disabled={isCreating}>
                 {isCreating ? 'Adding...' : 'Add Player'}
