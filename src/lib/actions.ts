@@ -5,8 +5,10 @@ import { handleCancellation, HandleCancellationInput, HandleCancellationOutput }
 import { chat } from "@/ai/flows/chat";
 import type { ChatInput, ChatOutput } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from '@/lib/data';
-import { collection, writeBatch, getDocs, query, where } from 'firebase/firestore';
-import { initializeFirebase } from "@/firebase";
+import { collection, writeBatch, getDocs, query, where, getFirestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { firebaseConfig } from "@/firebase/config";
+
 
 export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
@@ -43,8 +45,19 @@ export async function chatAction(input: ChatInput): Promise<ChatOutput> {
   }
 }
 
+function initializeServerApp() {
+    const apps = getApps();
+    const serverAppName = 'firebase-server-action';
+    const serverApp = apps.find(app => app.name === serverAppName);
+    if (serverApp) {
+        return getFirestore(serverApp);
+    }
+    const newApp = initializeApp(firebaseConfig, serverAppName);
+    return getFirestore(newApp);
+}
+
 export async function seedDatabaseAction(): Promise<{ success: boolean, message: string }> {
-    const { firestore } = initializeFirebase();
+    const firestore = initializeServerApp();
     if (!firestore) {
         return { success: false, message: 'Firestore is not initialized.' };
     }
@@ -53,7 +66,7 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
 
     // Seed Users
     const usersCollection = collection(firestore, 'users');
-    const existingUsersSnap = await getDocs(query(usersCollection, where('email', '!=', '')));
+    const existingUsersSnap = await getDocs(query(usersCollection));
     const existingEmails = new Set(existingUsersSnap.docs.map(doc => doc.data().email));
 
     let usersAdded = 0;
