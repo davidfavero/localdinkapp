@@ -1,5 +1,11 @@
-# Firebase Studio
+# LocalDink Pickleball App
 
-This is a NextJS starter in Firebase Studio.
+This is a Next.js application built with Firebase Studio.
 
-To get started, take a look at src/app/page.tsx.
+## Setup
+
+This repository is connected to Firebase App Hosting for automatic deployments.
+
+- **Live Branch:** `main`
+
+Any commit pushed to the `main` branch will trigger a new deployment.
