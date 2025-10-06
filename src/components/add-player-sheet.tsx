@@ -61,14 +61,12 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
     }
 
     setIsCreating(true);
-
     try {
       const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
       const randomAvatar = PlaceHolderImages.find(p => p.id === avatarIds[Math.floor(Math.random() * avatarIds.length)]);
 
       await addDoc(collection(firestore, 'users'), {
         ...data,
-        name: `${data.firstName} ${data.lastName}`, // Keep for compatibility if needed elsewhere
         avatarUrl: randomAvatar?.imageUrl || '',
       });
 
