@@ -1,0 +1,193 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user profile in the LocalDink application.",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "phone": {
+          "type": "string",
+          "description": "The user's phone number for SMS notifications."
+        },
+        "doublesPreference": {
+          "type": "boolean",
+          "description": "Default preference for doubles games."
+        },
+        "homeCourtId": {
+          "type": "string",
+          "description": "Reference to the user's preferred home court."
+        },
+        "availability": {
+          "type": "string",
+          "description": "User's default availability for scheduling games. Store as JSON string"
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL or data URI for the user's profile picture.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "firstName",
+        "lastName",
+        "email"
+      ]
+    },
+    "GameSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "GameSession",
+      "type": "object",
+      "description": "Represents a scheduled pickleball game session.",
+      "properties": {
+        "organizerId": {
+          "type": "string",
+          "description": "Reference to the UserProfile who organized the game."
+        },
+        "courtId": {
+          "type": "string",
+          "description": "Reference to the Court where the game is played."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "The date and time the game session starts.",
+          "format": "date-time"
+        },
+        "durationMinutes": {
+          "type": "number",
+          "description": "The duration of the game session in minutes."
+        },
+        "isDoubles": {
+          "type": "boolean",
+          "description": "Indicates whether the game session is doubles or singles."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the game session (e.g., scheduled, confirmed, cancelled).",
+          "enum": ["scheduled", "confirmed", "cancelled"]
+        }
+      },
+      "required": [
+        "organizerId",
+        "courtId",
+        "startTime",
+        "durationMinutes",
+        "isDoubles",
+        "status"
+      ]
+    },
+    "Court": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Court",
+      "type": "object",
+      "description": "Represents a pickleball court.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the court."
+        },
+        "location": {
+          "type": "string",
+          "description": "The physical location of the court (e.g., address)."
+        },
+        "surfaceType": {
+          "type": "string",
+          "description": "The type of surface the court has (e.g., asphalt, concrete)."
+        }
+      },
+      "required": [
+        "name",
+        "location"
+      ]
+    },
+    "Group": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Group",
+      "type": "object",
+      "description": "Represents a group of players.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the group."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the group."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "GamePlayer": {
+      "title": "GamePlayer",
+      "description": "Represents a player's participation in a game session.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "The player's RSVP status.",
+          "enum": ["CONFIRMED", "DECLINED", "PENDING"]
+        }
+      },
+      "required": ["status"]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/UserProfile"
+      },
+      "description": "Stores user profile information."
+    },
+    "/courts/{courtId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Court"
+      },
+      "description": "List of all available pickleball courts."
+    },
+    "/groups/{groupId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Group"
+      },
+      "description": "A group of players."
+    },
+    "/groups/{groupId}/members/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/UserProfile"
+      },
+      "description": "A member of a group."
+    },
+    "/game-sessions/{sessionId}": {
+      "schema": {
+        "$ref": "#/backend/entities/GameSession"
+      },
+      "description": "Represents a scheduled game."
+    },
+    "/game-sessions/{sessionId}/players/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/GamePlayer"
+      },
+      "description": "Represents a player in a game session."
+    }
+  }
+}

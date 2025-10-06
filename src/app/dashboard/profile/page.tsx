@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useCollection, useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -14,11 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Database, AlertCircle } from 'lucide-react';
-import { collection, query } from 'firebase/firestore';
+import { Sparkles, Database, AlertCircle, Camera } from 'lucide-react';
+import { collection, query, doc, updateDoc } from 'firebase/firestore';
 import type { Court, Player } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { UserAvatar } from '@/components/user-avatar';
 
 
 const profileSchema = z.object({
@@ -39,6 +41,7 @@ export default function ProfilePage() {
   const [isSeeding, setIsSeeding] = useState(false);
   const { user } = useUser();
   const firestore = useFirestore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
   const { data: players } = useCollection<Player>(playersQuery);
@@ -70,11 +73,83 @@ export default function ProfilePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, form.reset]);
 
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user || !firestore) return;
+
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      toast({
+        variant: 'destructive',
+        title: 'Image Too Large',
+        description: 'Please select an image smaller than 2MB.',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      try {
+        const userRef = doc(firestore, 'users', user.uid);
+        await updateDoc(userRef, { avatarUrl: dataUrl });
+        toast({
+          title: 'Avatar Updated',
+          description: 'Your new profile picture has been saved.',
+        });
+      } catch (error: any) {
+        console.error('Error updating avatar:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Update Failed',
+          description: 'Could not save your new avatar. Please try again.',
+        });
+      }
+    };
+    reader.onerror = () => {
+      toast({
+        variant: 'destructive',
+        title: 'Error Reading File',
+        description: 'There was an issue processing your image.',
+      });
+    };
+  };
+
   async function onSubmit(data: ProfileFormValues) {
-    toast({
-      title: 'Profile Updated',
-      description: 'Your preferences have been saved.',
-    });
+    if (!firestore || !user) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Cannot update profile. Not authenticated.',
+      });
+      return;
+    }
+
+    try {
+      const userRef = doc(firestore, 'users', user.uid);
+      const [firstName, ...lastNameParts] = data.name.split(' ');
+      const lastName = lastNameParts.join(' ');
+      await updateDoc(userRef, {
+        firstName,
+        lastName,
+        phone: data.phone,
+        // In a real app, you'd save the other fields too
+      });
+      toast({
+        title: 'Profile Updated',
+        description: 'Your preferences have been saved.',
+      });
+    } catch (error: any) {
+        toast({
+          variant: 'destructive',
+          title: 'Update Failed',
+          description: error.message || 'Could not save your profile.',
+        });
+    }
   }
 
   async function handleExtractPreferences() {
@@ -140,11 +215,32 @@ export default function ProfilePage() {
     }
   }
 
-
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+
+          <div className="flex justify-center">
+            <div className="relative group">
+              {currentUser && <UserAvatar player={currentUser} className="h-32 w-32 text-4xl" />}
+              <Button
+                type="button"
+                onClick={handleAvatarClick}
+                className="absolute inset-0 h-full w-full bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Camera className="h-8 w-8 text-white" />
+                <span className="sr-only">Change Avatar</span>
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                accept="image/png, image/jpeg"
+              />
+            </div>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle>AI Preference Extraction</CardTitle>
@@ -297,7 +393,7 @@ export default function ProfilePage() {
                     <AlertTitle>Seed Database</AlertTitle>
                     <AlertDescription>
                         Clicking this button will populate your Firestore database with a default set of players and courts. This is useful for getting started and testing functionality. It will not delete or overwrite existing data.
-                    </AlertDescription>
+                    </Aler-tDescription>
                 </Alert>
               </CardContent>
               <CardFooter>

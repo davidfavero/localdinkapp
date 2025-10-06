@@ -24,7 +24,12 @@ export type NameDisambiguationInput = z.infer<typeof NameDisambiguationInputSche
 const NameDisambiguationOutputSchema = z.object({
   disambiguatedName: z
     .string()
+    .optional()
     .describe('The full name of the player, disambiguated from the list of known players.'),
+  question: z
+    .string()
+    .optional()
+    .describe("A question to the user for clarification or to add a new player. For example, if a new player should be added, the question should be of the format 'I don't know [Player Name]. To add them to your contacts, please provide their phone number.'"),
 });
 export type NameDisambiguationOutput = z.infer<typeof NameDisambiguationOutputSchema>;
 
@@ -42,17 +47,15 @@ const prompt = ai.definePrompt({
 
   Given a player name (which may be a first name only) and a list of known player full names, determine the most likely full name of the player.
 
-  If the player name is a full name and it matches one of the known players, return that full name.
-
-  If the player name is a first name, find the known player whose first name matches the given name. 
-  - If there is only one match, return that full name.
-  - If there are multiple matches, return a question asking the user to clarify which player they mean, like "Do you mean Robert Smith or Robert Thomas?".
-  - If there are no matches, return the original player name.
+  - If the player name is a full name and it matches one of the known players, return that full name in 'disambiguatedName'.
+  - If the player name is a first name, find the known player whose first name matches the given name. 
+    - If there is only one match, return that full name in 'disambiguatedName'.
+    - If there are multiple matches, return a question in 'question' asking the user to clarify which player they mean, like "Do you mean Robert Smith or Robert Thomas?".
+    - If there are no matches, return a question in 'question' asking for the new player's phone number to add them. The question should be of the format 'I don't know {{{playerName}}}. To add them to your contacts, please provide their phone number.'.
 
   Player Name: {{{playerName}}}
   Known Players: {{#each knownPlayers}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
-  
-  Disambiguated Name:`,
+  `,
 });
 
 const disambiguateNameFlow = ai.defineFlow(
@@ -64,7 +67,8 @@ const disambiguateNameFlow = ai.defineFlow(
   async input => {
     const {output} = await prompt(input);
     return {
-      disambiguatedName: output?.disambiguatedName ?? input.playerName,
+      disambiguatedName: output?.disambiguatedName,
+      question: output?.question,
     };
   }
 );

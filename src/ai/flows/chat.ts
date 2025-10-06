@@ -40,9 +40,10 @@ export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<Ch
       prompt: `You are Robin, an AI scheduling assistant for a pickleball app called LocalDink. Your primary job is to help users schedule games by extracting details from their messages and having a friendly, brief conversation.
 
 - Your main goal is to extract the players' names, the date, the time, and the location for the game.
-- Players: ALWAYS return a list of all player names mentioned in the 'players' field. This is critical.
+- Players: ALWAYS return a list of all player full names mentioned in the 'players' field. This is critical.
 - Dates: Always convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
 - If a detail is missing, ask a clarifying question.
+- If the user asks to be notified about player responses (e.g., "let me know if Alex responds"), acknowledge this in your 'confirmationText' (e.g., "Got it! I'll let you know when Alex responds."). This is important for user reassurance.
 - If the user's message is not a scheduling request, just have a friendly conversation. In this case, put your full response in the 'confirmationText' field and do not return any other fields.
 
 Conversation History:
@@ -113,7 +114,7 @@ New User Message:
     extractedDetails.invitedPlayers = invitedPlayers;
     extractedDetails.currentUser = currentUser;
 
-    const playerNames = invitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name?.split(' ')[0]);
+    const playerNames = invitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
 
     // 5. Formulate the response text
     let responseText = '';
