@@ -9,8 +9,11 @@ import { collection, query } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import type { Player } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
+import { useState } from 'react';
+import { AddPlayerSheet } from '@/components/add-player-sheet';
 
 export default function PlayersPage() {
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const firestore = useFirestore();
   const { user } = useUser();
   const playersQuery = useMemoFirebase(() => {
@@ -19,16 +22,23 @@ export default function PlayersPage() {
   }, [firestore]);
 
   const { data: players, isLoading } = useCollection<Player>(playersQuery);
+  
+  const getPlayerName = (player: Player) => {
+    return (player.firstName && player.lastName) ? `${player.firstName} ${player.lastName}`: player.name;
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Your Players</h2>
-        <Button>
+        <Button onClick={() => setIsSheetOpen(true)}>
           <Plus className="-ml-1 mr-2 h-4 w-4" />
           Add Player
         </Button>
       </div>
+
+      <AddPlayerSheet open={isSheetOpen} onOpenChange={setIsSheetOpen} />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {isLoading &&
           Array.from({ length: 8 }).map((_, i) => (
@@ -47,7 +57,7 @@ export default function PlayersPage() {
             <CardContent className="flex items-center gap-4 p-0">
               <UserAvatar player={player} className="h-12 w-12" />
               <div>
-                <p className="font-semibold">{player.name}</p>
+                <p className="font-semibold">{getPlayerName(player)}</p>
                 {player.id === user?.uid && (
                   <p className="text-sm text-muted-foreground">This is you</p>
                 )}

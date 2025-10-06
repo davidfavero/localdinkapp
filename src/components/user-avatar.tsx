@@ -8,7 +8,9 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ player, className }: UserAvatarProps) {
-  const fallback = player.name
+  const name = (player.firstName && player.lastName) ? `${player.firstName} ${player.lastName}`: player.name;
+  
+  const fallback = name
     .split(' ')
     .map((n) => n[0])
     .join('');
@@ -18,12 +20,12 @@ export function UserAvatar({ player, className }: UserAvatarProps) {
       <Tooltip>
         <TooltipTrigger asChild>
           <Avatar className={className}>
-            <AvatarImage src={player.avatarUrl} alt={player.name} />
+            <AvatarImage src={player.avatarUrl} alt={name} />
             <AvatarFallback>{fallback}</AvatarFallback>
           </Avatar>
         </TooltipTrigger>
         <TooltipContent>
-          <p>{player.name}</p>
+          <p>{name}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
