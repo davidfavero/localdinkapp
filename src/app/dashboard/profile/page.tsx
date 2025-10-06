@@ -264,22 +264,30 @@ export default function ProfilePage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
 
-          <div className="flex justify-center">
-            <div className="relative group">
-              {currentUser && <UserAvatar player={currentUser} className="h-32 w-32 text-4xl" />}
-              <Button
+           <div className="flex justify-center">
+            <div className="relative group h-32 w-32">
+              {currentUser ? (
+                <UserAvatar player={currentUser} className="h-32 w-32 text-4xl rounded-full z-0" />
+              ) : (
+                <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center text-3xl z-0">
+                  <Camera/>
+                </div>
+              )}
+          
+              <button
                 type="button"
                 onClick={handleAvatarClick}
                 disabled={isUploading}
-                className="absolute inset-0 h-full w-full bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-label="Change avatar"
+                className="absolute inset-0 z-10 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
               >
                 {isUploading ? (
                   <Upload className="h-8 w-8 text-white animate-pulse" />
                 ) : (
                   <Camera className="h-8 w-8 text-white" />
                 )}
-                <span className="sr-only">Change Avatar</span>
-              </Button>
+              </button>
+          
               <input
                 type="file"
                 ref={fileInputRef}
