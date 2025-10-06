@@ -34,6 +34,11 @@
         "availability": {
           "type": "string",
           "description": "User's default availability for scheduling games. Store as JSON string"
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL or data URI for the user's profile picture.",
+          "format": "uri"
         }
       },
       "required": [
