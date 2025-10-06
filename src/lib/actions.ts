@@ -3,11 +3,18 @@
 import { extractProfilePreferences, ProfilePreferenceExtractionInput, ProfilePreferenceExtractionOutput } from "@/ai/flows/profile-preference-extraction";
 import { handleCancellation, HandleCancellationInput, HandleCancellationOutput } from "@/ai/flows/automated-cancellation-management";
 import { chat } from "@/ai/flows/chat";
-import type { ChatInput, ChatOutput } from "@/lib/types";
+import type { ChatInput, ChatOutput, Player } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from '@/lib/data';
-import { collection, writeBatch, getDocs, doc, getFirestore } from 'firebase/firestore';
+import { collection, writeBatch, getDocs, doc, getFirestore, addDoc, query, where, Timestamp } from 'firebase/firestore';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { firebaseConfig } from "@/firebase/config";
+import { sendSmsTool } from "@/ai/tools/sms";
+
+// Helper function to check if a message is a simple confirmation
+function isConfirmation(message: string) {
+  const lowerMessage = message.toLowerCase().trim();
+  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again'].includes(lowerMessage);
+}
 
 
 export async function extractPreferencesAction(
@@ -36,8 +43,95 @@ export async function handleCancellationAction(
 }
 
 export async function chatAction(input: ChatInput): Promise<ChatOutput> {
+  const firestore = initializeServerApp();
+
+  const usersSnapshot = await getDocs(collection(firestore, 'users'));
+  const allPlayers: Player[] = [];
+  usersSnapshot.forEach(doc => {
+      const data = doc.data();
+      // This needs a way to identify the current user. For now, we'll assume it's passed in or identifiable.
+      allPlayers.push({
+          id: doc.id,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          avatarUrl: data.avatarUrl,
+          phone: data.phone,
+      });
+  });
+  
+  // A real implementation needs to identify the current user based on the session.
+  // For now, we'll default to the first user for demo purposes if no `isCurrentUser` is set.
+  const currentUser = allPlayers.find(p => p.isCurrentUser) || allPlayers[0];
+  const knownPlayersWithCurrentUser = allPlayers.map(p => ({...p, isCurrentUser: p.id === currentUser.id }));
+
+
   try {
-    const result = await chat(input);
+    const result = await chat(input, knownPlayersWithCurrentUser);
+
+    const wasConfirmation = isConfirmation(input.message);
+
+    // If we have all details and it was a confirmation, save the game and send SMS
+    if (wasConfirmation && result.date && result.time && result.location && result.invitedPlayers && result.currentUser) {
+        
+        const { date, time, location, invitedPlayers, currentUser } = result;
+        const playerNames = invitedPlayers.map(p => p.name);
+
+        const smsBody = `Pickleball Game Invitation! You're invited to a game on ${date} at ${time} at ${location}. Respond YES or NO. Manage your profile at https://localdink.app/join`;
+        for (const player of invitedPlayers) {
+            if(player.id !== currentUser?.id && player.phone) { 
+                await sendSmsTool({ to: player.phone!, body: smsBody });
+            }
+        }
+
+        try {
+            const courtsRef = collection(firestore, 'courts');
+            const q = query(courtsRef, where("name", "==", location));
+            const courtSnapshot = await getDocs(q);
+            let courtId = 'unknown';
+            if (!courtSnapshot.empty) {
+                courtId = courtSnapshot.docs[0].id;
+            } else {
+              const newCourt = await addDoc(courtsRef, { name: location, location: 'Unknown' });
+              courtId = newCourt.id;
+            }
+            
+            const organizerId = currentUser.id;
+            const playerIds = invitedPlayers.map(p => p.id).filter((id): id is string => !!id);
+
+            const [hour, minute] = time.split(/[:\s]/);
+            const ampm = time.includes('PM') ? 'PM' : 'AM';
+            let numericHour = parseInt(hour, 10);
+            if (ampm === 'PM' && numericHour < 12) {
+                numericHour += 12;
+            }
+            if (ampm === 'AM' && numericHour === 12) {
+                numericHour = 0;
+            }
+            const numericMinute = parseInt(minute, 10) || 0;
+
+            const startTime = new Date(date);
+            startTime.setHours(numericHour, numericMinute);
+            
+            await addDoc(collection(firestore, 'game-sessions'), {
+                courtId,
+                organizerId,
+                startTime: Timestamp.fromDate(startTime),
+                isDoubles: playerIds.length > 2,
+                durationMinutes: 120,
+                status: 'scheduled',
+                playerIds,
+            });
+
+             result.confirmationText = `Great! Your game with ${playerNames.join(' and ')} at ${location} on ${date} at ${time} is confirmed. I've sent SMS invitations and added it to your upcoming games. Have a fantastic game!`;
+
+        } catch(e) {
+            console.error("Failed to save game session to firestore", e);
+            result.confirmationText = "I was able to schedule the game, but I ran into a problem saving it. Please check your games list."
+        }
+    }
+
+
     return result;
   } catch (error) {
     console.error("Error in chatAction:", error);

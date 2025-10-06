@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mic, Send, Sparkles } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
-import { players } from '@/lib/data';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
-import type { Message } from '@/lib/types';
+import type { Message, Player } from '@/lib/types';
 import Link from 'next/link';
+import { useCollection, useUser, useFirestore } from '@/firebase';
+import { collection, query } from 'firebase/firestore';
+import { useMemoFirebase } from '@/firebase/provider';
 
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -20,8 +22,13 @@ export default function MessagesPage() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const currentUser = players.find((p) => p.isCurrentUser);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const playersQuery = useMemoFirebase(() => (firestore ? query(collection(firestore, 'users')) : null), [firestore]);
+  const { data: players } = useCollection<Player>(playersQuery);
+  const currentUser = players?.find((p) => p.id === user?.uid);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -35,15 +42,25 @@ export default function MessagesPage() {
     if (input.trim()) {
       const newUserMessage: Message = { sender: 'user', text: input.trim() };
       setMessages(prev => [...prev, newUserMessage]);
+      const currentInput = input;
       setInput('');
       setIsLoading(true);
 
       try {
         const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
-        const response = await chatAction({ message: input.trim(), history });
-        if (response.confirmationText) {
-          setMessages(prev => [...prev, { sender: 'robin', text: response.confirmationText! }]);
+        const response = await chatAction({ message: currentInput.trim(), history });
+        
+        let responseText = response.confirmationText || "I'm not sure how to respond to that.";
+
+        // If the response is a confirmation question, just show it.
+        // If it was a final confirmation, add the user's "yes" back and then Robin's final response.
+        const wasConfirmation = ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again'].includes(currentInput.toLowerCase().trim());
+        if (wasConfirmation) {
+            setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
+        } else {
+             setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
         }
+        
       } catch (error) {
         setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
       } finally {
