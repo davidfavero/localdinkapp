@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/sheet';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const courtSchema = z.object({
   name: z.string().min(1, 'Court name is required.'),
@@ -55,8 +57,20 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       return;
     }
 
+    const courtsCollection = collection(firestore, 'courts');
+
     try {
-      await addDoc(collection(firestore, 'courts'), data);
+      await addDoc(courtsCollection, data).catch((error) => {
+        // This catch block is crucial for handling security rule denials
+        const permissionError = new FirestorePermissionError({
+            path: courtsCollection.path,
+            operation: 'create',
+            requestResourceData: data,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        // Re-throw to prevent success toast
+        throw permissionError;
+      });
 
       toast({
         title: 'Court Added!',
@@ -65,26 +79,32 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       form.reset();
       onOpenChange(false); // Close the sheet on success
     } catch (error: any) {
-      console.error('Error creating court:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'Could not add the court.',
-      });
+      // This will catch the re-thrown permission error or other errors
+      if (!(error instanceof FirestorePermissionError)) {
+         console.error('Error creating court:', error);
+         toast({
+           variant: 'destructive',
+           title: 'Uh oh! Something went wrong.',
+           description: error.message || 'Could not add the court.',
+         });
+      }
+      // The form state is automatically managed by react-hook-form,
+      // so no need to manually set `isSubmitting` to false here.
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col">
-        <SheetHeader>
-          <SheetTitle>Add a New Court</SheetTitle>
-          <SheetDescription>
-            Enter the details for the new pickleball court.
-          </SheetDescription>
-        </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 flex flex-col justify-between space-y-8">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
+            <SheetHeader>
+              <SheetTitle>Add a New Court</SheetTitle>
+              <SheetDescription>
+                Enter the details for the new pickleball court.
+              </SheetDescription>
+            </SheetHeader>
+
             <div className="flex-1 space-y-6 py-6">
               <FormField
                 control={form.control}
@@ -114,6 +134,7 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
                 )}
               />
             </div>
+            
             <SheetFooter>
               <SheetClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting}>

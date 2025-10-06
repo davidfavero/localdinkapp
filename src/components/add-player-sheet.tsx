@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,6 +19,8 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
@@ -38,7 +39,6 @@ interface AddPlayerSheetProps {
 export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isCreating, setIsCreating] = useState(false);
 
   const form = useForm<PlayerFormValues>({
     resolver: zodResolver(playerSchema),
@@ -50,6 +50,8 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
     },
   });
 
+  const { isSubmitting } = form.formState;
+
   const onSubmit = async (data: PlayerFormValues) => {
     if (!firestore) {
       toast({
@@ -60,14 +62,25 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       return;
     }
 
-    setIsCreating(true);
+    const usersCollection = collection(firestore, 'users');
+
     try {
       const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
       const randomAvatar = PlaceHolderImages.find(p => p.id === avatarIds[Math.floor(Math.random() * avatarIds.length)]);
 
-      await addDoc(collection(firestore, 'users'), {
+      const playerData = {
         ...data,
         avatarUrl: randomAvatar?.imageUrl || '',
+      };
+      
+      await addDoc(usersCollection, playerData).catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: usersCollection.path,
+            operation: 'create',
+            requestResourceData: playerData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        throw permissionError;
       });
 
       toast({
@@ -77,28 +90,28 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       form.reset();
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error creating player:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'Could not add the player.',
-      });
-    } finally {
-      setIsCreating(false);
+       if (!(error instanceof FirestorePermissionError)) {
+         console.error('Error creating player:', error);
+         toast({
+           variant: 'destructive',
+           title: 'Uh oh! Something went wrong.',
+           description: error.message || 'Could not add the player.',
+         });
+       }
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col">
-        <SheetHeader>
-          <SheetTitle>Add a New Player</SheetTitle>
-          <SheetDescription>
-            Enter the details for the new player. They will be added to your player list.
-          </SheetDescription>
-        </SheetHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetHeader>
+              <SheetTitle>Add a New Player</SheetTitle>
+              <SheetDescription>
+                Enter the details for the new player. They will be added to your player list.
+              </SheetDescription>
+            </SheetHeader>
             <div className="flex-1 overflow-y-auto pr-6 -mr-6 space-y-6 py-6">
               <FormField
                 control={form.control}
@@ -158,12 +171,12 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
             </div>
             <SheetFooter className="mt-auto">
               <SheetClose asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="outline" disabled={isSubmitting}>
                   Cancel
                 </Button>
               </SheetClose>
-              <Button type="submit" disabled={isCreating}>
-                {isCreating ? 'Adding...' : 'Add Player'}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Adding...' : 'Add Player'}
               </Button>
             </SheetFooter>
           </form>
