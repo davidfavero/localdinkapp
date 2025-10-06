@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Star, Home, Plus } from 'lucide-react';
@@ -13,8 +14,10 @@ import { useCollection, useFirestore } from '@/firebase';
 import { collection, query } from 'firebase/firestore';
 import type { Court } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
+import { AddCourtSheet } from '@/components/add-court-sheet';
 
 export default function CourtsPage() {
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const firestore = useFirestore();
   const courtsQuery = useMemoFirebase(
     () => (firestore ? query(collection(firestore, 'courts')) : null),
@@ -26,11 +29,14 @@ export default function CourtsPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold tracking-tight">Courts</h2>
-        <Button>
+        <Button onClick={() => setIsSheetOpen(true)}>
           <Plus className="-ml-1 mr-2 h-4 w-4" />
           Add Court
         </Button>
       </div>
+
+      <AddCourtSheet open={isSheetOpen} onOpenChange={setIsSheetOpen} />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading &&
           Array.from({ length: 4 }).map((_, i) => (
