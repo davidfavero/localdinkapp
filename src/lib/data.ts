@@ -1,86 +1,98 @@
 import type { Player, Court, GameSession, Group } from '@/lib/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
-export const players: Player[] = [
-  { id: 'p1', name: 'Robert Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, phone: '555-0101' },
-  { id: 'p2', name: 'Alex Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '', phone: '404-538-9332' },
-  { id: 'p3', name: 'Maria Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '', phone: '555-0103' },
-  { id: 'p4', name: 'Chen Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '', phone: '555-0104' },
-  { id: 'p5', name: 'Sarah Miller', avatarUrl: PlaceHolderImages.find(p => p.id === 'user5')?.imageUrl || '', phone: '555-0105' },
-  { id: 'p6', name: 'David Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user6')?.imageUrl || '', phone: '555-0106' },
-  { id: 'p7', name: 'Emily White', avatarUrl: PlaceHolderImages.find(p => p.id === 'user7')?.imageUrl || '', phone: '555-0107' },
-  { id: 'p8', name: 'James Brown', avatarUrl: PlaceHolderImages.find(p => p.id === 'user8')?.imageUrl || '', phone: '555-0108' },
+// This file now primarily serves as a source for mock data for seeding the database.
+// The application should fetch live data from Firestore instead of using these directly.
+
+const allPlayers: Omit<Player, 'id' | 'email'>[] = [
+  { firstName: 'Robert', lastName: 'Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, phone: '555-0101' },
+  { firstName: 'Alex', lastName: 'Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '', phone: '404-538-9332' },
+  { firstName: 'Maria', lastName: 'Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '', phone: '555-0103' },
+  { firstName: 'Chen', lastName: 'Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '', phone: '555-0104' },
+  { firstName: 'Sarah', lastName: 'Miller', avatarUrl: PlaceHolderImages.find(p => p.id === 'user5')?.imageUrl || '', phone: '555-0105' },
+  { firstName: 'David', lastName: 'Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user6')?.imageUrl || '', phone: '555-0106' },
+  { firstName: 'Emily', lastName: 'White', avatarUrl: PlaceHolderImages.find(p => p.id === 'user7')?.imageUrl || '', phone: '555-0107' },
+  { firstName: 'James', lastName: 'Brown', avatarUrl: PlaceHolderImages.find(p => p.id === 'user8')?.imageUrl || '', phone: '555-0108' },
 ];
 
-export const courts: Court[] = [
-  { id: 'c1', name: 'Sunnyvale Park', location: 'Sunnyvale, CA', isHome: true, isFavorite: true },
-  { id: 'c2', name: 'Mountain View Tennis', location: 'Mountain View, CA', isFavorite: true },
-  { id: 'c3', name: 'Cupertino Sports Center', location: 'Cupertino, CA' },
-  { id: 'c4', name: 'Mitchell Park', location: 'Palo Alto, CA', isFavorite: true },
+
+export const players = allPlayers;
+
+
+export const courts: Omit<Court, 'id'>[] = [
+  { name: 'Sunnyvale Park', location: 'Sunnyvale, CA', isHome: true, isFavorite: true },
+  { name: 'Mountain View Tennis', location: 'Mountain View, CA', isFavorite: true },
+  { name: 'Cupertino Sports Center', location: 'Cupertino, CA' },
+  { name: 'Mitchell Park', location: 'Palo Alto, CA', isFavorite: true },
 ];
+
+export const mockCourts = courts;
+
+// The data below is for reference and potential future seeding, but is not currently used for seeding.
+const referencePlayers: Player[] = allPlayers.map((p, i) => ({ ...p, id: `p${i+1}`, email: `${p.firstName}@example.com`}));
 
 export const groups: Group[] = [
-    { 
-        id: 'g1', 
-        name: 'Weekend Warriors', 
-        avatarUrl: PlaceHolderImages.find(p => p.id === 'group1')?.imageUrl || '', 
-        members: [players[0], players[1], players[2], players[4]] 
+    {
+        id: 'g1',
+        name: 'Weekend Warriors',
+        avatarUrl: PlaceHolderImages.find(p => p.id === 'group1')?.imageUrl || '',
+        members: [referencePlayers[0].id, referencePlayers[1].id, referencePlayers[2].id, referencePlayers[4].id]
     },
-    { 
-        id: 'g2', 
-        name: 'Morning Dinkers', 
-        avatarUrl: PlaceHolderImages.find(p => p.id === 'group2')?.imageUrl || '', 
-        members: [players[3], players[5], players[6]] 
+    {
+        id: 'g2',
+        name: 'Morning Dinkers',
+        avatarUrl: PlaceHolderImages.find(p => p.id === 'group2')?.imageUrl || '',
+        members: [referencePlayers[3].id, referencePlayers[5].id, referencePlayers[6].id]
     },
-    { 
-        id: 'g3', 
-        name: 'South Bay Paddlers', 
-        avatarUrl: PlaceHolderImages.find(p => p.id === 'group3')?.imageUrl || '', 
-        members: [players[0], players[2], players[3], players[5], players[7]] 
+    {
+        id: 'g3',
+        name: 'South Bay Paddlers',
+        avatarUrl: PlaceHolderImages.find(p => p.id === 'group3')?.imageUrl || '',
+        members: [referencePlayers[0].id, referencePlayers[2].id, referencePlayers[3].id, referencePlayers[5].id, referencePlayers[7].id]
     },
 ];
 
 export const gameSessions: GameSession[] = [
   {
     id: 'gs1',
-    court: courts[0],
-    organizer: players[1],
+    court: { id: 'c1', name: 'Sunnyvale Park', location: 'Sunnyvale, CA' },
+    organizer: referencePlayers[1],
     date: 'Today',
     time: '5:00 PM',
     type: 'Doubles',
     players: [
-      { player: players[1], status: 'CONFIRMED' },
-      { player: players[2], status: 'CONFIRMED' },
-      { player: players[3], status: 'CONFIRMED' },
-      { player: players[0], status: 'CONFIRMED' },
+      { player: referencePlayers[1], status: 'CONFIRMED' },
+      { player: referencePlayers[2], status: 'CONFIRMED' },
+      { player: referencePlayers[3], status: 'CONFIRMED' },
+      { player: referencePlayers[0], status: 'CONFIRMED' },
     ],
-    alternates: [players[6], players[7]],
+    alternates: [referencePlayers[6], referencePlayers[7]],
   },
   {
     id: 'gs2',
-    court: courts[1],
-    organizer: players[0],
+    court: { id: 'c2', name: 'Mountain View Tennis', location: 'Mountain View, CA' },
+    organizer: referencePlayers[0],
     date: 'Tomorrow',
     time: '10:00 AM',
     type: 'Doubles',
     players: [
-      { player: players[0], status: 'CONFIRMED' },
-      { player: players[4], status: 'CONFIRMED' },
-      { player: players[5], status: 'PENDING' },
-      { player: players[2], status: 'DECLINED' },
+      { player: referencePlayers[0], status: 'CONFIRMED' },
+      { player: referencePlayers[4], status: 'CONFIRMED' },
+      { player: referencePlayers[5], status: 'PENDING' },
+      { player: referencePlayers[2], status: 'DECLINED' },
     ],
-    alternates: [players[1], players[3]],
+    alternates: [referencePlayers[1], referencePlayers[3]],
   },
   {
     id: 'gs3',
-    court: courts[3],
-    organizer: players[3],
+    court: { id: 'c3', name: 'Mitchell Park', location: 'Palo Alto, CA' },
+    organizer: referencePlayers[3],
     date: 'Friday',
     time: '6:30 PM',
     type: 'Singles',
     players: [
-      { player: players[3], status: 'CONFIRMED' },
-      { player: players[6], status: 'PENDING' },
+      { player: referencePlayers[3], status: 'CONFIRMED' },
+      { player: referencePlayers[6], status: 'PENDING' },
     ],
     alternates: [],
   },

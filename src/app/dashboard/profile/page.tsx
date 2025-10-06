@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { players, courts } from '@/lib/data';
-import { extractPreferencesAction } from '@/lib/actions';
+import { useCollection, useFirestore, useUser } from '@/firebase';
+import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +15,12 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { UserAvatar } from '@/components/user-avatar';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Database, AlertCircle } from 'lucide-react';
+import { collection, query } from 'firebase/firestore';
+import type { Court, Player } from '@/lib/types';
+import { useMemoFirebase } from '@/firebase/provider';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -32,20 +37,39 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 export default function ProfilePage() {
   const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
-  const currentUser = players.find((p) => p.isCurrentUser);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const { user } = useUser();
+  const firestore = useFirestore();
 
+  const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
+  const { data: players } = useCollection<Player>(playersQuery);
+  const currentUser = players?.find((p) => p.id === user?.uid);
+
+  const courtsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'courts')) : null, [firestore]);
+  const { data: courts, isLoading: isLoadingCourts } = useCollection<Court>(courtsQuery);
+  
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: currentUser?.name || '',
+      name: currentUser ? `${currentUser.firstName} ${currentUser.lastName}`: '',
       phone: currentUser?.phone || '',
-      dinkRating: '4.25',
+      dinkRating: '4.25', // Placeholder
       doublesPreference: true,
-      homeCourt: courts.find(c => c.isHome)?.id || '',
-      availability: 'Weekdays after 5 PM, flexible on weekends.',
+      homeCourt: '', // This will be populated from user profile later
+      availability: 'Weekdays after 5 PM, flexible on weekends.', // placeholder
       profileText: `I love playing competitive doubles. My home court is Sunnyvale Park but I can play anywhere in the South Bay. I'm usually free on weekdays after 5 PM and most times on weekends.`
     },
   });
+  
+  useState(() => {
+    if (currentUser) {
+      form.reset({
+        name: `${currentUser.firstName} ${currentUser.lastName}`,
+        phone: currentUser.phone || '',
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, form.reset]);
 
   async function onSubmit(data: ProfileFormValues) {
     toast({
@@ -70,7 +94,7 @@ export default function ProfilePage() {
     try {
       const result = await extractPreferencesAction({ profileText });
       form.setValue('doublesPreference', result.doublesPreference, { shouldValidate: true });
-      const foundCourt = courts.find(c => c.name.toLowerCase() === result.homeCourtPreference.toLowerCase());
+      const foundCourt = courts?.find(c => c.name.toLowerCase() === result.homeCourtPreference.toLowerCase());
       if (foundCourt) {
         form.setValue('homeCourt', foundCourt.id, { shouldValidate: true });
       }
@@ -90,20 +114,46 @@ export default function ProfilePage() {
     }
   }
 
-  if (!currentUser) return <p>Could not find user profile.</p>;
+  async function onSeedDatabase() {
+    setIsSeeding(true);
+    try {
+        const result = await seedDatabaseAction();
+        if (result.success) {
+            toast({
+                title: 'Database Seeded!',
+                description: result.message,
+            });
+        } else {
+             toast({
+                variant: 'destructive',
+                title: 'Seeding Failed',
+                description: result.message,
+            });
+        }
+    } catch (error: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Seeding Failed',
+            description: error.message || 'An unknown error occurred.',
+        });
+    } finally {
+        setIsSeeding(false);
+    }
+  }
+
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <Card>
         <CardHeader className="flex flex-row items-center gap-4">
-           <UserAvatar player={currentUser} className="h-20 w-20" />
+           {currentUser && <UserAvatar player={currentUser} className="h-20 w-20" />}
            <div>
-            <CardTitle className="text-3xl font-headline">{currentUser.name}</CardTitle>
+            <CardTitle className="text-3xl font-headline">{currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Loading...'}</CardTitle>
             <CardDescription>Manage your profile and scheduling preferences.</CardDescription>
            </div>
         </CardHeader>
       </Card>
-
+      
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
           <Card>
@@ -214,12 +264,12 @@ export default function ProfilePage() {
                     <FormLabel>Home Court</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select your primary court" />
+                        <SelectTrigger disabled={isLoadingCourts}>
+                          <SelectValue placeholder={isLoadingCourts ? "Loading..." : "Select your primary court"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {courts.map(court => (
+                        {courts?.map(court => (
                           <SelectItem key={court.id} value={court.id}>{court.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -245,6 +295,28 @@ export default function ProfilePage() {
                 )}
               />
             </CardContent>
+          </Card>
+
+          <Card>
+              <CardHeader>
+                  <CardTitle>Developer Settings</CardTitle>
+                  <CardDescription>Actions for helping with app development.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                 <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Seed Database</AlertTitle>
+                    <AlertDescription>
+                        Clicking this button will populate your Firestore database with a default set of players and courts. This is useful for getting started and testing functionality. It will not delete or overwrite existing data.
+                    </AlertDescription>
+                </Alert>
+              </CardContent>
+              <CardFooter>
+                 <Button type="button" variant="outline" onClick={onSeedDatabase} disabled={isSeeding}>
+                    <Database className="mr-2 h-4 w-4" />
+                    {isSeeding ? "Seeding..." : "Seed Database"}
+                </Button>
+              </CardFooter>
           </Card>
 
           <div className="flex justify-end">
