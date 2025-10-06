@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Sparkles, Database, AlertCircle, Camera, Upload } from 'lucide-react';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { Court, Player } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
@@ -25,6 +25,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
+import { errorEmitter, FirestorePermissionError } from '@/firebase';
 
 
 const profileSchema = z.object({
@@ -140,7 +141,20 @@ export default function ProfilePage() {
       const downloadURL = await getDownloadURL(snapshot.ref);
       
       const userRef = doc(firestore, 'users', user.uid);
-      updateDocumentNonBlocking(userRef, { avatarUrl: downloadURL });
+      const payload = { avatarUrl: downloadURL };
+
+      updateDoc(userRef, payload)
+        .catch(error => {
+            errorEmitter.emit(
+                'permission-error',
+                new FirestorePermissionError({
+                path: userRef.path,
+                operation: 'update',
+                requestResourceData: payload,
+                })
+            )
+        });
+
 
       toast({
         title: 'Avatar Updated',
@@ -173,7 +187,7 @@ export default function ProfilePage() {
     const [firstName, ...lastNameParts] = data.name.split(' ');
     const lastName = lastNameParts.join(' ');
     
-    updateDocumentNonBlocking(userRef, {
+    const payload = {
       firstName,
       lastName,
       phone: data.phone,
@@ -181,7 +195,9 @@ export default function ProfilePage() {
       doublesPreference: data.doublesPreference,
       homeCourtId: data.homeCourtId,
       availability: data.availability,
-    });
+    };
+    
+    updateDocumentNonBlocking(userRef, payload);
 
     toast({
       title: 'Profile Updated',
@@ -266,7 +282,6 @@ export default function ProfilePage() {
 
           <div className="flex justify-center">
             <div className="relative group h-32 w-32">
-              <div className="relative group h-32 w-32">
                 {currentUser ? (
                   <UserAvatar player={currentUser} className="h-32 w-32 text-4xl rounded-full z-0" />
                 ) : (
@@ -296,7 +311,6 @@ export default function ProfilePage() {
                   className="hidden"
                   accept="image/png, image/jpeg, image/webp"
                 />
-              </div>
             </div>
           </div>
 
