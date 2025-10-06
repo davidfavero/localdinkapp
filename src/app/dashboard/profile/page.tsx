@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useFirestore, useUser, useStorage } from '@/firebase';
+import { useFirestore, useUser, useStorage, updateDocumentNonBlocking } from '@/firebase';
 import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -25,7 +25,6 @@ import { UserAvatar } from '@/components/user-avatar';
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
-import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 
 const profileSchema = z.object({
@@ -454,7 +453,7 @@ export default function ProfilePage() {
                     <AlertDescription>
                         Clicking this button will populate your Firestore database with a default set of players and courts. This is useful for getting started and testing functionality. It will not delete or overwrite existing data.
                     </AlertDescription>
-                </Alert>
+                 </Alert>
               </CardContent>
               <CardFooter>
                  <Button type="button" variant="outline" onClick={onSeedDatabase} disabled={isSeeding}>
