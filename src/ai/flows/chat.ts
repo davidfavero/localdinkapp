@@ -75,10 +75,10 @@ New User Message:
     }
 
     // 4. Disambiguate player names and find their phone numbers.
-    const invitedPlayers = await Promise.all(
+    const invitedPlayers = (await Promise.all(
       players.map(async (playerName) => {
         // A simple "me" or "you" in this context should resolve to the current user.
-        if (['me', 'you'].includes(playerName.toLowerCase()) && currentUser) {
+        if (['me', 'you', 'i'].includes(playerName.toLowerCase()) && currentUser) {
              return { id: currentUser?.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser?.phone };
         }
         const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
@@ -86,18 +86,26 @@ New User Message:
         const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === fullName);
         return { id: playerData?.id, name: fullName, phone: playerData?.phone };
       })
-    );
+    )).reduce((acc, player) => {
+      // Remove duplicates
+      if (player.id && !acc.some(p => p.id === player.id)) {
+        acc.push(player);
+      } else if (!player.id && !acc.some(p => p.name === player.name)) {
+        acc.push(player);
+      }
+      return acc;
+    }, [] as { id?: string; name: string; phone?: string }[]);
     
     // This is passed back to the action to handle SMS and DB writes
     extractedDetails.invitedPlayers = invitedPlayers;
     extractedDetails.currentUser = currentUser;
 
-    const playerNames = invitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
+    const playerNames = invitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name?.split(' ')[0]);
 
     // 5. Formulate the response text
     let responseText = '';
     if (date && time && location && players.length > 0) {
-      responseText = `Great! I'll schedule a game for ${playerNames.join(' and ')} at ${location} on ${date} at ${time}. Does that look right?`;
+       responseText = `Great! I'll schedule a game for ${playerNames.join(' and ')} at ${location} on ${date} at ${time}. Does that look right?`;
     } else {
       // If not enough info to send SMS yet, ask for it.
       let missingInfo = [];
@@ -110,3 +118,4 @@ New User Message:
     
     return { ...extractedDetails, confirmationText: responseText };
   }
+    
