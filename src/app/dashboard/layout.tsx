@@ -2,12 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UsersRound, MapPin, User } from 'lucide-react';
+import { UsersRound, MapPin } from 'lucide-react';
 import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
-import { GameSessionCard } from '@/components/game-session-card';
-import { gameSessions } from '@/lib/data';
 
 const navItems = [
   { href: '/dashboard/messages', icon: RobinIcon, label: 'Messages' },
@@ -34,8 +32,8 @@ export default function DashboardLayout({
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
         <div className="grid grid-cols-5 items-center justify-items-center gap-1 p-2">
           {navItems.map(({ href, icon: Icon, label }) => {
-            const isActive = pathname === href || (href === '/dashboard/messages' && pathname === '/dashboard');
-            const isRobin = label === 'Robin' && href === '/dashboard';
+            const isActive = pathname === href;
+            const isRobin = label === 'Robin';
             
             // Special handling to make Messages icon active on /dashboard too.
             if (label === 'Messages') {
