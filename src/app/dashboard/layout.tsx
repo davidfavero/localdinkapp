@@ -6,6 +6,11 @@ import { UsersRound, MapPin } from 'lucide-react';
 import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
+import { useCollection, useFirestore, useUser } from '@/firebase';
+import { collection, query } from 'firebase/firestore';
+import type { Player } from '@/lib/types';
+import { useMemoFirebase } from '@/firebase/provider';
+import { UserAvatar } from '@/components/user-avatar';
 
 const navItems = [
   { href: '/dashboard/messages', icon: RobinIcon, label: 'Messages' },
@@ -15,15 +20,45 @@ const navItems = [
   { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
 ];
 
+const getPageTitle = (pathname: string) => {
+  if (pathname.startsWith('/dashboard/sessions')) return 'Game Details';
+  if (pathname.startsWith('/dashboard/profile')) return 'Your Profile';
+  
+  const item = navItems.find(item => item.href === pathname);
+  // Special case for /dashboard being the Robin chat
+  if (pathname === '/dashboard') return 'Messages';
+
+  return item ? item.label : 'Dashboard';
+}
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const pageTitle = getPageTitle(pathname);
+
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
+  const { data: players } = useCollection<Player>(playersQuery);
+  const currentUser = players?.find((p) => p.id === user?.uid);
+
 
   return (
     <div className="flex flex-col min-h-screen w-full">
+      <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
+          <h1 className="text-xl font-bold text-foreground font-headline">{pageTitle}</h1>
+          <div className="flex items-center gap-4">
+              {currentUser && (
+                <Link href="/dashboard/profile">
+                  <UserAvatar player={currentUser} className="h-8 w-8" />
+                </Link>
+              )}
+          </div>
+       </header>
+
        <main className="flex-1 overflow-auto p-4 md:p-6 mb-20">
         {children}
       </main>

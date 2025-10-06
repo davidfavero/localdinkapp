@@ -8,7 +8,6 @@ import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player } from '@/lib/types';
-import Link from 'next/link';
 import { useCollection, useUser, useFirestore } from '@/firebase';
 import { collection, query } from 'firebase/firestore';
 import { useMemoFirebase } from '@/firebase/provider';
@@ -77,17 +76,6 @@ export default function MessagesPage() {
 
   return (
     <div className="flex flex-col h-full">
-       <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4 -mx-4 -mt-4 mb-4">
-          <h1 className="text-xl font-bold text-foreground font-headline">Messages</h1>
-          <div className="flex items-center gap-4">
-              {currentUser && (
-                <Link href="/dashboard/profile">
-                  <UserAvatar player={currentUser} className="h-8 w-8" />
-                </Link>
-              )}
-          </div>
-       </header>
-      
       <div className="flex-1 overflow-y-auto pr-4 -mr-4 space-y-4">
         {messages.map((message, index) => (
           <div

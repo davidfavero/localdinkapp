@@ -43,8 +43,7 @@ export default function GroupsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold tracking-tight">Your Groups</h2>
+      <div className="flex justify-end items-center">
         <Button>
           <Plus className="-ml-1 mr-2 h-4 w-4" />
           Add Group

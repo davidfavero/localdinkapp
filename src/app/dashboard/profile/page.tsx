@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { UserAvatar } from '@/components/user-avatar';
 import { Sparkles, Database, AlertCircle } from 'lucide-react';
 import { collection, query } from 'firebase/firestore';
 import type { Court, Player } from '@/lib/types';
@@ -144,16 +143,6 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      <Card>
-        <CardHeader className="flex flex-row items-center gap-4">
-           {currentUser && <UserAvatar player={currentUser} className="h-20 w-20" />}
-           <div>
-            <CardTitle className="text-3xl font-headline">{currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Loading...'}</CardTitle>
-            <CardDescription>Manage your profile and scheduling preferences.</CardDescription>
-           </div>
-        </CardHeader>
-      </Card>
-      
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
           <Card>
