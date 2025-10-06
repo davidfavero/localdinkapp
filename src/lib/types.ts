@@ -2,13 +2,13 @@ import { z } from 'zod';
 
 export type Player = {
   id: string;
-  name: string;
+  name?: string; // Keep for fallback, but prefer firstName/lastName
   avatarUrl: string;
   phone?: string;
   isCurrentUser?: boolean; 
-  firstName?: string;
-  lastName?: string;
-  email?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
 };
 
 export type Court = {

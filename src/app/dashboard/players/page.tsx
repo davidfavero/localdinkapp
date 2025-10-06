@@ -24,7 +24,10 @@ export default function PlayersPage() {
   const { data: players, isLoading } = useCollection<Player>(playersQuery);
   
   const getPlayerName = (player: Player) => {
-    return (player.firstName && player.lastName) ? `${player.firstName} ${player.lastName}`: player.name;
+    if (player.firstName && player.lastName) {
+      return `${player.firstName} ${player.lastName}`;
+    }
+    return player.name || 'Unnamed Player';
   }
 
   return (
@@ -65,6 +68,12 @@ export default function PlayersPage() {
             </CardContent>
           </Card>
         ))}
+         {!isLoading && players?.length === 0 && (
+          <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
+            <h3 className="text-xl font-medium text-muted-foreground">No Players Found</h3>
+            <p className="text-muted-foreground mt-2">Add a player to get started.</p>
+          </div>
+        )}
       </div>
     </div>
   );

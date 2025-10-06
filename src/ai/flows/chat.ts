@@ -8,11 +8,10 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema } from '@/lib/types';
+import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
-import { players as knownPlayersData } from '@/lib/data';
 import { sendSmsTool } from '../tools/sms';
-import { collection, addDoc, serverTimestamp, getFirestore, runTransaction } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getFirestore } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 
 
@@ -23,9 +22,18 @@ function isConfirmation(message: string) {
 }
 
 
+async function getKnownPlayers(db: any): Promise<{ names: string[], players: Player[] }> {
+    const usersSnapshot = await getDocs(collection(db, 'users'));
+    const players = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player));
+    const playerNames = players.map(p => `${p.firstName} ${p.lastName}`);
+    return { names: playerNames, players };
+}
+
 export async function chat(input: ChatInput): Promise<ChatOutput> {
-  const knownPlayers = knownPlayersData.map(p => ({name: p.name, phone: p.phone || ''}));
-  const knownPlayerNames = knownPlayers.map(p => p.name);
+  const { firestore } = initializeFirebase();
+  const { names: knownPlayerNames, players: knownPlayers } = await getKnownPlayers(firestore);
+  
+  const currentUser = knownPlayers.find(p => p.isCurrentUser); // This might need adjustment based on how we identify the current user with Firestore auth
 
   // If the user's message is a simple confirmation, we need to look at the history
   if (isConfirmation(input.message) && input.history.length > 0) {
@@ -83,7 +91,7 @@ New User Message:
     players.map(async (playerName) => {
       const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
       const fullName = result.disambiguatedName;
-      const playerData = knownPlayersData.find(p => p.name === fullName);
+      const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === fullName);
       return { id: playerData?.id, name: fullName, phone: playerData?.phone };
     })
   );
@@ -102,10 +110,9 @@ New User Message:
 
     // Save the game to Firestore
     try {
-        const { firestore } = initializeFirebase();
         // A real implementation would look up the court ID from the location name
         const courtId = 'c1'; // Using a placeholder for now
-        const organizerId = knownPlayersData.find(p => p.isCurrentUser)?.id || playerIds[0];
+        const organizerId = currentUser?.id || playerIds[0];
 
         const [hour, minute] = time.split(/[:\s]/);
         const ampm = time.includes('PM') ? 'PM' : 'AM';

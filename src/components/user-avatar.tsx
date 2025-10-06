@@ -8,7 +8,7 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ player, className }: UserAvatarProps) {
-  const name = (player.firstName && player.lastName) ? `${player.firstName} ${player.lastName}`: player.name;
+  const name = (player.firstName && player.lastName) ? `${player.firstName} ${player.lastName}`: (player.name || 'Unknown Player');
   
   const fallback = name
     .split(' ')
