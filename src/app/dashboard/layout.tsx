@@ -11,6 +11,7 @@ import { collection, query } from 'firebase/firestore';
 import type { Player } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
 import { UserAvatar } from '@/components/user-avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
   { href: '/dashboard/messages', icon: RobinIcon, label: 'Messages' },
@@ -39,11 +40,12 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
 
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
-  const { data: players } = useCollection<Player>(playersQuery);
+  const { data: players, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
   const currentUser = players?.find((p) => p.id === user?.uid);
+  const isLoading = isUserLoading || isLoadingPlayers;
 
 
   return (
@@ -51,9 +53,18 @@ export default function DashboardLayout({
       <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
           <h1 className="text-xl font-bold text-foreground font-headline">{pageTitle}</h1>
           <div className="flex items-center gap-4">
-              {currentUser && (
+              {isLoading ? (
+                <Skeleton className="h-8 w-8 rounded-full" />
+              ) : currentUser ? (
                 <Link href="/dashboard/profile">
                   <UserAvatar player={currentUser} className="h-8 w-8" />
+                </Link>
+              ) : (
+                // Fallback if user is not found, maybe link to profile creation
+                 <Link href="/dashboard/profile">
+                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                        <UsersRound className="h-4 w-4 text-muted-foreground" />
+                    </div>
                 </Link>
               )}
           </div>
