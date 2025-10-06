@@ -19,8 +19,6 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
@@ -62,25 +60,13 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       return;
     }
 
-    const usersCollection = collection(firestore, 'users');
-
     try {
       const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
       const randomAvatar = PlaceHolderImages.find(p => p.id === avatarIds[Math.floor(Math.random() * avatarIds.length)]);
 
-      const playerData = {
+      await addDoc(collection(firestore, 'users'), {
         ...data,
         avatarUrl: randomAvatar?.imageUrl || '',
-      };
-      
-      await addDoc(usersCollection, playerData).catch((error) => {
-        const permissionError = new FirestorePermissionError({
-            path: usersCollection.path,
-            operation: 'create',
-            requestResourceData: playerData,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-        throw permissionError;
       });
 
       toast({
@@ -90,20 +76,18 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       form.reset();
       onOpenChange(false);
     } catch (error: any) {
-       if (!(error instanceof FirestorePermissionError)) {
-         console.error('Error creating player:', error);
-         toast({
-           variant: 'destructive',
-           title: 'Uh oh! Something went wrong.',
-           description: error.message || 'Could not add the player.',
-         });
-       }
+      console.error('Error creating player:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Uh oh! Something went wrong.',
+        description: error.message || 'Could not add the player.',
+      });
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col">
+      <SheetContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
             <SheetHeader>

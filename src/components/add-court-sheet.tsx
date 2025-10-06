@@ -18,8 +18,6 @@ import {
 } from '@/components/ui/sheet';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 const courtSchema = z.object({
   name: z.string().min(1, 'Court name is required.'),
@@ -57,45 +55,28 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       return;
     }
 
-    const courtsCollection = collection(firestore, 'courts');
-
     try {
-      await addDoc(courtsCollection, data).catch((error) => {
-        // This catch block is crucial for handling security rule denials
-        const permissionError = new FirestorePermissionError({
-            path: courtsCollection.path,
-            operation: 'create',
-            requestResourceData: data,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-        // Re-throw to prevent success toast
-        throw permissionError;
-      });
+      await addDoc(collection(firestore, 'courts'), data);
 
       toast({
         title: 'Court Added!',
         description: `${data.name} has been added to your courts.`,
       });
       form.reset();
-      onOpenChange(false); // Close the sheet on success
+      onOpenChange(false);
     } catch (error: any) {
-      // This will catch the re-thrown permission error or other errors
-      if (!(error instanceof FirestorePermissionError)) {
-         console.error('Error creating court:', error);
-         toast({
-           variant: 'destructive',
-           title: 'Uh oh! Something went wrong.',
-           description: error.message || 'Could not add the court.',
-         });
-      }
-      // The form state is automatically managed by react-hook-form,
-      // so no need to manually set `isSubmitting` to false here.
+      console.error('Error creating court:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Uh oh! Something went wrong.',
+        description: error.message || 'Could not add the court.',
+      });
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col">
+      <SheetContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
             <SheetHeader>
