@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -53,8 +53,8 @@ export default function ProfilePage() {
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: currentUser ? `${currentUser.firstName} ${currentUser.lastName}`: '',
-      phone: currentUser?.phone || '',
+      name: '',
+      phone: '',
       dinkRating: '4.25', // Placeholder
       doublesPreference: true,
       homeCourt: '', // This will be populated from user profile later
@@ -63,15 +63,14 @@ export default function ProfilePage() {
     },
   });
   
-  useState(() => {
+  useEffect(() => {
     if (currentUser) {
       form.reset({
         name: `${currentUser.firstName} ${currentUser.lastName}`,
         phone: currentUser.phone || '',
       })
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, form.reset]);
+  }, [currentUser, form]);
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
@@ -187,7 +186,7 @@ export default function ProfilePage() {
       setIsExtracting(false);
     }
   }
-
+  
   async function onSeedDatabase() {
     setIsSeeding(true);
     try {
@@ -393,7 +392,7 @@ export default function ProfilePage() {
                     <AlertTitle>Seed Database</AlertTitle>
                     <AlertDescription>
                         Clicking this button will populate your Firestore database with a default set of players and courts. This is useful for getting started and testing functionality. It will not delete or overwrite existing data.
-                    </Aler-tDescription>
+                    </AlertDescription>
                 </Alert>
               </CardContent>
               <CardFooter>
