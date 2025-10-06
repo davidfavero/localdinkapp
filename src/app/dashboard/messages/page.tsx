@@ -13,6 +13,13 @@ import { useCollection, useUser, useFirestore } from '@/firebase';
 import { collection, query } from 'firebase/firestore';
 import { useMemoFirebase } from '@/firebase/provider';
 
+// Helper function to check if a message is a simple confirmation
+function isConfirmation(message: string) {
+  const lowerMessage = message.toLowerCase().trim();
+  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again', 'i did, yes.'].includes(lowerMessage);
+}
+
+
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -41,25 +48,28 @@ export default function MessagesPage() {
   const handleSend = async () => {
     if (input.trim()) {
       const newUserMessage: Message = { sender: 'user', text: input.trim() };
-      setMessages(prev => [...prev, newUserMessage]);
+      const newMessages = [...messages, newUserMessage];
+      setMessages(newMessages);
       const currentInput = input;
       setInput('');
       setIsLoading(true);
 
       try {
-        const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
+        const history = messages.map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
         const response = await chatAction({ message: currentInput.trim(), history });
         
         let responseText = response.confirmationText || "I'm not sure how to respond to that.";
 
-        // If the response is a confirmation question, just show it.
-        // If it was a final confirmation, add the user's "yes" back and then Robin's final response.
-        const wasConfirmation = ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again'].includes(currentInput.toLowerCase().trim());
-        if (wasConfirmation) {
-            setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
-        } else {
-             setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
-        }
+        // If the user's input was a confirmation and the response does NOT ask another question,
+        // it means the final action was taken.
+        const wasConfirmation = isConfirmation(currentInput);
+        const isFinalConfirmation = wasConfirmation && !responseText.includes('?');
+
+        const finalMessages = isFinalConfirmation
+          ? [...newMessages, { sender: 'robin', text: responseText }]
+          : [...newMessages, { sender: 'robin', text: responseText }];
+
+        setMessages(finalMessages);
         
       } catch (error) {
         setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);

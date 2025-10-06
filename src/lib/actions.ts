@@ -13,7 +13,7 @@ import { sendSmsTool } from "@/ai/tools/sms";
 // Helper function to check if a message is a simple confirmation
 function isConfirmation(message: string) {
   const lowerMessage = message.toLowerCase().trim();
-  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again'].includes(lowerMessage);
+  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again', 'i did, yes.'].includes(lowerMessage);
 }
 
 
@@ -75,8 +75,9 @@ export async function chatAction(input: ChatInput): Promise<ChatOutput> {
     if (wasConfirmation && result.date && result.time && result.location && result.invitedPlayers && result.currentUser) {
         
         const { date, time, location, invitedPlayers, currentUser } = result;
-        const playerNames = invitedPlayers.map(p => p.name);
-
+        
+        const otherPlayerNames = invitedPlayers.filter(p => p.id !== currentUser.id).map(p => p.name).join(' and ');
+        
         const smsBody = `Pickleball Game Invitation! You're invited to a game on ${date} at ${time} at ${location}. Respond YES or NO. Manage your profile at https://localdink.app/join`;
         for (const player of invitedPlayers) {
             if(player.id !== currentUser?.id && player.phone) { 
@@ -123,7 +124,10 @@ export async function chatAction(input: ChatInput): Promise<ChatOutput> {
                 playerIds,
             });
 
-             result.confirmationText = `Great! Your game with ${playerNames.join(' and ')} at ${location} on ${date} at ${time} is confirmed. I've sent SMS invitations and added it to your upcoming games. Have a fantastic game!`;
+            const finalConfirmation = otherPlayerNames
+                ? `Excellent. I will notify ${otherPlayerNames} and get this scheduled right away.`
+                : `Excellent. I have scheduled your game.`;
+            result.confirmationText = finalConfirmation;
 
         } catch(e) {
             console.error("Failed to save game session to firestore", e);

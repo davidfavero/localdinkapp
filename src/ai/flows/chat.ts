@@ -14,21 +14,22 @@ import { disambiguateName } from './name-disambiguation';
 // Helper function to check if a message is a simple confirmation
 function isConfirmation(message: string) {
   const lowerMessage = message.toLowerCase().trim();
-  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again'].includes(lowerMessage);
+  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again', 'i did, yes.'].includes(lowerMessage);
 }
 
 
 export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
     const currentUser = knownPlayers.find(p => p.isCurrentUser);
+    
+    let processedInput = input.message;
 
     // If the user's message is a simple confirmation, we need to look at the history
+    // to reinvoke the flow with the details Robin was asking to confirm.
     if (isConfirmation(input.message) && input.history.length > 0) {
       const lastRobinMessage = input.history.filter(h => h.sender === 'robin').pop();
-      // Re-run the extraction on Robin's last confirmation message to get the details again.
       if (lastRobinMessage) {
-          input.message = lastRobinMessage.text; 
-          input.history = input.history.slice(0, -1); // Remove the "yes"
+          processedInput = lastRobinMessage.text; 
       }
     }
 
@@ -46,7 +47,7 @@ Conversation History:
 ${input.history.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
 
 New User Message:
-- user: ${input.message}
+- user: ${processedInput}
 `,
       model: 'googleai/gemini-2.5-flash',
       output: {
@@ -76,8 +77,8 @@ New User Message:
     // 4. Disambiguate player names and find their phone numbers.
     const invitedPlayers = await Promise.all(
       players.map(async (playerName) => {
-        // A simple "me" should resolve to the current user.
-        if (playerName.toLowerCase() === 'me' && currentUser) {
+        // A simple "me" or "you" in this context should resolve to the current user.
+        if (['me', 'you'].includes(playerName.toLowerCase()) && currentUser) {
              return { id: currentUser?.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser?.phone };
         }
         const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
@@ -91,7 +92,7 @@ New User Message:
     extractedDetails.invitedPlayers = invitedPlayers;
     extractedDetails.currentUser = currentUser;
 
-    const playerNames = invitedPlayers.map(p => p.name);
+    const playerNames = invitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
 
     // 5. Formulate the response text
     let responseText = '';
