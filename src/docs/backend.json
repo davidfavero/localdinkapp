@@ -23,6 +23,10 @@
           "type": "string",
           "description": "The user's phone number for SMS notifications."
         },
+        "dinkRating": {
+          "type": "string",
+          "description": "The user's self-described Dink rating (e.g. DUPR)."
+        },
         "doublesPreference": {
           "type": "boolean",
           "description": "Default preference for doubles games."
@@ -191,3 +195,5 @@
     }
   }
 }
+
+    

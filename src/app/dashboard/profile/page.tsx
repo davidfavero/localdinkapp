@@ -32,7 +32,7 @@ const profileSchema = z.object({
   phone: z.string().optional(),
   dinkRating: z.string().optional(),
   doublesPreference: z.boolean().default(true),
-  homeCourt: z.string().optional(),
+  homeCourtId: z.string().optional(),
   availability: z.string().optional(),
   profileText: z.string().optional(),
 });
@@ -66,7 +66,7 @@ export default function ProfilePage() {
       phone: '',
       dinkRating: '4.25', // Placeholder
       doublesPreference: true,
-      homeCourt: '', // This will be populated from user profile later
+      homeCourtId: '', // This will be populated from user profile later
       availability: 'Weekdays after 5 PM, flexible on weekends.', // placeholder
       profileText: `I love playing competitive doubles. My home court is Sunnyvale Park but I can play anywhere in the South Bay. I'm usually free on weekdays after 5 PM and most times on weekends.`
     },
@@ -77,6 +77,10 @@ export default function ProfilePage() {
       form.reset({
         name: `${currentUser.firstName} ${currentUser.lastName}`,
         phone: currentUser.phone || '',
+        dinkRating: currentUser.dinkRating || '4.25',
+        doublesPreference: currentUser.doublesPreference ?? true,
+        homeCourtId: currentUser.homeCourtId || '',
+        availability: currentUser.availability || 'Weekdays after 5 PM, flexible on weekends.',
       })
     }
   }, [currentUser, form]);
@@ -170,12 +174,17 @@ export default function ProfilePage() {
       const userRef = doc(firestore, 'users', user.uid);
       const [firstName, ...lastNameParts] = data.name.split(' ');
       const lastName = lastNameParts.join(' ');
+      
       await updateDoc(userRef, {
         firstName,
         lastName,
         phone: data.phone,
-        // In a real app, you'd save the other fields too
+        dinkRating: data.dinkRating,
+        doublesPreference: data.doublesPreference,
+        homeCourtId: data.homeCourtId,
+        availability: data.availability,
       });
+
       toast({
         title: 'Profile Updated',
         description: 'Your preferences have been saved.',
@@ -207,7 +216,7 @@ export default function ProfilePage() {
       form.setValue('doublesPreference', result.doublesPreference, { shouldValidate: true });
       const foundCourt = courts?.find(c => c.name.toLowerCase() === result.homeCourtPreference.toLowerCase());
       if (foundCourt) {
-        form.setValue('homeCourt', foundCourt.id, { shouldValidate: true });
+        form.setValue('homeCourtId', foundCourt.id, { shouldValidate: true });
       }
       form.setValue('availability', result.availability, { shouldValidate: true });
       toast({
@@ -400,11 +409,11 @@ export default function ProfilePage() {
               />
               <FormField
                 control={form.control}
-                name="homeCourt"
+                name="homeCourtId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Home Court</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger disabled={isLoadingCourts}>
                           <SelectValue placeholder={isLoadingCourts ? "Loading..." : "Select your primary court"} />
@@ -469,3 +478,5 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+    

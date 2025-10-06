@@ -9,6 +9,10 @@ export type Player = {
   firstName: string;
   lastName: string;
   email: string;
+  dinkRating?: string;
+  doublesPreference?: boolean;
+  homeCourtId?: string;
+  availability?: string;
 };
 
 export type Court = {
@@ -78,3 +82,5 @@ export const ChatOutputSchema = z.object({
   currentUser: z.any().optional(),
 })
 export type ChatOutput = z.infer<typeof ChatOutputSchema>
+
+    
