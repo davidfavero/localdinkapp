@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useFirestore, useUser, useStorage, updateDocumentNonBlocking } from '@/firebase';
+import { useFirestore, useUser, useStorage } from '@/firebase';
 import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -25,7 +25,6 @@ import { UserAvatar } from '@/components/user-avatar';
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
-import { errorEmitter, FirestorePermissionError } from '@/firebase';
 
 
 const profileSchema = z.object({
@@ -127,46 +126,36 @@ export default function ProfilePage() {
   const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
     if (!imageToCrop || !user || !storage || !firestore) return;
 
+    // 1) snapshot current image BEFORE clearing state
+    const dataUrl = imageToCrop;
+
     setIsUploading(true);
-    setImageToCrop(null); // Close dialog
+    setImageToCrop(null); // close dialog
 
     try {
-      const croppedImageBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
-      if (!croppedImageBlob) {
-        throw new Error('Failed to crop image.');
-      }
+      const croppedImageBlob = await getCroppedImg(dataUrl, croppedAreaPixels);
+      if (!croppedImageBlob) throw new Error('Failed to crop image.');
 
       const avatarRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
+
+      // 2) upload then get URL
       const snapshot = await uploadBytes(avatarRef, croppedImageBlob);
       const downloadURL = await getDownloadURL(snapshot.ref);
-      
+
+      // 3) await Firestore update so errors surface
       const userRef = doc(firestore, 'users', user.uid);
-      const payload = { avatarUrl: downloadURL };
-
-      updateDoc(userRef, payload)
-        .catch(error => {
-            errorEmitter.emit(
-                'permission-error',
-                new FirestorePermissionError({
-                path: userRef.path,
-                operation: 'update',
-                requestResourceData: payload,
-                })
-            )
-        });
-
+      await updateDoc(userRef, { avatarUrl: downloadURL });
 
       toast({
         title: 'Avatar Updated',
         description: 'Your new profile picture has been saved.',
       });
-
     } catch (error: any) {
       console.error('Error updating avatar:', error);
       toast({
         variant: 'destructive',
         title: 'Update Failed',
-        description: 'Could not save your new avatar. Please try again.',
+        description: error?.message ?? 'Could not save your new avatar. Please try again.',
       });
     } finally {
       setIsUploading(false);
@@ -197,12 +186,20 @@ export default function ProfilePage() {
       availability: data.availability,
     };
     
-    updateDocumentNonBlocking(userRef, payload);
-
-    toast({
-      title: 'Profile Updated',
-      description: 'Your preferences have been saved.',
-    });
+    try {
+        await updateDoc(userRef, payload);
+        toast({
+          title: 'Profile Updated',
+          description: 'Your preferences have been saved.',
+        });
+    } catch (error: any) {
+        console.error("Error updating profile:", error);
+         toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+            description: error.message || 'Could not save your profile. Check permissions and try again.',
+        });
+    }
   }
 
   async function handleExtractPreferences() {
