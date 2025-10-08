@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { RobinIcon } from '@/components/icons/robin-icon';
-import { PickleballPaddleIcon } from '@/components/icons/pickleball-paddle-icon';
 import { ArrowRight } from 'lucide-react';
 
 export default function LandingPage() {
@@ -9,7 +8,7 @@ export default function LandingPage() {
     <div className="flex flex-col min-h-screen bg-background">
       <header className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <PickleballPaddleIcon className="h-8 w-8 text-primary" />
+          <RobinIcon className="h-8 w-8 text-primary" />
           <h1 className="text-2xl font-bold tracking-tight text-foreground font-headline">
             LocalDink
           </h1>
@@ -47,7 +46,7 @@ export default function LandingPage() {
                         <div className="w-80 h-80 rounded-full bg-gradient-to-br from-primary via-accent to-green-700 animate-spin-slow" style={{ animationDuration: '10s' }} />
                     </div>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-sm p-8 rounded-full">
-                        <PickleballPaddleIcon className="w-48 h-48 text-background drop-shadow-2xl" />
+                        <RobinIcon className="w-48 h-48 text-background drop-shadow-2xl" />
                     </div>
                 </div>
             </div>
