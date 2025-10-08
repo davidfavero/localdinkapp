@@ -14,11 +14,11 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
-  { href: '/dashboard/sessions', icon: GamesIcon, label: 'Sessions' },
-  { href: '/dashboard/messages', icon: MessageCircle, label: 'Messages' },
-  { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
-  { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
-  { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
+  { href: '/dashboard/sessions', icon: GamesIcon, label: 'Game\nSessions' },
+  { href: '/dashboard/messages', icon: MessageCircle, label: 'Player\nMessages' },
+  { href: '/dashboard', icon: RobinIcon, label: 'Robin\nAI Assistant' },
+  { href: '/dashboard/groups', icon: UsersRound, label: 'Players &\nGroups' },
+  { href: '/dashboard/courts', icon: MapPin, label: 'My\nCourts' },
 ];
 
 const getPageTitle = (pathname: string) => {
@@ -29,9 +29,10 @@ const getPageTitle = (pathname: string) => {
   if (pathname.startsWith('/dashboard/messages')) return 'Messages';
   if (pathname === '/dashboard') return 'Robin';
   
+  // Adjusted to handle multi-line labels
   const item = navItems.find(item => item.href === pathname);
 
-  return item ? item.label : 'Dashboard';
+  return item ? item.label.replace('\n', ' ') : 'Dashboard';
 }
 
 export default function DashboardLayout({
@@ -74,13 +75,14 @@ export default function DashboardLayout({
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
-        <div className="grid grid-cols-5 items-center justify-items-center gap-1 p-2">
+        <div className="grid grid-cols-5 items-start justify-items-center gap-1 p-2">
           {navItems.map(({ href, icon: Icon, label }) => {
-            const isRobin = label === 'Robin';
+            const isRobin = label.startsWith('Robin');
             const isActive = !isRobin && (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'));
             
             if (isRobin) {
                  const isRobinActive = pathname === '/dashboard';
+                 const [line1, line2] = label.split('\n');
                  return (
                   <Link
                     key={href}
@@ -90,7 +92,7 @@ export default function DashboardLayout({
                     )}
                   >
                     <div className={cn(
-                      'flex flex-col items-center justify-center gap-1 transition-all duration-300 transform',
+                      'flex flex-col items-center justify-center gap-1 transition-all duration-300 transform text-center',
                        isRobinActive ? '-translate-y-4' : ''
                     )}>
                       <div className={cn(
@@ -99,7 +101,11 @@ export default function DashboardLayout({
                       )}>
                          <Icon className={cn("transition-colors", isRobinActive ? 'w-10 h-10 text-accent' : 'w-6 h-6 text-muted-foreground')} />
                       </div>
-                      {isRobinActive && <span className="text-xs font-semibold text-primary mt-1">{label}</span>}
+                      {isRobinActive && (
+                        <span className="text-xs font-semibold text-primary mt-1 whitespace-pre-line">
+                            {line1}<br/>{line2}
+                        </span>
+                      )}
                     </div>
                   </Link>
                 );
@@ -107,10 +113,10 @@ export default function DashboardLayout({
 
             // Determine order for other icons
             const orderClass = {
-                Sessions: 'order-1',
-                Messages: 'order-2',
-                Groups: 'order-4',
-                Courts: 'order-5',
+                'Game\nSessions': 'order-1',
+                'Player\nMessages': 'order-2',
+                'Players &\nGroups': 'order-4',
+                'My\nCourts': 'order-5',
             }[label] || '';
 
             return (
@@ -118,13 +124,13 @@ export default function DashboardLayout({
                 key={href}
                 href={href}
                 className={cn(
-                  'flex flex-col items-center justify-center rounded-md p-1 w-full',
+                  'flex flex-col items-center justify-center rounded-md p-1 w-full text-center',
                   isActive ? 'text-primary' : 'text-muted-foreground',
                   orderClass
                 )}
               >
-                <Icon className="h-6 w-6" />
-                <span className="text-xs">{label}</span>
+                <Icon className="h-6 w-6 mb-1" />
+                <span className="text-xs leading-tight whitespace-pre-line">{label}</span>
               </Link>
             );
           })}
