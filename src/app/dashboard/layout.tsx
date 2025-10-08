@@ -79,10 +79,10 @@ export default function DashboardLayout({
           {navItems.map(({ href, icon: Icon, label }) => {
             const isRobin = label.startsWith('Robin');
             const isActive = !isRobin && (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'));
+            const [line1, line2] = label.split('\n');
             
             if (isRobin) {
                  const isRobinActive = pathname === '/dashboard';
-                 const [line1, line2] = label.split('\n');
                  return (
                   <Link
                     key={href}
@@ -130,7 +130,9 @@ export default function DashboardLayout({
                 )}
               >
                 <Icon className="h-6 w-6 mb-1" />
-                <span className="text-xs leading-tight whitespace-pre-line">{label}</span>
+                <span className="text-xs leading-tight whitespace-pre-line">
+                    {line1}<br />{line2}
+                </span>
               </Link>
             );
           })}
