@@ -45,7 +45,9 @@ export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<Ch
     if (isConfirmation(input.message) && lastRobinMessage) {
       processedInput = `confirming: ${lastRobinMessage.text}`;
     } else if (isPhoneNumber(input.message) && lastRobinMessage && lastRobinMessage.text.includes('phone number')) {
-        const lastUserMessage = historyToConsider.filter(h => h.sender === 'user').pop();
+        // Find the user's last message BEFORE the current one (which is the phone number).
+        // This should be the original request.
+        const lastUserMessage = historyToConsider.filter(h => h.sender === 'user' && !isPhoneNumber(h.text)).pop();
         if (lastUserMessage) {
             // Re-run the initial request with the new phone number appended.
              processedInput = `${lastUserMessage.text} (and the phone number for the new person is ${input.message})`;
