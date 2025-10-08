@@ -14,7 +14,6 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
-  { href: '/dashboard/messages', icon: RobinIcon, label: 'Messages' },
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
@@ -25,10 +24,9 @@ const getPageTitle = (pathname: string) => {
   if (pathname.startsWith('/dashboard/sessions')) return 'Game Details';
   if (pathname.startsWith('/dashboard/profile')) return 'Your Profile';
   if (pathname.startsWith('/dashboard/groups')) return 'Groups & Players';
+  if (pathname === '/dashboard') return 'Robin';
   
   const item = navItems.find(item => item.href === pathname);
-  // Special case for /dashboard being the Robin chat
-  if (pathname === '/dashboard') return 'Messages';
 
   return item ? item.label : 'Dashboard';
 }
@@ -73,35 +71,17 @@ export default function DashboardLayout({
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
-        <div className="grid grid-cols-5 items-center justify-items-center gap-1 p-2">
+        <div className="grid grid-cols-4 items-center justify-items-center gap-1 p-2">
           {navItems.map(({ href, icon: Icon, label }) => {
             const isActive = pathname === href || (pathname.startsWith(href) && href !== '/dashboard');
             const isRobin = label === 'Robin';
-            
-            // Special handling to make Messages icon active on /dashboard too.
-            if (label === 'Messages') {
-                const isMessagesOrDashboard = pathname === '/dashboard/messages' || pathname === '/dashboard';
-                 return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      'flex flex-col items-center justify-center rounded-md p-1 w-full',
-                      isMessagesOrDashboard ? 'text-primary' : 'text-muted-foreground'
-                    )}
-                  >
-                    <Icon className="h-6 w-6" />
-                    <span className="text-xs">{label}</span>
-                  </Link>
-                );
-            }
 
             if (isRobin) {
-                 const isRobinActive = pathname === '/dashboard';
+                 const isRobinActive = pathname === '/dashboard' || pathname === '/dashboard/messages';
                  return (
                   <Link
                     key={href}
-                    href={href}
+                    href="/dashboard" // Always link to dashboard for Robin
                     className={cn(
                       'flex flex-col items-center justify-center rounded-md p-1 w-full'
                     )}
