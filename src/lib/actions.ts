@@ -42,14 +42,13 @@ export async function handleCancellationAction(
   }
 }
 
-export async function chatAction(input: ChatInput): Promise<ChatOutput> {
+export async function chatAction(input: ChatInput, currentUser: Player | null): Promise<ChatOutput> {
   const firestore = initializeServerApp();
 
   const usersSnapshot = await getDocs(collection(firestore, 'users'));
   const allPlayers: Player[] = [];
   usersSnapshot.forEach(doc => {
       const data = doc.data();
-      // This needs a way to identify the current user. For now, we'll assume it's passed in or identifiable.
       allPlayers.push({
           id: doc.id,
           firstName: data.firstName,
@@ -60,10 +59,7 @@ export async function chatAction(input: ChatInput): Promise<ChatOutput> {
       });
   });
   
-  // A real implementation needs to identify the current user based on the session.
-  // For now, we'll default to the first user for demo purposes if no `isCurrentUser` is set.
-  const currentUser = allPlayers.find(p => p.isCurrentUser) || allPlayers[0];
-  const knownPlayersWithCurrentUser = allPlayers.map(p => ({...p, isCurrentUser: p.id === currentUser.id }));
+  const knownPlayersWithCurrentUser = allPlayers.map(p => ({...p, isCurrentUser: p.id === currentUser?.id }));
 
 
   try {

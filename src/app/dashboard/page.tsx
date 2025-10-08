@@ -57,7 +57,7 @@ export default function RobinChatPage() {
       try {
         // Pass the latest state to the action
         const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
-        const response = await chatAction({ message: currentInput.trim(), history });
+        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null);
         
         let responseText = response.confirmationText || "I'm not sure how to respond to that.";
 
