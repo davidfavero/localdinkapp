@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
-import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
+import { GamesIcon } from '@/components/icons/games-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
 import { useCollection, useFirestore, useUser } from '@/firebase';
@@ -14,7 +14,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
-  { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
+  { href: '/dashboard/games', icon: GamesIcon, label: 'Games' },
   { href: '/dashboard/messages', icon: MessageCircle, label: 'Messages' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
