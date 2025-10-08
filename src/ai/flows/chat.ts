@@ -17,6 +17,14 @@ function isConfirmation(message: string) {
   return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again', 'i did, yes.'].includes(lowerMessage);
 }
 
+// Helper function to check if a message is just a phone number
+function isPhoneNumber(message: string) {
+    // This is a simple regex for US-style phone numbers, allowing for optional formatting.
+    const phoneRegex = /^(?:\+?1\s?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}$/;
+    return phoneRegex.test(message.trim());
+}
+
+
 // Helper to format a list of names naturally
 function formatPlayerNames(names: string[]): string {
     if (names.length === 0) return '';
@@ -32,12 +40,16 @@ export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<Ch
     
     let processedInput = input.message;
     const historyToConsider = input.history.slice(-4); // Only consider last 4 messages
+    const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
 
-    if (isConfirmation(input.message) && historyToConsider.length > 0) {
-      const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
-      if (lastRobinMessage) {
-          processedInput = `confirming: ${lastRobinMessage.text}`;
-      }
+    if (isConfirmation(input.message) && lastRobinMessage) {
+      processedInput = `confirming: ${lastRobinMessage.text}`;
+    } else if (isPhoneNumber(input.message) && lastRobinMessage && lastRobinMessage.text.includes('phone number')) {
+        const lastUserMessage = historyToConsider.filter(h => h.sender === 'user').pop();
+        if (lastUserMessage) {
+            // Re-run the initial request with the new phone number appended.
+             processedInput = `${lastUserMessage.text} (and the phone number for the new person is ${input.message})`;
+        }
     }
 
     const { output: extractedDetails } = await ai.generate({
