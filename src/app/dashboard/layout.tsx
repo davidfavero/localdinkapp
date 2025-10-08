@@ -14,7 +14,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
-  { href: '/dashboard/games', icon: GamesIcon, label: 'Games' },
+  { href: '/dashboard/sessions', icon: GamesIcon, label: 'Sessions' },
   { href: '/dashboard/messages', icon: MessageCircle, label: 'Messages' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
@@ -22,7 +22,8 @@ const navItems = [
 ];
 
 const getPageTitle = (pathname: string) => {
-  if (pathname.startsWith('/dashboard/sessions')) return 'Game Details';
+  if (pathname.startsWith('/dashboard/sessions/')) return 'Game Details';
+  if (pathname === '/dashboard/sessions') return 'Game Sessions';
   if (pathname.startsWith('/dashboard/profile')) return 'Your Profile';
   if (pathname.startsWith('/dashboard/groups')) return 'Groups & Players';
   if (pathname.startsWith('/dashboard/messages')) return 'Messages';
@@ -106,7 +107,7 @@ export default function DashboardLayout({
 
             // Determine order for other icons
             const orderClass = {
-                Games: 'order-1',
+                Sessions: 'order-1',
                 Messages: 'order-2',
                 Groups: 'order-4',
                 Courts: 'order-5',
