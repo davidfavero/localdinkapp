@@ -130,10 +130,20 @@
         "description": {
           "type": "string",
           "description": "A description of the group."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The ID of the user who owns this group."
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL for the group's avatar.",
+          "format": "uri"
         }
       },
       "required": [
-        "name"
+        "name",
+        "ownerId"
       ]
     },
     "GamePlayer": {
