@@ -1,17 +1,20 @@
 'use client';
 
-import { gameSessions, players as allPlayers } from '@/lib/data';
-import { notFound } from 'next/navigation';
+import { useParams, notFound } from 'next/navigation';
+import { useDoc, useFirestore } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import type { GameSession as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
+import { useMemoFirebase } from '@/firebase/provider';
+import { handleCancellationAction } from '@/lib/actions';
+import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/user-avatar';
-import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut } from 'lucide-react';
-import type { Player, RsvpStatus } from '@/lib/types';
-import { handleCancellationAction } from '@/lib/actions';
-import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut, Loader2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +25,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
+import { useUser } from '@/firebase';
+import { Skeleton } from '@/components/ui/skeleton';
+
 
 const statusInfo: { [key in RsvpStatus]: { icon: React.ElementType, text: string, color: string } } = {
   CONFIRMED: { icon: UserCheck, text: 'Confirmed', color: 'text-green-500' },
@@ -30,28 +36,120 @@ const statusInfo: { [key in RsvpStatus]: { icon: React.ElementType, text: string
   DECLINED: { icon: UserX, text: 'Declined', color: 'text-red-500' },
 };
 
+const SessionDetailSkeleton = () => (
+  <div className="grid md:grid-cols-3 gap-6">
+    <div className="md:col-span-2 space-y-6">
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-8 w-3/4 mb-2" />
+          <Skeleton className="h-6 w-1/2" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-4 w-1/3" />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-7 w-24" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+    <div className="md:col-span-1">
+      <Card>
+        <CardHeader>
+          <CardTitle>Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  </div>
+);
+
+
 export default function SessionDetailPage({ params }: { params: { id: string } }) {
   const { toast } = useToast();
+  const { user: currentUser } = useUser();
   const [isCancelling, setIsCancelling] = useState(false);
-  const session = gameSessions.find((s) => s.id === params.id);
-  const currentUser = allPlayers.find((p) => p.isCurrentUser);
+  const firestore = useFirestore();
 
-  if (!session || !currentUser) {
-    notFound();
-  }
+  // 1. Fetch the raw game session document
+  const sessionRef = useMemoFirebase(
+    () => (firestore && params.id ? doc(firestore, 'game-sessions', params.id) : null),
+    [firestore, params.id]
+  );
+  const { data: rawSession, isLoading: isLoadingSession } = useDoc<RawGameSession>(sessionRef);
 
-  const currentUserInGame = session.players.find(p => p.player.id === currentUser.id);
+  const [hydratedSession, setHydratedSession] = useState<GameSession | null>(null);
+  const [isHydrating, setIsHydrating] = useState(true);
+
+  // 2. Hydrate the session with details (court, players, organizer)
+  useEffect(() => {
+    if (!rawSession || !firestore || !currentUser) {
+       if (!isLoadingSession) setIsHydrating(false);
+      return;
+    }
+
+    const hydrate = async () => {
+      setIsHydrating(true);
+
+      const courtSnap = await getDoc(doc(firestore, 'courts', rawSession.courtId));
+      const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
+      
+      const organizerSnap = await getDoc(doc(firestore, 'users', rawSession.organizerId));
+      const organizer = organizerSnap.exists() ? { id: organizerSnap.id, isCurrentUser: organizerSnap.id === currentUser.uid, ...organizerSnap.data() } as Player : { id: 'unknown', name: 'Unknown Organizer', avatarUrl: '' };
+
+      const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
+        const playerSnap = await getDoc(doc(firestore, 'users', id));
+        const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, name: 'Unknown Player', avatarUrl: '' };
+        // TODO: In a real app, status would come from `/game-sessions/{id}/players/{userId}`
+        return { player: playerData, status: 'CONFIRMED' as const };
+      });
+      const players = await Promise.all(playerPromises);
+
+      // TODO: Fetch alternates when that data model is finalized
+      const alternates: Player[] = [];
+      
+      const sessionDate = rawSession.startTime?.toDate ? rawSession.startTime.toDate() : new Date();
+
+      setHydratedSession({
+        id: rawSession.id,
+        court,
+        organizer,
+        date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+        time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        type: rawSession.isDoubles ? 'Doubles' : 'Singles',
+        players: players,
+        alternates: alternates,
+      });
+      setIsHydrating(false);
+    };
+
+    hydrate();
+
+  }, [rawSession, firestore, currentUser, isLoadingSession]);
+
+  const session = hydratedSession;
 
   const onCancel = async () => {
-    if (!currentUserInGame) return;
+    if (!session || !currentUser) return;
+    const currentUserPlayer = session.players.find(p => p.player.id === currentUser.uid)?.player;
+    if (!currentUserPlayer) return;
+
     setIsCancelling(true);
 
     try {
       const result = await handleCancellationAction({
         gameSessionId: session.id,
-        cancelledPlayerName: currentUser.name,
-        alternates: session.alternates.map(p => ({ name: p.name, phone: p.phone || '' })),
-        originalPlayerNames: session.players.map(p => p.player.name),
+        cancelledPlayerName: `${currentUserPlayer.firstName} ${currentUserPlayer.lastName}`,
+        alternates: session.alternates.map(p => ({ name: `${p.firstName} ${p.lastName}`, phone: p.phone || '' })),
+        originalPlayerNames: session.players.map(p => `${p.player.firstName} ${p.player.lastName}`),
         courtName: session.court.name,
         gameTime: `${session.date} at ${session.time}`,
       });
@@ -59,6 +157,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
         title: 'Cancellation Processed',
         description: result.message,
       });
+      // TODO: Update the user's status in Firestore to 'DECLINED'
     } catch (error) {
        toast({
         variant: 'destructive',
@@ -69,6 +168,16 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
         setIsCancelling(false);
     }
   }
+
+  if (isLoadingSession || isHydrating) {
+    return <SessionDetailSkeleton />;
+  }
+
+  if (!session) {
+    notFound();
+  }
+
+  const currentUserInGame = session.players.find(p => p.player.id === currentUser.uid);
 
   return (
     <div className="grid md:grid-cols-3 gap-6">
@@ -87,7 +196,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">Organized by {session.organizer.name}</p>
+            <p className="text-sm text-muted-foreground">Organized by {session.organizer.isCurrentUser ? 'You' : `${session.organizer.firstName} ${session.organizer.lastName}`}</p>
           </CardContent>
         </Card>
         
@@ -101,11 +210,12 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
             <ul className="space-y-4">
               {session.players.map(({ player, status }) => {
                 const StatusIcon = statusInfo[status].icon;
+                const playerName = player.firstName ? `${player.firstName} ${player.lastName}` : player.name;
                 return (
                   <li key={player.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <UserAvatar player={player} />
-                      <span className="font-semibold">{player.name} {player.isCurrentUser ? '(You)' : ''}</span>
+                      <span className="font-semibold">{playerName} {player.isCurrentUser ? '(You)' : ''}</span>
                     </div>
                     <div className={cn("flex items-center gap-2 text-sm", statusInfo[status].color)}>
                       <StatusIcon className="h-5 w-5" />
@@ -130,7 +240,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
                 {session.alternates.map((player) => (
                   <div key={player.id} className="flex items-center gap-2">
                     <UserAvatar player={player} className="h-8 w-8" />
-                    <span className="text-sm">{player.name}</span>
+                    <span className="text-sm">{player.firstName} {player.lastName}</span>
                   </div>
                 ))}
               </div>
@@ -149,7 +259,11 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" className="w-full" disabled={isCancelling}>
-                    <LogOut className="mr-2 h-4 w-4" />
+                    {isCancelling ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <LogOut className="mr-2 h-4 w-4" />
+                    )}
                     {isCancelling ? 'Cancelling...' : 'Cancel My Spot'}
                   </Button>
                 </AlertDialogTrigger>
