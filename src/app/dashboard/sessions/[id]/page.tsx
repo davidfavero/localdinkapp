@@ -103,11 +103,11 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
       
       const organizerSnap = await getDoc(doc(firestore, 'users', rawSession.organizerId));
-      const organizer = organizerSnap.exists() ? { id: organizerSnap.id, isCurrentUser: organizerSnap.id === currentUser.uid, ...organizerSnap.data() } as Player : { id: 'unknown', name: 'Unknown Organizer', avatarUrl: '' };
+      const organizer = organizerSnap.exists() ? { id: organizerSnap.id, isCurrentUser: organizerSnap.id === currentUser.uid, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '' } as Player;
 
       const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
         const playerSnap = await getDoc(doc(firestore, 'users', id));
-        const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, name: 'Unknown Player', avatarUrl: '' };
+        const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, firstName: 'Unknown', lastName: 'Player', avatarUrl: '' } as Player;
         // TODO: In a real app, status would come from `/game-sessions/{id}/players/{userId}`
         return { player: playerData, status: 'CONFIRMED' as const };
       });
@@ -210,7 +210,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
             <ul className="space-y-4">
               {session.players.map(({ player, status }) => {
                 const StatusIcon = statusInfo[status].icon;
-                const playerName = player.firstName ? `${player.firstName} ${player.lastName}` : player.name;
+                const playerName = player.firstName ? `${player.firstName} ${player.lastName}` : (player.name || 'Unknown Player');
                 return (
                   <li key={player.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -289,3 +289,5 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     </div>
   );
 }
+
+    

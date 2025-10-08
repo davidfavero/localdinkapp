@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Timestamp } from 'firebase/firestore';
 
 export type Player = {
   id: string;
@@ -27,11 +28,24 @@ export type Group = {
   id: string;
   name: string;
   avatarUrl: string;
+  description?: string;
   members: string[]; // Now an array of user IDs
 };
 
 export type RsvpStatus = 'CONFIRMED' | 'DECLINED' | 'PENDING';
 
+// This is the shape of the data retrieved from Firestore
+export type GameSession_Firestore = {
+  id: string;
+  courtId: string;
+  organizerId: string;
+  startTime: Timestamp;
+  isDoubles: boolean;
+  playerIds: string[];
+  // and other Firestore-specific fields
+}
+
+// This is the fully "hydrated" shape used in the UI
 export type GameSession = {
   id: string;
   court: Court;
