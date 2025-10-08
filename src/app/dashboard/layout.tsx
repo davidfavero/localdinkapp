@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
 import { PickleballOutlineIcon } from '@/components/icons/pickleball-outline-icon';
-import { PickleballFilledIcon } from '@/components/icons/pickleball-filled-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
 import { useCollection, useFirestore, useUser } from '@/firebase';
@@ -15,7 +14,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
-  { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballFilledIcon, label: 'Game\nSessions' },
+  { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
   { href: '/dashboard/messages', icon: MessageCircle, label: 'Player\nMessages' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin\nAI Assistant' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Players &\nGroups' },
