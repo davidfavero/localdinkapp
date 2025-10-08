@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UsersRound, MapPin } from 'lucide-react';
+import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
 import { PickleballPaddleBallIcon } from '@/components/icons/pickleball-paddle-ball-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
+  { href: '/dashboard/messages', icon: MessageCircle, label: 'Messages' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
   { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
@@ -24,6 +25,7 @@ const getPageTitle = (pathname: string) => {
   if (pathname.startsWith('/dashboard/sessions')) return 'Game Details';
   if (pathname.startsWith('/dashboard/profile')) return 'Your Profile';
   if (pathname.startsWith('/dashboard/groups')) return 'Groups & Players';
+  if (pathname.startsWith('/dashboard/messages')) return 'Messages';
   if (pathname === '/dashboard') return 'Robin';
   
   const item = navItems.find(item => item.href === pathname);
@@ -71,19 +73,19 @@ export default function DashboardLayout({
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
-        <div className="grid grid-cols-4 items-center justify-items-center gap-1 p-2">
+        <div className="grid grid-cols-5 items-center justify-items-center gap-1 p-2">
           {navItems.map(({ href, icon: Icon, label }) => {
-            const isActive = pathname === href || (pathname.startsWith(href) && href !== '/dashboard');
             const isRobin = label === 'Robin';
-
+            const isActive = !isRobin && (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'));
+            
             if (isRobin) {
-                 const isRobinActive = pathname === '/dashboard' || pathname === '/dashboard/messages';
+                 const isRobinActive = pathname === '/dashboard';
                  return (
                   <Link
                     key={href}
-                    href="/dashboard" // Always link to dashboard for Robin
+                    href="/dashboard"
                     className={cn(
-                      'flex flex-col items-center justify-center rounded-md p-1 w-full'
+                      'flex flex-col items-center justify-center rounded-md p-1 w-full order-3'
                     )}
                   >
                     <div className={cn(
@@ -102,14 +104,22 @@ export default function DashboardLayout({
                 );
             }
 
-            // Default for other icons
+            // Determine order for other icons
+            const orderClass = {
+                Games: 'order-1',
+                Messages: 'order-2',
+                Groups: 'order-4',
+                Courts: 'order-5',
+            }[label] || '';
+
             return (
               <Link
                 key={href}
                 href={href}
                 className={cn(
                   'flex flex-col items-center justify-center rounded-md p-1 w-full',
-                  isActive ? 'text-primary' : 'text-muted-foreground'
+                  isActive ? 'text-primary' : 'text-muted-foreground',
+                  orderClass
                 )}
               >
                 <Icon className="h-6 w-6" />
