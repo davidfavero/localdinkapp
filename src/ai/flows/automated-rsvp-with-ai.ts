@@ -12,6 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const AutomatedRsvpWithAiInputSchema = z.object({
+  organizerName: z.string().describe('The name of the person who organized the game.'),
   gameSessionDetails: z.string().describe('Details of the game session, including date, time, location, and players invited.'),
   responses: z.array(z.object({
     playerName: z.string().describe('Name of the player.'),
@@ -23,7 +24,7 @@ export type AutomatedRsvpWithAiInput = z.infer<typeof AutomatedRsvpWithAiInputSc
 
 const AutomatedRsvpWithAiOutputSchema = z.object({
   confirmationList: z.array(z.string()).describe('A list of players who are confirmed for the game session.'),
-  notificationMessages: z.array(z.string()).describe('A list of notification messages to be sent to players (e.g., confirmations, alternate invitations).'),
+  notificationMessages: z.array(z.string()).describe('A list of notification messages to be sent to players (e.g., confirmations, alternate invitations, and a summary for the organizer).'),
 });
 export type AutomatedRsvpWithAiOutput = z.infer<typeof AutomatedRsvpWithAiOutputSchema>;
 
@@ -40,6 +41,8 @@ const automatedRsvpPrompt = ai.definePrompt({
 Here are the game session details:
 {{{gameSessionDetails}}}
 
+The game organizer is {{organizerName}}.
+
 Here are the player responses:
 {{#each responses}}
 - {{playerName}}: {{response}}
@@ -53,6 +56,8 @@ Here are the alternate players available:
 {{/if}}
 
 Based on the responses, create a confirmation list and generate appropriate notification messages for each player. Ensure the game has enough players, and if not, notify alternates.
+
+Finally, create a notification message for the organizer, {{organizerName}}, summarizing the responses from the other players.
 
 Output the confirmationList containing the names of confirmed players, and the notificationMessages which contains a string for each player being notified, and the content of that notification.`,
 });

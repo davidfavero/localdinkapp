@@ -17,6 +17,14 @@ function isConfirmation(message: string) {
   return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again', 'i did, yes.'].includes(lowerMessage);
 }
 
+// Helper to format a list of names naturally
+function formatPlayerNames(names: string[]): string {
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return names.join(' and ');
+    return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+};
+
 
 export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
@@ -25,8 +33,6 @@ export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<Ch
     let processedInput = input.message;
     const historyToConsider = input.history.slice(-4); // Only consider last 4 messages
 
-    // If the user's message is a simple confirmation, we need to look at the history
-    // to reinvoke the flow with the details Robin was asking to confirm.
     if (isConfirmation(input.message) && historyToConsider.length > 0) {
       const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
       if (lastRobinMessage) {
@@ -34,8 +40,6 @@ export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<Ch
       }
     }
 
-
-    // 1. Call the AI to extract structured data from the user's message.
     const { output: extractedDetails } = await ai.generate({
       prompt: `You are Robin, an AI scheduling assistant for a pickleball app called LocalDink. Your primary job is to help users schedule games by extracting details from their messages and having a friendly, brief conversation.
 
@@ -65,71 +69,84 @@ New User Message:
       return { confirmationText: "I'm sorry, I had trouble understanding that. Could you try again?" };
     }
     
-    // Merge details from history if confirming
     if (isConfirmation(input.message)) {
       const lastBotMessage = historyToConsider.filter(h => h.sender === 'robin').pop()?.text || '';
-      // A simple regex to pull details from the bot's last question
       const playersMatch = lastBotMessage.match(/game for (.*?)( at| on)/);
       if (playersMatch && (!extractedDetails.players || extractedDetails.players.length === 0)) {
-        extractedDetails.players = playersMatch[1].split(' and ').map(name => name.replace('You', 'me'));
+        extractedDetails.players = playersMatch[1].split(/, | and /).map(name => name.replace('You', 'me'));
       }
     }
 
-
-    // 2. If it was just a conversational response, return it.
     if (extractedDetails.confirmationText && !extractedDetails.players && !extractedDetails.date && !extractedDetails.time && !extractedDetails.location) {
       return { confirmationText: extractedDetails.confirmationText };
     }
 
     const { players, date, time, location } = extractedDetails;
 
-    // 3. If no players were extracted, ask for clarification.
     if (!players || players.length === 0) {
       return { confirmationText: "I'm sorry, I didn't catch who is playing. Could you list the players for the game?" };
     }
 
-    // 4. Disambiguate player names and find their phone numbers.
-    const invitedPlayers = (await Promise.all(
+    const disambiguationResults = await Promise.all(
       players.map(async (playerName) => {
-        // A simple "me" or "i" in this context should resolve to the current user.
         if (['me', 'i', 'myself'].includes(playerName.toLowerCase().trim()) && currentUser) {
-             return { id: currentUser?.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser?.phone };
+          return { id: currentUser.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser.phone, originalName: playerName };
         }
         const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
+        return { ...result, originalName: playerName };
+      })
+    );
+
+    const questions = disambiguationResults.map(r => r.question).filter(q => q);
+    if (questions.length > 0) {
+      return { confirmationText: questions.join(' ') };
+    }
+
+    const invitedPlayers = disambiguationResults.map(result => {
+        if (result.id) { // Current user
+            return {id: result.id, name: result.name, phone: result.phone};
+        }
         const fullName = result.disambiguatedName;
+        if (!fullName) return null;
         const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === fullName);
         return { id: playerData?.id, name: fullName, phone: playerData?.phone };
-      })
-    )).reduce((acc, player) => {
-      // Remove duplicates
-      if (player.id && !acc.some(p => p.id === player.id)) {
-        acc.push(player);
-      } else if (!player.id && !acc.some(p => p.name === player.name)) {
+    }).filter((p): p is { id?: string; name: string; phone?: string } => p !== null);
+
+    const uniqueInvitedPlayers = invitedPlayers.reduce((acc, player) => {
+      if (player.name && !acc.some(p => p.name === player.name)) {
         acc.push(player);
       }
       return acc;
     }, [] as { id?: string; name: string; phone?: string }[]);
     
-    // This is passed back to the action to handle SMS and DB writes
-    extractedDetails.invitedPlayers = invitedPlayers;
+    extractedDetails.invitedPlayers = uniqueInvitedPlayers;
     extractedDetails.currentUser = currentUser;
 
-    const playerNames = invitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
+    const playerNames = uniqueInvitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
+    const formattedPlayerNames = formatPlayerNames(playerNames);
 
-    // 5. Formulate the response text
     let responseText = '';
-    if (date && time && location && players.length > 0) {
-       responseText = `Great! I'll schedule a game for ${playerNames.join(' and ')} at ${location} on ${date} at ${time}. Does that look right?`;
-    } else {
-      // If not enough info to send SMS yet, ask for it.
+    if (date && time && location && uniqueInvitedPlayers.length > 0) {
+       responseText = `Great! I'll schedule a game for ${formattedPlayerNames} at ${location} on ${date} at ${time}. Does that look right?`;
+    } else if (uniqueInvitedPlayers.length > 0) {
       let missingInfo = [];
       if (!date) missingInfo.push('date');
       if (!time) missingInfo.push('time');
       if (!location) missingInfo.push('location');
       
-      responseText = `Got it! I'll schedule a game for ${playerNames.join(' and ')}. I just need to confirm the ${missingInfo.join(' and ')}. What's the plan?`;
+      responseText = `Got it! I'll schedule a game for ${formattedPlayerNames}. I just need to confirm the ${missingInfo.join(' and ')}. What's the plan?`;
+    } else {
+        responseText = "I'm sorry, I couldn't figure out who to invite. Could you list the players again?";
     }
     
+    // Handle the user's request to be notified
+    if (input.message.toLowerCase().includes('let me know if') && extractedDetails.players) {
+      const mentionedPlayer = extractedDetails.players.find(p => p.toLowerCase() !== 'me');
+      if(mentionedPlayer) {
+        responseText = `Got it! I'll let you know as soon as ${mentionedPlayer} responds.`;
+      }
+    }
+
     return { ...extractedDetails, confirmationText: responseText };
   }
     
