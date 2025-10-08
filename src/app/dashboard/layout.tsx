@@ -53,20 +53,16 @@ export default function DashboardLayout({
       <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
           <h1 className="text-xl font-bold text-foreground font-headline">{pageTitle}</h1>
           <div className="flex items-center gap-4">
-              {isLoading ? (
-                <Skeleton className="h-8 w-8 rounded-full" />
-              ) : currentUser ? (
-                <Link href="/dashboard/profile">
-                  <UserAvatar player={currentUser} className="h-8 w-8" />
-                </Link>
-              ) : (
-                // Fallback if user is not found, maybe link to profile creation
-                 <Link href="/dashboard/profile">
-                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                        <UsersRound className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                </Link>
-              )}
+              <Link href="/dashboard/profile" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                {isLoading ? (
+                  <Skeleton className="h-full w-full" />
+                ) : currentUser ? (
+                  <UserAvatar player={currentUser} className="h-full w-full text-lg" />
+                ) : (
+                  // Fallback if user is not found
+                  <UsersRound className="h-5 w-5 text-muted-foreground" />
+                )}
+              </Link>
           </div>
        </header>
 
