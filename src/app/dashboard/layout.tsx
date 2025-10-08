@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
-import { GamesIcon } from '@/components/icons/games-icon';
+import { PickleballOutlineIcon } from '@/components/icons/pickleball-outline-icon';
+import { PickleballFilledIcon } from '@/components/icons/pickleball-filled-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
 import { useCollection, useFirestore, useUser } from '@/firebase';
@@ -14,7 +15,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const navItems = [
-  { href: '/dashboard/sessions', icon: GamesIcon, label: 'Game\nSessions' },
+  { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballFilledIcon, label: 'Game\nSessions' },
   { href: '/dashboard/messages', icon: MessageCircle, label: 'Player\nMessages' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin\nAI Assistant' },
   { href: '/dashboard/groups', icon: UsersRound, label: 'Players &\nGroups' },
@@ -76,10 +77,11 @@ export default function DashboardLayout({
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
         <div className="grid grid-cols-5 items-start justify-items-center gap-1 p-2">
-          {navItems.map(({ href, icon: Icon, label }) => {
+          {navItems.map(({ href, icon: Icon, activeIcon: ActiveIcon, label }) => {
             const isRobin = label.startsWith('Robin');
             const isActive = !isRobin && (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'));
             const [line1, line2] = label.split('\n');
+            const CurrentIcon = isActive && ActiveIcon ? ActiveIcon : Icon;
             
             if (isRobin) {
                  const isRobinActive = pathname === '/dashboard';
@@ -129,8 +131,8 @@ export default function DashboardLayout({
                   orderClass
                 )}
               >
-                <Icon className="h-6 w-6 mb-1" />
-                <span className="text-xs leading-tight whitespace-pre-line">
+                <CurrentIcon className="h-6 w-6 mb-1" />
+                <span className="text-xs leading-tight whitespace-pre-line text-center">
                     {line1}<br />{line2}
                 </span>
               </Link>
