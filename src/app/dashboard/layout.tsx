@@ -17,13 +17,14 @@ const navItems = [
   { href: '/dashboard/messages', icon: RobinIcon, label: 'Messages' },
   { href: '/dashboard/games', icon: PickleballPaddleBallIcon, label: 'Games' },
   { href: '/dashboard', icon: RobinIcon, label: 'Robin' },
-  { href: '/dashboard/groups', icon: UsersRound, label: 'Players' },
+  { href: '/dashboard/groups', icon: UsersRound, label: 'Groups' },
   { href: '/dashboard/courts', icon: MapPin, label: 'Courts' },
 ];
 
 const getPageTitle = (pathname: string) => {
   if (pathname.startsWith('/dashboard/sessions')) return 'Game Details';
   if (pathname.startsWith('/dashboard/profile')) return 'Your Profile';
+  if (pathname.startsWith('/dashboard/groups')) return 'Groups & Players';
   
   const item = navItems.find(item => item.href === pathname);
   // Special case for /dashboard being the Robin chat
@@ -74,7 +75,7 @@ export default function DashboardLayout({
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur-sm">
         <div className="grid grid-cols-5 items-center justify-items-center gap-1 p-2">
           {navItems.map(({ href, icon: Icon, label }) => {
-            const isActive = pathname === href;
+            const isActive = pathname === href || (pathname.startsWith(href) && href !== '/dashboard');
             const isRobin = label === 'Robin';
             
             // Special handling to make Messages icon active on /dashboard too.
