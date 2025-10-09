@@ -151,10 +151,10 @@ function initializeServerApp() {
     return getFirestore(newApp);
 }
 
-export async function seedDatabaseAction(): Promise<{ success: boolean, message: string }> {
+export async function seedDatabaseAction(): Promise<{ success: boolean, message: string, usersAdded: number, courtsAdded: number }> {
     const firestore = initializeServerApp();
     if (!firestore) {
-        return { success: false, message: 'Firestore is not initialized.' };
+        return { success: false, message: 'Firestore is not initialized.', usersAdded: 0, courtsAdded: 0 };
     }
 
     const batch = writeBatch(firestore);
@@ -168,7 +168,7 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
     mockPlayers.forEach(player => {
         const email = `${player.firstName?.toLowerCase()}.${player.lastName?.toLowerCase()}@example.com`;
         if (!existingEmails.has(email)) {
-            const userRef = doc(usersCollectionRef); // Correct syntax
+            const userRef = doc(usersCollectionRef);
              batch.set(userRef, {
                 firstName: player.firstName,
                 lastName: player.lastName,
@@ -188,7 +188,7 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
     let courtsAdded = 0;
     mockCourts.forEach(court => {
         if (!existingCourtNames.has(court.name)) {
-            const courtRef = doc(courtsCollectionRef); // Correct syntax
+            const courtRef = doc(courtsCollectionRef);
             batch.set(courtRef, {
                 name: court.name,
                 location: court.location,
@@ -196,12 +196,17 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
             courtsAdded++;
         }
     });
+    
+    if (usersAdded === 0 && courtsAdded === 0) {
+        return { success: true, message: "Database already contains data. No new data was added.", usersAdded: 0, courtsAdded: 0 };
+    }
 
     try {
         await batch.commit();
-        return { success: true, message: `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.` };
+        const message = `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.`;
+        return { success: true, message, usersAdded, courtsAdded };
     } catch (e: any) {
         console.error("Error seeding database:", e);
-        return { success: false, message: `Error seeding database: ${e.message}` };
+        return { success: false, message: `Error seeding database: ${e.message}`, usersAdded: 0, courtsAdded: 0 };
     }
 }

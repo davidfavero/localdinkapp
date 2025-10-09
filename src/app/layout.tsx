@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import { FirebaseClientProvider } from '@/firebase';
+import { DatabaseSeeder } from '@/components/database-seeder';
 
 const ptSans = PT_Sans({
   subsets: ['latin'],
@@ -30,6 +31,7 @@ export default function RootLayout({
       </head>
       <body className={cn('font-body antialiased', ptSans.variable)}>
         <FirebaseClientProvider>
+          <DatabaseSeeder />
           {children}
         </FirebaseClientProvider>
         <Toaster />

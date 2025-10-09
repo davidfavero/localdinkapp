@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useFirestore, useUser, useStorage, errorEmitter } from '@/firebase';
-import { extractPreferencesAction, seedDatabaseAction } from '@/lib/actions';
+import { extractPreferencesAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -43,7 +43,6 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 export default function ProfilePage() {
   const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
   const { user } = useUser();
   const firestore = useFirestore();
   const storage = useStorage();
@@ -266,33 +265,6 @@ export default function ProfilePage() {
       setIsExtracting(false);
     }
   }
-  
-  async function onSeedDatabase() {
-    setIsSeeding(true);
-    try {
-        const result = await seedDatabaseAction();
-        if (result.success) {
-            toast({
-                title: 'Database Seeded!',
-                description: result.message,
-            });
-        } else {
-             toast({
-                variant: 'destructive',
-                title: 'Seeding Failed',
-                description: result.message,
-            });
-        }
-    } catch (error: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Seeding Failed',
-            description: error.message || 'An unknown error occurred.',
-        });
-    } finally {
-        setIsSeeding(false);
-    }
-  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -479,28 +451,6 @@ export default function ProfilePage() {
                 )}
               />
             </CardContent>
-          </Card>
-
-          <Card>
-              <CardHeader>
-                  <CardTitle>Developer Settings</CardTitle>
-                  <CardDescription>Actions for helping with app development.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                 <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Seed Database</AlertTitle>
-                    <AlertDescription>
-                        Clicking this button will populate your Firestore database with a default set of players and courts. This is useful for getting started and testing functionality. It will not delete or overwrite existing data.
-                    </AlertDescription>
-                 </Alert>
-              </CardContent>
-              <CardFooter>
-                 <Button type="button" variant="outline" onClick={onSeedDatabase} disabled={isSeeding}>
-                    <Database className="mr-2 h-4 w-4" />
-                    {isSeeding ? "Seeding..." : "Seed Database"}
-                </Button>
-              </CardFooter>
           </Card>
 
           <div className="flex justify-end">
