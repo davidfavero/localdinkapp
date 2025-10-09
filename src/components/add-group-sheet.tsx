@@ -60,7 +60,8 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
 
     try {
       const avatarIds = ['group1', 'group2', 'group3'];
-      const randomAvatar = PlaceHolderImages.find(p => p.id === avatarIds[Math.floor(Math.random() * avatarIds.length)]);
+      const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
+      const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
 
       await addDoc(collection(firestore, 'groups'), {
         ...data,
