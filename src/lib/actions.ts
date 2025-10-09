@@ -305,7 +305,7 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
       };
 
       // Use a non-blocking call with proper error handling
-      await addDoc(gameSessionsRef, payload).catch((serverError) => {
+      addDoc(gameSessionsRef, payload).catch((serverError) => {
         // Create the rich, contextual error.
         const permissionError = new FirestorePermissionError({
           path: gameSessionsRef.path,
@@ -336,16 +336,12 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
    Seeding
    ========================= */
 
-export async function seedDatabaseAction(user: User | null): Promise<{
+export async function seedDatabaseAction(): Promise<{
   success: boolean;
   message: string;
   usersAdded: number;
   courtsAdded: number;
 }> {
-  if (!user) {
-    return { success: false, message: "Authentication required to seed database.", usersAdded: 0, courtsAdded: 0 };
-  }
-
   const firestore = initializeServerApp();
   if (!firestore) {
     return { success: false, message: "Firestore is not initialized.", usersAdded: 0, courtsAdded: 0 };

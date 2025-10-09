@@ -27,7 +27,7 @@ export function DatabaseSeeder() {
       try {
         console.log('Attempting to seed database...');
         // Pass the authenticated user to the action
-        const result = await seedDatabaseAction(user);
+        const result = await seedDatabaseAction();
         
         // We only want to show a toast if data was actually added.
         if (result.success && (result.usersAdded > 0 || result.courtsAdded > 0)) {
