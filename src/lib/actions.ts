@@ -13,6 +13,7 @@ import {
 import { chat } from "@/ai/flows/chat";
 import type { ChatInput, ChatOutput, Player } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from "@/lib/data";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 import {
   collection,
@@ -24,7 +25,6 @@ import {
   query,
   where,
   Timestamp,
-  setDoc,
 } from "firebase/firestore";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { firebaseConfig } from "@/firebase/config";
@@ -292,35 +292,42 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
           .map((p) => sendSmsTool({ to: p.phone as string, body: smsBody }))
       );
 
-      try {
-        // Save session (no court booking for now—store free-text location)
-        await addDoc(collection(firestore, "game-sessions"), {
-          // If/when you add court booking, you can resolve slug and courtId here.
-          // courtSlug: slugify(location),
-          location,
-          organizerId,
-          participantIds, // all invited (including organizer)
-          startTime: Timestamp.fromDate(startDate),
-          durationMinutes: 120,
-          status: "scheduled", // initial status
-          gameType,            // "singles" | "doubles"
-          acceptancesNeeded,   // 1 for singles, 3 for doubles
-          timeAmbiguous: ambiguousTime, // can help UI decide to prompt for AM/PM if needed
+      const gameSessionsRef = collection(firestore, "game-sessions");
+      const payload = {
+        location,
+        organizerId,
+        participantIds,
+        startTime: Timestamp.fromDate(startDate),
+        durationMinutes: 120,
+        status: "scheduled",
+        gameType,
+        acceptancesNeeded,
+        timeAmbiguous: ambiguousTime,
+      };
+
+      // Use a non-blocking call with proper error handling
+      await addDoc(gameSessionsRef, payload).catch((serverError) => {
+        // Create the rich, contextual error.
+        const permissionError = new FirestorePermissionError({
+          path: gameSessionsRef.path,
+          operation: 'create',
+          requestResourceData: payload,
         });
+        // On the server, we re-throw the error to be caught by Next.js
+        throw permissionError;
+      });
 
-        result.confirmationText = otherPlayerNames
-          ? `Excellent. I will notify ${otherPlayerNames} and get this scheduled right away.`
-          : `Excellent. I have scheduled your game.`;
-
-      } catch (e) {
-        console.error("Failed to save game session to Firestore", e);
-        result.confirmationText =
-          "I sent the invites, but saving the session failed. Please check your Games list.";
-      }
+      result.confirmationText = otherPlayerNames
+        ? `Excellent. I will notify ${otherPlayerNames} and get this scheduled right away.`
+        : `Excellent. I have scheduled your game.`;
     }
 
     return result;
   } catch (error) {
+    if (error instanceof FirestorePermissionError) {
+      // Re-throw the specific error to be displayed by Next.js
+      throw error;
+    }
     console.error("Error in chatAction:", error);
     throw new Error("Failed to get response from AI.");
   }
