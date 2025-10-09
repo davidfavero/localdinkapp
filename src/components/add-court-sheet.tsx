@@ -67,7 +67,6 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
         onOpenChange(false);
       })
       .catch((error) => {
-        console.error('Error creating court:', error);
         const permissionError = new FirestorePermissionError({
           path: courtsRef.path,
           operation: 'create',
@@ -77,7 +76,7 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
         toast({
           variant: 'destructive',
           title: 'Uh oh! Something went wrong.',
-          description: 'Could not add the court.',
+          description: 'Could not add the court. Check permissions.',
         });
       });
   };

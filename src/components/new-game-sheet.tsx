@@ -110,7 +110,6 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
         onOpenChange(false);
       })
       .catch((error) => {
-        console.error('Error creating game:', error);
         const permissionError = new FirestorePermissionError({
           path: gameSessionsRef.path,
           operation: 'create',
@@ -120,7 +119,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
         toast({
           variant: 'destructive',
           title: 'Uh oh! Something went wrong.',
-          description: 'Could not create the game session.',
+          description: 'Could not create the game session. Check permissions.',
         });
       })
       .finally(() => {
