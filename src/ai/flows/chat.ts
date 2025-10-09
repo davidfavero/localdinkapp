@@ -20,7 +20,7 @@ function isConfirmation(message: string) {
 // Helper function to check if a message is just a phone number
 function isPhoneNumber(message: string) {
     // This is a simple regex for US-style phone numbers, allowing for optional formatting.
-    const phoneRegex = /^(?:\+?1\s?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}$/;
+    const phoneRegex = /^(?:\+?1\s?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}\s?[\s.-]?\d{4}$/;
     return phoneRegex.test(message.trim());
 }
 
@@ -83,10 +83,12 @@ New User Message:
       return { confirmationText: "I'm sorry, I had trouble understanding that. Could you try again?" };
     }
     
+    // If the user just said "yes", re-extract players from the last bot message if the AI missed it.
     if (isConfirmation(input.message)) {
       const lastBotMessage = historyToConsider.filter(h => h.sender === 'robin').pop()?.text || '';
       const playersMatch = lastBotMessage.match(/game for (.*?)( at| on)/);
       if (playersMatch && (!extractedDetails.players || extractedDetails.players.length === 0)) {
+        // Handle "You" and split names by ", " or " and "
         extractedDetails.players = playersMatch[1].split(/, | and /).map(name => name.replace('You', 'me'));
       }
     }
