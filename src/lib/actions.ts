@@ -29,7 +29,6 @@ import {
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { firebaseConfig } from "@/firebase/config";
 import { sendSmsTool } from "@/ai/tools/sms";
-import { User } from "firebase/auth";
 
 /* =========================
    Helpers
@@ -317,7 +316,7 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
       });
 
       result.confirmationText = otherPlayerNames
-        ? `Excellent. I will notify ${otherPlayerNames} and get this scheduled right away.`
+        ? `Excellent. I will notify ${otherPlayers.map(displayName).join(' and ')} and get this scheduled right away.`
         : `Excellent. I have scheduled your game.`;
     }
 
@@ -348,26 +347,29 @@ export async function seedDatabaseAction(): Promise<{
   }
 
   const batch = writeBatch(firestore);
+  let usersAdded = 0;
+  let courtsAdded = 0;
+  const operations: { path: string; data: any }[] = [];
 
   // Users
   const usersCollectionRef = collection(firestore, "users");
   const existingUsersSnap = await getDocs(usersCollectionRef);
-  let usersAdded = 0;
 
   if (existingUsersSnap.empty) {
     mockPlayers.forEach((player) => {
       const email = `${player.firstName?.toLowerCase()}.${player.lastName?.toLowerCase()}@example.com`;
-      // Use the hardcoded ID from the mock data as the document ID
-      const userRef = fsDoc(usersCollectionRef, player.id);
-      batch.set(userRef, {
+      const playerData = {
         firstName: player.firstName,
         lastName: player.lastName,
         email,
         avatarUrl: player.avatarUrl,
         phone: player.phone || "",
-        // Set isCurrentUser based on the hardcoded ID
         isCurrentUser: player.id === 'user-1'
-      });
+      };
+      // Use the hardcoded ID from the mock data as the document ID
+      const userRef = fsDoc(usersCollectionRef, player.id);
+      batch.set(userRef, playerData);
+      operations.push({ path: userRef.path, data: playerData });
       usersAdded++;
     });
   }
@@ -375,16 +377,17 @@ export async function seedDatabaseAction(): Promise<{
   // Courts
   const courtsCollectionRef = collection(firestore, "courts");
   const existingCourtsSnap = await getDocs(courtsCollectionRef);
-  let courtsAdded = 0;
 
   if (existingCourtsSnap.empty) {
     mockCourts.forEach((court) => {
-      const courtRef = fsDoc(courtsCollectionRef);
-      batch.set(courtRef, {
+      const courtRef = fsDoc(courtsCollectionRef); // Auto-generate ID for courts
+      const courtData = {
         name: court.name,
         location: court.location,
-        slug: slugify(court.name ?? court.location ?? String(courtRef)), // future-proof
-      });
+        slug: slugify(court.name ?? court.location ?? courtRef.id),
+      };
+      batch.set(courtRef, courtData);
+      operations.push({ path: courtRef.path, data: courtData });
       courtsAdded++;
     });
   }
@@ -398,12 +401,16 @@ export async function seedDatabaseAction(): Promise<{
     };
   }
 
-  try {
-    await batch.commit();
-    const message = `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.`;
-    return { success: true, message, usersAdded, courtsAdded };
-  } catch (e: any) {
-    console.error("Error seeding database:", e);
-    return { success: false, message: `Error seeding database: ${e.message}`, usersAdded: 0, courtsAdded: 0 };
-  }
+  return batch.commit().then(() => {
+      const message = `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.`;
+      return { success: true, message, usersAdded, courtsAdded };
+  }).catch((serverError) => {
+      const permissionError = new FirestorePermissionError({
+        path: '(batch write)',
+        operation: 'write',
+        requestResourceData: operations,
+      });
+      // On the server, we re-throw the error to be caught by Next.js
+      throw permissionError;
+  });
 }
