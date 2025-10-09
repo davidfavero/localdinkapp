@@ -3,6 +3,7 @@
 import { seedDatabaseAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
+import { useUser } from '@/firebase';
 
 /**
  * An invisible component that runs only once on application startup
@@ -10,13 +11,14 @@ import { useEffect, useState } from 'react';
  */
 export function DatabaseSeeder() {
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
   const [hasSeeded, setHasSeeded] = useState(false);
 
   useEffect(() => {
     // Flag to prevent multiple runs in React's strict mode
     let hasRun = false;
     // Ensure this effect runs only once.
-    if (hasSeeded || hasRun) {
+    if (hasSeeded || hasRun || isUserLoading || !user) {
       return;
     }
     hasRun = true;
@@ -24,9 +26,10 @@ export function DatabaseSeeder() {
     const runSeed = async () => {
       try {
         console.log('Attempting to seed database...');
-        const result = await seedDatabaseAction();
+        // Pass the authenticated user to the action
+        const result = await seedDatabaseAction(user);
+        
         // We only want to show a toast if data was actually added.
-        // The action returns the number of users/courts added.
         if (result.success && (result.usersAdded > 0 || result.courtsAdded > 0)) {
           toast({
             title: 'Welcome to LocalDink!',
@@ -56,7 +59,7 @@ export function DatabaseSeeder() {
     };
 
     runSeed();
-  }, [hasSeeded, toast]);
+  }, [user, isUserLoading, hasSeeded, toast]);
 
   // This component renders nothing.
   return null;

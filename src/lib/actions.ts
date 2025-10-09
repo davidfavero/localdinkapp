@@ -29,6 +29,7 @@ import {
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { firebaseConfig } from "@/firebase/config";
 import { sendSmsTool } from "@/ai/tools/sms";
+import { User } from "firebase/auth";
 
 /* =========================
    Helpers
@@ -292,17 +293,15 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
           .map((p) => sendSmsTool({ to: p.phone as string, body: smsBody }))
       );
 
-      const gameSessionsRef = collection(firestore, "game-sessions");
+      const gameSessionsRef = collection(firestore, 'game-sessions');
       const payload = {
-        location,
-        organizerId,
-        participantIds,
-        startTime: Timestamp.fromDate(startDate),
-        durationMinutes: 120,
-        status: "scheduled",
-        gameType,
-        acceptancesNeeded,
-        timeAmbiguous: ambiguousTime,
+          courtId: result.location, // Assuming location is court ID for now
+          organizerId,
+          startTime: Timestamp.fromDate(startDate),
+          isDoubles: gameType === 'doubles',
+          durationMinutes: 120,
+          status: 'scheduled',
+          playerIds: participantIds,
       };
 
       // Use a non-blocking call with proper error handling
@@ -337,12 +336,16 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
    Seeding
    ========================= */
 
-export async function seedDatabaseAction(): Promise<{
+export async function seedDatabaseAction(user: User | null): Promise<{
   success: boolean;
   message: string;
   usersAdded: number;
   courtsAdded: number;
 }> {
+  if (!user) {
+    return { success: false, message: "Authentication required to seed database.", usersAdded: 0, courtsAdded: 0 };
+  }
+
   const firestore = initializeServerApp();
   if (!firestore) {
     return { success: false, message: "Firestore is not initialized.", usersAdded: 0, courtsAdded: 0 };
