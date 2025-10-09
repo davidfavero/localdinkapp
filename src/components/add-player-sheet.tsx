@@ -81,7 +81,6 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
         onOpenChange(false);
       })
       .catch((error) => {
-        console.error('Error creating player:', error);
         const permissionError = new FirestorePermissionError({
           path: usersRef.path,
           operation: 'create',
@@ -91,7 +90,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
         toast({
           variant: 'destructive',
           title: 'Uh oh! Something went wrong.',
-          description: 'Could not add the player.',
+          description: 'Could not add the player. Check permissions.',
         });
       });
   };
