@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
-import { useAuth, useFirestore } from '@/firebase';
+import { useAuth, useFirestore, errorEmitter } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -32,6 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import type { Court } from '@/lib/types';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const gameSchema = z.object({
   courtId: z.string().min(1, 'Please select a court.'),
@@ -63,7 +64,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
     },
   });
 
-  const onSubmit = async (data: GameFormValues) => {
+  const onSubmit = (data: GameFormValues) => {
     if (!firestore || !user) {
       toast({
         variant: 'destructive',
@@ -75,46 +76,56 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
 
     setIsCreating(true);
 
-    try {
-      const [time, period] = data.time.split(' ');
-      let [hours, minutes] = time.split(':').map(Number);
-      
-      if (period.toUpperCase() === 'PM' && hours < 12) {
-        hours += 12;
-      }
-      if (period.toUpperCase() === 'AM' && hours === 12) {
-        hours = 0;
-      }
-
-      const startTime = new Date(data.date);
-      startTime.setHours(hours, minutes, 0, 0);
-
-      await addDoc(collection(firestore, 'game-sessions'), {
-        courtId: data.courtId,
-        organizerId: user.uid,
-        startTime: Timestamp.fromDate(startTime),
-        isDoubles: data.isDoubles === 'true',
-        durationMinutes: 120, // Default duration
-        status: 'scheduled',
-        playerIds: [user.uid] // Initially, only organizer is a player
-      });
-
-      toast({
-        title: 'Game Created!',
-        description: 'Your new game session has been scheduled.',
-      });
-      form.reset({ isDoubles: 'true', time: '05:00 PM', courtId: '', date: undefined });
-      onOpenChange(false);
-    } catch (error: any) {
-      console.error('Error creating game:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'Could not create the game session.',
-      });
-    } finally {
-      setIsCreating(false);
+    const [time, period] = data.time.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    
+    if (period.toUpperCase() === 'PM' && hours < 12) {
+      hours += 12;
     }
+    if (period.toUpperCase() === 'AM' && hours === 12) {
+      hours = 0;
+    }
+
+    const startTime = new Date(data.date);
+    startTime.setHours(hours, minutes, 0, 0);
+
+    const payload = {
+      courtId: data.courtId,
+      organizerId: user.uid,
+      startTime: Timestamp.fromDate(startTime),
+      isDoubles: data.isDoubles === 'true',
+      durationMinutes: 120, // Default duration
+      status: 'scheduled',
+      playerIds: [user.uid] // Initially, only organizer is a player
+    };
+
+    const gameSessionsRef = collection(firestore, 'game-sessions');
+    addDoc(gameSessionsRef, payload)
+      .then(() => {
+        toast({
+          title: 'Game Created!',
+          description: 'Your new game session has been scheduled.',
+        });
+        form.reset({ isDoubles: 'true', time: '05:00 PM', courtId: '', date: undefined });
+        onOpenChange(false);
+      })
+      .catch((error) => {
+        console.error('Error creating game:', error);
+        const permissionError = new FirestorePermissionError({
+          path: gameSessionsRef.path,
+          operation: 'create',
+          requestResourceData: payload,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: 'destructive',
+          title: 'Uh oh! Something went wrong.',
+          description: 'Could not create the game session.',
+        });
+      })
+      .finally(() => {
+        setIsCreating(false);
+      });
   };
 
   return (

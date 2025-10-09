@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection } from 'firebase/firestore';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, errorEmitter } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,6 +20,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const groupSchema = z.object({
   name: z.string().min(1, 'Group name is required.'),
@@ -48,7 +49,7 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
 
   const { isSubmitting } = form.formState;
 
-  const onSubmit = async (data: GroupFormValues) => {
+  const onSubmit = (data: GroupFormValues) => {
     if (!firestore || !user) {
       toast({
         variant: 'destructive',
@@ -58,31 +59,40 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
       return;
     }
 
-    try {
-      const avatarIds = ['group1', 'group2', 'group3'];
-      const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
-      const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
+    const avatarIds = ['group1', 'group2', 'group3'];
+    const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
+    const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
 
-      await addDoc(collection(firestore, 'groups'), {
+    const payload = {
         ...data,
         ownerId: user.uid,
         avatarUrl: randomAvatar?.imageUrl || '',
-      });
+    };
 
-      toast({
-        title: 'Group Created!',
-        description: `${data.name} has been created.`,
+    const groupsRef = collection(firestore, 'groups');
+    addDoc(groupsRef, payload)
+      .then(() => {
+        toast({
+          title: 'Group Created!',
+          description: `${data.name} has been created.`,
+        });
+        form.reset();
+        onOpenChange(false);
+      })
+      .catch((error) => {
+        console.error('Error creating group:', error);
+        const permissionError = new FirestorePermissionError({
+          path: groupsRef.path,
+          operation: 'create',
+          requestResourceData: payload,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: 'destructive',
+          title: 'Uh oh! Something went wrong.',
+          description: 'Could not create the group.',
+        });
       });
-      form.reset();
-      onOpenChange(false);
-    } catch (error: any) {
-      console.error('Error creating group:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'Could not create the group.',
-      });
-    }
   };
 
   return (

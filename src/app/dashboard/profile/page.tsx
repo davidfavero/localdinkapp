@@ -190,7 +190,7 @@ export default function ProfilePage() {
   }, [imageToCrop, user, storage, firestore, toast]);
 
 
-  async function onSubmit(data: ProfileFormValues) {
+  function onSubmit(data: ProfileFormValues) {
     if (!firestore || !user) {
       toast({
         variant: 'destructive',
@@ -214,20 +214,27 @@ export default function ProfilePage() {
       availability: data.availability,
     };
     
-    try {
-        await updateDoc(userRef, payload);
+    updateDoc(userRef, payload)
+      .then(() => {
         toast({
           title: 'Profile Updated',
           description: 'Your preferences have been saved.',
         });
-    } catch (error: any) {
+      })
+      .catch((error) => {
         console.error("Error updating profile:", error);
-         toast({
-            variant: 'destructive',
-            title: 'Update Failed',
-            description: error.message || 'Could not save your profile. Check permissions and try again.',
+        const permissionError = new FirestorePermissionError({
+          path: userRef.path,
+          operation: 'update',
+          requestResourceData: payload,
         });
-    }
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: 'destructive',
+          title: 'Update Failed',
+          description: 'Could not save your profile. Check permissions and try again.',
+        });
+      });
   }
 
   async function handleExtractPreferences() {

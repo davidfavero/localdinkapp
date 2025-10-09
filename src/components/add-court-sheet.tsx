@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirestore, errorEmitter } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/sheet';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const courtSchema = z.object({
   name: z.string().min(1, 'Court name is required.'),
@@ -43,9 +44,9 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
     },
   });
 
-  const { isSubmitting } = form.formState;
+  const { isSubmitting, setFocus } = form.formState;
 
-  const onSubmit = async (data: CourtFormValues) => {
+  const onSubmit = (data: CourtFormValues) => {
     if (!firestore) {
       toast({
         variant: 'destructive',
@@ -55,23 +56,30 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       return;
     }
 
-    try {
-      await addDoc(collection(firestore, 'courts'), data);
-
-      toast({
-        title: 'Court Added!',
-        description: `${data.name} has been added to your courts.`,
+    const courtsRef = collection(firestore, 'courts');
+    addDoc(courtsRef, data)
+      .then(() => {
+        toast({
+          title: 'Court Added!',
+          description: `${data.name} has been added to your courts.`,
+        });
+        form.reset();
+        onOpenChange(false);
+      })
+      .catch((error) => {
+        console.error('Error creating court:', error);
+        const permissionError = new FirestorePermissionError({
+          path: courtsRef.path,
+          operation: 'create',
+          requestResourceData: data,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: 'destructive',
+          title: 'Uh oh! Something went wrong.',
+          description: 'Could not add the court.',
+        });
       });
-      form.reset();
-      onOpenChange(false);
-    } catch (error: any) {
-      console.error('Error creating court:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'Could not add the court.',
-      });
-    }
   };
 
   return (

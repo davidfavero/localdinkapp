@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirestore, errorEmitter } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,6 +19,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
@@ -50,7 +51,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
 
   const { isSubmitting } = form.formState;
 
-  const onSubmit = async (data: PlayerFormValues) => {
+  const onSubmit = (data: PlayerFormValues) => {
     if (!firestore) {
       toast({
         variant: 'destructive',
@@ -59,31 +60,40 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       });
       return;
     }
-
-    try {
-      const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
-      const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
-      const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
-
-      await addDoc(collection(firestore, 'users'), {
+    
+    const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
+    const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
+    const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
+    
+    const payload = {
         ...data,
         avatarUrl: randomAvatar?.imageUrl || '',
-      });
+    };
 
-      toast({
-        title: 'Player Added!',
-        description: `${data.firstName} ${data.lastName} has been added to your players.`,
+    const usersRef = collection(firestore, 'users');
+    addDoc(usersRef, payload)
+      .then(() => {
+        toast({
+          title: 'Player Added!',
+          description: `${data.firstName} ${data.lastName} has been added to your players.`,
+        });
+        form.reset();
+        onOpenChange(false);
+      })
+      .catch((error) => {
+        console.error('Error creating player:', error);
+        const permissionError = new FirestorePermissionError({
+          path: usersRef.path,
+          operation: 'create',
+          requestResourceData: payload,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: 'destructive',
+          title: 'Uh oh! Something went wrong.',
+          description: 'Could not add the player.',
+        });
       });
-      form.reset();
-      onOpenChange(false);
-    } catch (error: any) {
-      console.error('Error creating player:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'Could not add the player.',
-      });
-    }
   };
 
   return (
