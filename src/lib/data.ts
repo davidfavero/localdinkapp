@@ -4,15 +4,15 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 // This file now primarily serves as a source for mock data for seeding the database.
 // The application should fetch live data from Firestore instead of using these directly.
 
-const allPlayers: Omit<Player, 'id' | 'email'>[] = [
-  { firstName: 'Robert', lastName: 'Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, phone: '555-0101' },
-  { firstName: 'Alex', lastName: 'Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '', phone: '404-538-9332' },
-  { firstName: 'Maria', lastName: 'Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '', phone: '555-0103' },
-  { firstName: 'Chen', lastName: 'Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '', phone: '555-0104' },
-  { firstName: 'Sarah', lastName: 'Miller', avatarUrl: PlaceHolderImages.find(p => p.id === 'user5')?.imageUrl || '', phone: '555-0105' },
-  { firstName: 'David', lastName: 'Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user6')?.imageUrl || '', phone: '555-0106' },
-  { firstName: 'Emily', lastName: 'White', avatarUrl: PlaceHolderImages.find(p => p.id === 'user7')?.imageUrl || '', phone: '555-0107' },
-  { firstName: 'James', lastName: 'Brown', avatarUrl: PlaceHolderImages.find(p => p.id === 'user8')?.imageUrl || '', phone: '555-0108' },
+const allPlayers: Player[] = [
+  { id: 'user-1', firstName: 'Robert', lastName: 'Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user1')?.imageUrl || '', isCurrentUser: true, email: 'robert.smith@example.com', phone: '555-0101' },
+  { id: 'user-2', firstName: 'Alex', lastName: 'Johnson', avatarUrl: PlaceHolderImages.find(p => p.id === 'user2')?.imageUrl || '', email: 'alex.johnson@example.com', phone: '404-538-9332' },
+  { id: 'user-3', firstName: 'Maria', lastName: 'Garcia', avatarUrl: PlaceHolderImages.find(p => p.id === 'user3')?.imageUrl || '', email: 'maria.garcia@example.com', phone: '555-0103' },
+  { id: 'user-4', firstName: 'Chen', lastName: 'Wei', avatarUrl: PlaceHolderImages.find(p => p.id === 'user4')?.imageUrl || '', email: 'chen.wei@example.com', phone: '555-0104' },
+  { id: 'user-5', firstName: 'Sarah', lastName: 'Miller', avatarUrl: PlaceHolderImages.find(p => p.id === 'user5')?.imageUrl || '', email: 'sarah.miller@example.com', phone: '555-0105' },
+  { id: 'user-6', firstName: 'David', lastName: 'Smith', avatarUrl: PlaceHolderImages.find(p => p.id === 'user6')?.imageUrl || '', email: 'david.smith@example.com', phone: '555-0106' },
+  { id: 'user-7', firstName: 'Emily', lastName: 'White', avatarUrl: PlaceHolderImages.find(p => p.id === 'user7')?.imageUrl || '', email: 'emily.white@example.com', phone: '555-0107' },
+  { id: 'user-8', firstName: 'James', lastName: 'Brown', avatarUrl: PlaceHolderImages.find(p => p.id === 'user8')?.imageUrl || '', email: 'james.brown@example.com', phone: '555-0108' },
 ];
 
 

@@ -24,6 +24,7 @@ import {
   query,
   where,
   Timestamp,
+  setDoc,
 } from "firebase/firestore";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { firebaseConfig } from "@/firebase/config";
@@ -350,13 +351,16 @@ export async function seedDatabaseAction(): Promise<{
   if (existingUsersSnap.empty) {
     mockPlayers.forEach((player) => {
       const email = `${player.firstName?.toLowerCase()}.${player.lastName?.toLowerCase()}@example.com`;
-      const userRef = fsDoc(usersCollectionRef);
+      // Use the hardcoded ID from the mock data as the document ID
+      const userRef = fsDoc(usersCollectionRef, player.id);
       batch.set(userRef, {
         firstName: player.firstName,
         lastName: player.lastName,
         email,
         avatarUrl: player.avatarUrl,
         phone: player.phone || "",
+        // Set isCurrentUser based on the hardcoded ID
+        isCurrentUser: player.id === 'user-1'
       });
       usersAdded++;
     });

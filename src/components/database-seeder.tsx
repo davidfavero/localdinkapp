@@ -13,10 +13,13 @@ export function DatabaseSeeder() {
   const [hasSeeded, setHasSeeded] = useState(false);
 
   useEffect(() => {
+    // Flag to prevent multiple runs in React's strict mode
+    let hasRun = false;
     // Ensure this effect runs only once.
-    if (hasSeeded) {
+    if (hasSeeded || hasRun) {
       return;
     }
+    hasRun = true;
 
     const runSeed = async () => {
       try {
@@ -30,6 +33,13 @@ export function DatabaseSeeder() {
             description: `We've added some sample players and courts to get you started.`,
           });
           console.log(`Database seeded: ${result.message}`);
+        } else if (!result.success) {
+            console.error('Database seeding failed:', result.message);
+             toast({
+              variant: 'destructive',
+              title: 'Database Seeding Failed',
+              description: result.message || 'Could not add initial data to the app.',
+            });
         } else {
             console.log('Database already contains data, skipping seed.');
         }
@@ -38,7 +48,7 @@ export function DatabaseSeeder() {
         toast({
           variant: 'destructive',
           title: 'Database Seeding Failed',
-          description: 'Could not add initial data to the app. Some features may not work.',
+          description: error.message || 'Could not add initial data to the app. Some features may not work.',
         });
       } finally {
         setHasSeeded(true);
