@@ -104,10 +104,10 @@ New User Message:
     const disambiguationResults = await Promise.all(
       players.map(async (playerName) => {
         if (['me', 'i', 'myself'].includes(playerName.toLowerCase().trim()) && currentUser) {
-          return { id: currentUser.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser.phone, originalName: playerName };
+          return { id: currentUser.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser.phone, originalName: playerName, disambiguatedName: `${currentUser.firstName} ${currentUser.lastName}` };
         }
         const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
-        return { ...result, originalName: playerName };
+        return { ...result, originalName: playerName, name: result.disambiguatedName };
       })
     );
 
@@ -117,13 +117,14 @@ New User Message:
     }
 
     const invitedPlayers = disambiguationResults.map(result => {
-        if (result.id) { // Current user
-            return {id: result.id, name: result.name, phone: result.phone};
-        }
+        if (result.question) return null; // Skip if there's a question
+        
         const fullName = result.disambiguatedName;
         if (!fullName) return null;
+
         const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === fullName);
         return { id: playerData?.id, name: fullName, phone: playerData?.phone };
+
     }).filter((p): p is { id?: string; name: string; phone?: string } => p !== null);
 
     const uniqueInvitedPlayers = invitedPlayers.reduce((acc, player) => {
@@ -150,6 +151,7 @@ New User Message:
       
       responseText = `Got it! I'll schedule a game for ${formattedPlayerNames}. I just need to confirm the ${missingInfo.join(' and ')}. What's the plan?`;
     } else {
+        // This case should now be rare due to the checks above, but it's a safe fallback.
         responseText = "I'm sorry, I couldn't figure out who to invite. Could you list the players again?";
     }
     
