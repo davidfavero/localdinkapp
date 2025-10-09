@@ -56,14 +56,12 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
           email: data.email,
           avatarUrl: data.avatarUrl,
           phone: data.phone,
+          isCurrentUser: doc.id === currentUser?.id,
       });
   });
-  
-  const knownPlayersWithCurrentUser = allPlayers.map(p => ({...p, isCurrentUser: p.id === currentUser?.id }));
-
 
   try {
-    const result = await chat(input, knownPlayersWithCurrentUser);
+    const result = await chat(allPlayers, input);
 
     const wasConfirmation = isConfirmation(input.message);
 
@@ -162,40 +160,42 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
     // Seed Users
     const usersCollectionRef = collection(firestore, 'users');
     const existingUsersSnap = await getDocs(usersCollectionRef);
-    const existingEmails = new Set(existingUsersSnap.docs.map(doc => doc.data().email));
+    
+    // Do not seed if there are already users
+    if (!existingUsersSnap.empty) {
+        return { success: true, message: "Database already contains user data. No new data was added.", usersAdded: 0, courtsAdded: 0 };
+    }
 
     let usersAdded = 0;
     mockPlayers.forEach(player => {
         const email = `${player.firstName?.toLowerCase()}.${player.lastName?.toLowerCase()}@example.com`;
-        if (!existingEmails.has(email)) {
-            const userRef = doc(usersCollectionRef);
-             batch.set(userRef, {
-                firstName: player.firstName,
-                lastName: player.lastName,
-                email: email,
-                avatarUrl: player.avatarUrl,
-                phone: player.phone || '',
-             });
-            usersAdded++;
-        }
+        const userRef = doc(usersCollectionRef); // Create a new doc with a generated ID
+         batch.set(userRef, {
+            firstName: player.firstName,
+            lastName: player.lastName,
+            email: email,
+            avatarUrl: player.avatarUrl,
+            phone: player.phone || '',
+         });
+        usersAdded++;
     });
 
     // Seed Courts
     const courtsCollectionRef = collection(firestore, 'courts');
     const existingCourtsSnap = await getDocs(courtsCollectionRef);
-    const existingCourtNames = new Set(existingCourtsSnap.docs.map(doc => doc.data().name));
-    
+
     let courtsAdded = 0;
-    mockCourts.forEach(court => {
-        if (!existingCourtNames.has(court.name)) {
-            const courtRef = doc(courtsCollectionRef);
+    // Do not seed if there are already courts
+     if (existingCourtsSnap.empty) {
+        mockCourts.forEach(court => {
+            const courtRef = doc(courtsCollectionRef); // Create a new doc with a generated ID
             batch.set(courtRef, {
                 name: court.name,
                 location: court.location,
             });
             courtsAdded++;
-        }
-    });
+        });
+    }
     
     if (usersAdded === 0 && courtsAdded === 0) {
         return { success: true, message: "Database already contains data. No new data was added.", usersAdded: 0, courtsAdded: 0 };

@@ -34,7 +34,7 @@ function formatPlayerNames(names: string[]): string {
 };
 
 
-export async function chat(input: ChatInput, knownPlayers: Player[]): Promise<ChatOutput> {
+export async function chat(knownPlayers: Player[], input: ChatInput): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
     const currentUser = knownPlayers.find(p => p.isCurrentUser);
     
@@ -110,7 +110,7 @@ New User Message:
         return { ...result, originalName: playerName, name: result.disambiguatedName };
       })
     );
-
+    
     const questions = disambiguationResults.map(r => r.question).filter(q => q);
     if (questions.length > 0) {
       return { confirmationText: questions.join(' ') };
