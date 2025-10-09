@@ -43,6 +43,12 @@
           "type": "string",
           "description": "URL or data URI for the user's profile picture.",
           "format": "uri"
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role in the application.",
+          "enum": ["organizer", "player"],
+          "default": "player"
         }
       },
       "required": [
