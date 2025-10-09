@@ -1,14 +1,15 @@
 'use client';
 
 import { useParams, notFound } from 'next/navigation';
-import { useDoc, useFirestore } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { useDoc, useFirestore, useUser, errorEmitter } from '@/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import type { GameSession as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
 import { handleCancellationAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,7 +27,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useUser } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
 
 
@@ -108,8 +108,13 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
         const playerSnap = await getDoc(doc(firestore, 'users', id));
         const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, firstName: 'Unknown', lastName: 'Player', avatarUrl: '' } as Player;
-        // TODO: In a real app, status would come from `/game-sessions/{id}/players/{userId}`
-        return { player: playerData, status: 'CONFIRMED' as const };
+        
+        // In a real app, status would come from `/game-sessions/{id}/players/{userId}`
+        const playerStatusRef = doc(firestore, 'game-sessions', rawSession.id, 'players', id);
+        const playerStatusSnap = await getDoc(playerStatusRef);
+        const status = playerStatusSnap.exists() ? playerStatusSnap.data().status as RsvpStatus : 'CONFIRMED';
+        
+        return { player: playerData, status };
       });
       const players = await Promise.all(playerPromises);
 
@@ -138,31 +143,52 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
   const session = hydratedSession;
 
   const onCancel = async () => {
-    if (!session || !currentUser) return;
+    if (!session || !currentUser || !firestore) return;
     const currentUserPlayer = session.players.find(p => p.player.id === currentUser.uid)?.player;
     if (!currentUserPlayer) return;
 
     setIsCancelling(true);
 
     try {
-      const result = await handleCancellationAction({
-        gameSessionId: session.id,
-        cancelledPlayerName: `${currentUserPlayer.firstName} ${currentUserPlayer.lastName}`,
-        alternates: session.alternates.map(p => ({ name: `${p.firstName} ${p.lastName}`, phone: p.phone || '' })),
-        originalPlayerNames: session.players.map(p => `${p.player.firstName} ${p.player.lastName}`),
-        courtName: session.court.name,
-        gameTime: `${session.date} at ${session.time}`,
-      });
-      toast({
-        title: 'Cancellation Processed',
-        description: result.message,
-      });
-      // TODO: Update the user's status in Firestore to 'DECLINED'
+        const result = await handleCancellationAction({
+            gameSessionId: session.id,
+            cancelledPlayerName: `${currentUserPlayer.firstName} ${currentUserPlayer.lastName}`,
+            alternates: session.alternates.map(p => ({ name: `${p.firstName} ${p.lastName}`, phone: p.phone || '' })),
+            originalPlayerNames: session.players.map(p => `${p.player.firstName} ${p.player.lastName}`),
+            courtName: session.court.name,
+            gameTime: `${session.date} at ${session.time}`,
+        });
+
+        // Now, update the player's status in Firestore
+        const playerStatusRef = doc(firestore, 'game-sessions', session.id, 'players', currentUser.uid);
+        const payload = { status: 'DECLINED' };
+        
+        updateDoc(playerStatusRef, payload)
+          .then(() => {
+              toast({
+                title: 'Cancellation Processed',
+                description: result.message,
+              });
+          })
+          .catch((error) => {
+              const permissionError = new FirestorePermissionError({
+                path: playerStatusRef.path,
+                operation: 'update',
+                requestResourceData: payload,
+              });
+              errorEmitter.emit('permission-error', permissionError);
+              toast({
+                  variant: 'destructive',
+                  title: 'Update Failed',
+                  description: 'Could not update your RSVP status. Check permissions.',
+              });
+          });
+
     } catch (error) {
        toast({
         variant: 'destructive',
         title: 'Cancellation Failed',
-        description: 'Could not process cancellation. Please try again.',
+        description: 'The AI could not process the cancellation. Please try again.',
       });
     } finally {
         setIsCancelling(false);
@@ -177,7 +203,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     notFound();
   }
 
-  const currentUserInGame = session.players.find(p => p.player.id === currentUser.uid);
+  const currentUserInGame = session.players.find(p => p.player.id === currentUser?.uid);
 
   return (
     <div className="grid md:grid-cols-3 gap-6">
@@ -289,5 +315,3 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     </div>
   );
 }
-
-    
