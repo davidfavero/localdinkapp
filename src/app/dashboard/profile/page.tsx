@@ -125,7 +125,6 @@ export default function ProfilePage() {
   
  const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
     if (!imageToCrop || !user || !storage || !firestore) {
-      console.log('preconditions failed', { hasImage: !!imageToCrop, hasUser: !!user, hasStorage: !!storage, hasFirestore: !!firestore });
       toast({ variant: 'destructive', title: 'Not ready', description: 'Missing auth or Firebase instances.' });
       return;
     }
@@ -135,35 +134,26 @@ export default function ProfilePage() {
     setImageToCrop(null);
 
     try {
-      console.log('[1] cropping…');
       const croppedImageBlob = await getCroppedImg(dataUrl, croppedAreaPixels);
       if (!croppedImageBlob) throw new Error('Failed to crop image.');
-      console.log('[1] crop ok', { size: croppedImageBlob?.size, type: croppedImageBlob?.type });
 
-      console.log('[2] uploading…');
       const avatarRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
       const snapshot = await uploadBytes(avatarRef, croppedImageBlob);
-      console.log('[2] upload ok', snapshot.metadata);
       
-      console.log('[3] getDownloadURL…');
       const downloadURL = await getDownloadURL(snapshot.ref);
-      console.log('[3] url ok', downloadURL);
 
-      console.log('[4] updateDoc…');
       const userRef = doc(firestore, 'users', user.uid);
       
       const payload = { avatarUrl: downloadURL };
 
       updateDoc(userRef, payload)
         .then(() => {
-          console.log('[4] firestore ok');
           toast({
             title: 'Avatar Updated',
             description: 'Your new profile picture has been saved.',
           });
         })
         .catch((error) => {
-            console.error('SAVE FAILED →', error);
             const permissionError = new FirestorePermissionError({
               path: userRef.path,
               operation: 'update',
@@ -178,7 +168,6 @@ export default function ProfilePage() {
         });
 
     } catch (error: any) {
-      console.error('Error updating avatar:', error);
       toast({
         variant: 'destructive',
         title: 'Update Failed',
@@ -222,7 +211,6 @@ export default function ProfilePage() {
         });
       })
       .catch((error) => {
-        console.error("Error updating profile:", error);
         const permissionError = new FirestorePermissionError({
           path: userRef.path,
           operation: 'update',
