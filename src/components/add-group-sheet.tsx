@@ -80,18 +80,12 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
         onOpenChange(false);
       })
       .catch((error) => {
-        console.error('Error creating group:', error);
         const permissionError = new FirestorePermissionError({
           path: groupsRef.path,
           operation: 'create',
           requestResourceData: payload,
         });
         errorEmitter.emit('permission-error', permissionError);
-        toast({
-          variant: 'destructive',
-          title: 'Uh oh! Something went wrong.',
-          description: 'Could not create the group.',
-        });
       });
   };
 
