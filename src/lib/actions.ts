@@ -1,4 +1,5 @@
 'use server';
+export const runtime = 'nodejs';
 
 import {
   extractProfilePreferences,
@@ -280,7 +281,6 @@ export async function seedDatabaseAction(): Promise<{
   courtsAdded: number;
 }> {
   try {
-    console.log('has SA?', !!process.env.FIREBASE_SERVICE_ACCOUNT, 'has key?', !!process.env.FIREBASE_PRIVATE_KEY);
     const usersRef = adminDb.collection('users');
     const courtsRef = adminDb.collection('courts');
 
