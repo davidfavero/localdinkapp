@@ -14,7 +14,6 @@ import { chat } from "@/ai/flows/chat";
 import type { ChatInput, ChatOutput, Player } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from "@/lib/data";
 import { adminDb } from "@/firebase/admin";
-import { Timestamp }from 'firebase-admin/firestore';
 import { sendSmsTool } from "@/ai/tools/sms";
 
 /* =========================
@@ -245,7 +244,7 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
         await gameSessionsRef.add({
           courtId: result.location, // Assuming location is court ID for now
           organizerId,
-          startTime: startDate, // Admin SDK accepts JS Date objects
+          startTime: startDate,
           isDoubles: gameType === 'doubles',
           durationMinutes: 120,
           status: 'scheduled',
@@ -281,25 +280,27 @@ export async function seedDatabaseAction(): Promise<{
   courtsAdded: number;
 }> {
   try {
-    console.log('Admin project:', adminDb.app.options.projectId);
-    const usersRef = adminDb.collection("users");
-    const courtsRef = adminDb.collection("courts");
+    console.log('has SA?', !!process.env.FIREBASE_SERVICE_ACCOUNT, 'has key?', !!process.env.FIREBASE_PRIVATE_KEY);
+    const usersRef = adminDb.collection('users');
+    const courtsRef = adminDb.collection('courts');
 
-    const [usersSnap, courtsSnap] = await Promise.all([usersRef.get(), courtsRef.get()]);
+    const [usersSnap, courtsSnap] = await Promise.all([
+      usersRef.get(),
+      courtsRef.get(),
+    ]);
 
+    let usersAdded = 0, courtsAdded = 0;
     const batch = adminDb.batch();
-    let usersAdded = 0;
-    let courtsAdded = 0;
 
     if (usersSnap.empty) {
       for (const p of mockPlayers) {
-        const docRef = usersRef.doc(p.id); // use your fixed ids
+        const docRef = usersRef.doc(p.id); // keep your fixed ids
         batch.set(docRef, {
           firstName: p.firstName,
           lastName: p.lastName,
           email: `${p.firstName?.toLowerCase()}.${p.lastName?.toLowerCase()}@example.com`,
-          avatarUrl: p.avatarUrl ?? "",
-          phone: p.phone ?? "",
+          avatarUrl: p.avatarUrl ?? '',
+          phone: p.phone ?? '',
         });
         usersAdded++;
       }
@@ -308,28 +309,23 @@ export async function seedDatabaseAction(): Promise<{
     if (courtsSnap.empty) {
       for (const c of mockCourts) {
         const docRef = courtsRef.doc(); // auto id
-        batch.set(docRef, { 
-          name: c.name, 
-          location: c.location, 
-          slug: slugify(c.name ?? c.location ?? docRef.id) 
+        batch.set(docRef, {
+          name: c.name,
+          location: c.location,
+          slug: slugify(c.name ?? c.location ?? docRef.id),
         });
         courtsAdded++;
       }
     }
 
     if (usersAdded === 0 && courtsAdded === 0) {
-      return { success: true, message: "Database already contains data.", usersAdded: 0, courtsAdded: 0 };
+      return { success: true, message: 'Database already contains data.', usersAdded: 0, courtsAdded: 0 };
     }
 
     await batch.commit();
-    return { success: true, message: `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.`, usersAdded, courtsAdded };
-  
-  } catch (e: any) {
-    console.error("Error seeding database:", e);
-    // Check for a specific credential error to give a better message
-    if (e.message.includes('Could not refresh access token') || e.code === 'auth/internal-error') {
-       return { success: false, message: 'Database seeding failed: The Admin SDK is not authenticated. Please check your service account environment variables.', usersAdded: 0, courtsAdded: 0 };
-    }
-    return { success: false, message: `Error seeding database: ${e.message}`, usersAdded: 0, courtsAdded: 0 };
+    return { success: true, message: `Added ${usersAdded} users & ${courtsAdded} courts.`, usersAdded, courtsAdded };
+  } catch (err: any) {
+    // Surface a clean message to your client component
+    return { success: false, message: `Error seeding database: ${err?.message ?? String(err)}`, usersAdded: 0, courtsAdded: 0 };
   }
 }
