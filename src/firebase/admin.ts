@@ -8,10 +8,10 @@ function fromEnv() {
     let parsed: any;
     try { parsed = JSON.parse(sa); }
     catch { throw new Error('FIREBASE_SERVICE_ACCOUNT is not valid JSON'); }
+
     for (const k of ['project_id', 'client_email', 'private_key']) {
       if (!parsed[k]) throw new Error(`FIREBASE_SERVICE_ACCOUNT missing ${k}`);
     }
-    // Some platforms escape newlines; normalize
     if (typeof parsed.private_key === 'string' && parsed.private_key.includes('\\n')) {
       parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
     }
@@ -39,8 +39,8 @@ function fromEnv() {
   return cert({ projectId, clientEmail, privateKey });
 }
 
-// Helpful startup log (server console)
-console.log('[admin] initializing with service-account credentials');
+// helpful server log
+console.log('[admin] initializing with service-account credential');
 
 const app = getApps()[0] ?? initializeApp({ credential: fromEnv() });
 export const adminDb = getFirestore(app);
