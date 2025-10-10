@@ -35,6 +35,10 @@ function buildCredential() {
   return cert({ projectId, clientEmail, privateKey });
 }
 
+// TEMP: prove this file is used
+// eslint-disable-next-line no-console
+console.log('[admin] initializing with explicit service-account credential');
+
 const app: App =
   getApps().length > 0
     ? getApps()[0]
