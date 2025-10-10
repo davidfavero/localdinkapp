@@ -13,21 +13,8 @@ import {
 import { chat } from "@/ai/flows/chat";
 import type { ChatInput, ChatOutput, Player } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from "@/lib/data";
-import { FirestorePermissionError } from "@/firebase/errors";
-
-import {
-  collection,
-  writeBatch,
-  getDocs,
-  doc as fsDoc,
-  getFirestore,
-  addDoc,
-  query,
-  where,
-  Timestamp,
-} from "firebase/firestore";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { firebaseConfig } from "@/firebase/config";
+import { adminDb } from "@/firebase/admin";
+import { Timestamp } from "firebase-admin/firestore";
 import { sendSmsTool } from "@/ai/tools/sms";
 
 /* =========================
@@ -191,17 +178,6 @@ function slugify(s: string) {
   return s.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
 }
 
-// Firebase app init
-function initializeServerApp() {
-  const apps = getApps();
-  const serverAppName = "firebase-server-action";
-  const serverApp = apps.find((app) => app.name === serverAppName);
-  if (serverApp) {
-    return getFirestore(serverApp);
-  }
-  const newApp = initializeApp(firebaseConfig, serverAppName);
-  return getFirestore(newApp);
-}
 
 /* =========================
    Public actions
@@ -230,10 +206,8 @@ export async function handleCancellationAction(
 }
 
 export async function chatAction(input: ChatInput, currentUser: Player | null): Promise<ChatOutput> {
-  const firestore = initializeServerApp();
-
   // Fetch contacts (players) once
-  const usersSnapshot = await getDocs(collection(firestore, "users"));
+  const usersSnapshot = await adminDb.collection("users").get();
   const allPlayers: Player[] = [];
   usersSnapshot.forEach((userDoc) => {
     const data = userDoc.data() as any;
@@ -291,9 +265,10 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
           .filter((p) => !!p.phone)
           .map((p) => sendSmsTool({ to: p.phone as string, body: smsBody }))
       );
-
-      const gameSessionsRef = collection(firestore, 'game-sessions');
-      const payload = {
+      
+      const gameSessionsRef = adminDb.collection("game-sessions");
+      try {
+        await gameSessionsRef.add({
           courtId: result.location, // Assuming location is court ID for now
           organizerId,
           startTime: Timestamp.fromDate(startDate),
@@ -301,31 +276,21 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
           durationMinutes: 120,
           status: 'scheduled',
           playerIds: participantIds,
-      };
-
-      // Use a non-blocking call with proper error handling
-      addDoc(gameSessionsRef, payload).catch((serverError) => {
-        // Create the rich, contextual error.
-        const permissionError = new FirestorePermissionError({
-          path: gameSessionsRef.path,
-          operation: 'create',
-          requestResourceData: payload,
         });
-        // On the server, we re-throw the error to be caught by Next.js
-        throw permissionError;
-      });
 
-      result.confirmationText = otherPlayerNames
-        ? `Excellent. I will notify ${otherPlayers.map(displayName).join(' and ')} and get this scheduled right away.`
-        : `Excellent. I have scheduled your game.`;
+        result.confirmationText = otherPlayerNames
+          ? `Excellent. I will notify ${otherPlayerNames} and get this scheduled right away.`
+          : `Excellent. I have scheduled your game.`;
+
+      } catch (e) {
+        console.error("Failed to save game session to Firestore", e);
+        result.confirmationText =
+          "I sent the invites, but saving the session failed. Please check your Games list.";
+      }
     }
 
     return result;
   } catch (error) {
-    if (error instanceof FirestorePermissionError) {
-      // Re-throw the specific error to be displayed by Next.js
-      throw error;
-    }
     console.error("Error in chatAction:", error);
     throw new Error("Failed to get response from AI.");
   }
@@ -341,19 +306,13 @@ export async function seedDatabaseAction(): Promise<{
   usersAdded: number;
   courtsAdded: number;
 }> {
-  const firestore = initializeServerApp();
-  if (!firestore) {
-    return { success: false, message: "Firestore is not initialized.", usersAdded: 0, courtsAdded: 0 };
-  }
-
-  const batch = writeBatch(firestore);
+  const batch = adminDb.batch();
   let usersAdded = 0;
   let courtsAdded = 0;
-  const operations: { path: string; data: any }[] = [];
 
   // Users
-  const usersCollectionRef = collection(firestore, "users");
-  const existingUsersSnap = await getDocs(usersCollectionRef);
+  const usersCollectionRef = adminDb.collection("users");
+  const existingUsersSnap = await usersCollectionRef.get();
 
   if (existingUsersSnap.empty) {
     mockPlayers.forEach((player) => {
@@ -366,28 +325,25 @@ export async function seedDatabaseAction(): Promise<{
         phone: player.phone || "",
         isCurrentUser: player.id === 'user-1'
       };
-      // Use the hardcoded ID from the mock data as the document ID
-      const userRef = fsDoc(usersCollectionRef, player.id);
+      const userRef = usersCollectionRef.doc(player.id);
       batch.set(userRef, playerData);
-      operations.push({ path: userRef.path, data: playerData });
       usersAdded++;
     });
   }
 
   // Courts
-  const courtsCollectionRef = collection(firestore, "courts");
-  const existingCourtsSnap = await getDocs(courtsCollectionRef);
+  const courtsCollectionRef = adminDb.collection("courts");
+  const existingCourtsSnap = await courtsCollectionRef.get();
 
   if (existingCourtsSnap.empty) {
     mockCourts.forEach((court) => {
-      const courtRef = fsDoc(courtsCollectionRef); // Auto-generate ID for courts
+      const courtRef = courtsCollectionRef.doc(); // Auto-generate ID for courts
       const courtData = {
         name: court.name,
         location: court.location,
         slug: slugify(court.name ?? court.location ?? courtRef.id),
       };
       batch.set(courtRef, courtData);
-      operations.push({ path: courtRef.path, data: courtData });
       courtsAdded++;
     });
   }
@@ -401,16 +357,12 @@ export async function seedDatabaseAction(): Promise<{
     };
   }
 
-  return batch.commit().then(() => {
-      const message = `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.`;
-      return { success: true, message, usersAdded, courtsAdded };
-  }).catch((serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: '(batch write)',
-        operation: 'write',
-        requestResourceData: operations,
-      });
-      // On the server, we re-throw the error to be caught by Next.js
-      throw permissionError;
-  });
+  try {
+    await batch.commit();
+    const message = `Successfully seeded database. Added ${usersAdded} users and ${courtsAdded} courts.`;
+    return { success: true, message, usersAdded, courtsAdded };
+  } catch (e: any) {
+    console.error("Error seeding database:", e);
+    return { success: false, message: `Error seeding database: ${e.message}`, usersAdded: 0, courtsAdded: 0 };
+  }
 }
