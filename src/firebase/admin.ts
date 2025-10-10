@@ -1,52 +1,46 @@
-// SERVER-ONLY. Never import this from a client component.
-import { getApps, initializeApp, cert, App } from "firebase-admin/app";
-import { getFirestore, Firestore } from "firebase-admin/firestore";
+// SERVER-ONLY. Never import this from a 'use client' file.
+import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
-function buildCredential() {
-  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (saJson) {
-    try {
-      return cert(JSON.parse(saJson));
-    } catch (e) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT is not valid JSON.');
+function fromEnv() {
+  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (sa) {
+    let parsed: any;
+    try { parsed = JSON.parse(sa); }
+    catch { throw new Error('FIREBASE_SERVICE_ACCOUNT is not valid JSON'); }
+    for (const k of ['project_id', 'client_email', 'private_key']) {
+      if (!parsed[k]) throw new Error(`FIREBASE_SERVICE_ACCOUNT missing ${k}`);
     }
+    // Some platforms escape newlines; normalize
+    if (typeof parsed.private_key === 'string' && parsed.private_key.includes('\\n')) {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+    }
+    return cert({
+      projectId: parsed.project_id,
+      clientEmail: parsed.client_email,
+      privateKey: parsed.private_key,
+    });
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId   = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  let   privateKey  = process.env.FIREBASE_PRIVATE_KEY;
 
   if (!projectId || !clientEmail || !privateKey) {
-    // ❌ Do NOT fall back to applicationDefault(); fail loudly instead
     throw new Error(
       'Missing service account envs. Provide FIREBASE_SERVICE_ACCOUNT ' +
-      'or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY.'
+      'or FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY.'
     );
   }
 
-  // Support both literal newlines and \n-escaped keys
   if (privateKey.includes('\\n')) privateKey = privateKey.replace(/\\n/g, '\n');
-
-  // Some platforms add surrounding quotes—strip once if present
-  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-    privateKey = privateKey.slice(1, -1);
-  }
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
 
   return cert({ projectId, clientEmail, privateKey });
 }
 
-// TEMP: prove this file is used
-// eslint-disable-next-line no-console
-console.log('[admin] initializing with explicit service-account credential');
+// Helpful startup log (server console)
+console.log('[admin] initializing with service-account credentials');
 
-const app: App =
-  getApps().length > 0
-    ? getApps()[0]
-    : initializeApp({
-        credential: buildCredential(),
-      });
-
-const db: Firestore = getFirestore(app);
-
-// Export only what you need. Avoid reaching into app.options.
-export const adminDb = db;
+const app = getApps()[0] ?? initializeApp({ credential: fromEnv() });
+export const adminDb = getFirestore(app);
