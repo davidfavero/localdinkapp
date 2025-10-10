@@ -14,7 +14,7 @@ import { chat } from "@/ai/flows/chat";
 import type { ChatInput, ChatOutput, Player } from "@/lib/types";
 import { players as mockPlayers, courts as mockCourts } from "@/lib/data";
 import { adminDb } from "@/firebase/admin";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp }from 'firebase-admin/firestore';
 import { sendSmsTool } from "@/ai/tools/sms";
 
 /* =========================
@@ -245,7 +245,7 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
         await gameSessionsRef.add({
           courtId: result.location, // Assuming location is court ID for now
           organizerId,
-          startTime: Timestamp.fromDate(startDate), // Admin SDK can use Timestamps
+          startTime: startDate, // Admin SDK accepts JS Date objects
           isDoubles: gameType === 'doubles',
           durationMinutes: 120,
           status: 'scheduled',
@@ -281,6 +281,7 @@ export async function seedDatabaseAction(): Promise<{
   courtsAdded: number;
 }> {
   try {
+    console.log('Admin project:', adminDb.app.options.projectId);
     const usersRef = adminDb.collection("users");
     const courtsRef = adminDb.collection("courts");
 
@@ -326,7 +327,7 @@ export async function seedDatabaseAction(): Promise<{
   } catch (e: any) {
     console.error("Error seeding database:", e);
     // Check for a specific credential error to give a better message
-    if (e.message.includes('Could not refresh access token')) {
+    if (e.message.includes('Could not refresh access token') || e.code === 'auth/internal-error') {
        return { success: false, message: 'Database seeding failed: The Admin SDK is not authenticated. Please check your service account environment variables.', usersAdded: 0, courtsAdded: 0 };
     }
     return { success: false, message: `Error seeding database: ${e.message}`, usersAdded: 0, courtsAdded: 0 };
