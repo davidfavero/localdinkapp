@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection } from 'firebase/firestore';
-import { useFirestore, errorEmitter } from '@/firebase';
+import { useFirestore, errorEmitter, useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -38,6 +38,7 @@ interface AddPlayerSheetProps {
 export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user } = useUser();
 
   const form = useForm<PlayerFormValues>({
     resolver: zodResolver(playerSchema),
@@ -52,11 +53,11 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
   const { isSubmitting } = form.formState;
 
   const onSubmit = (data: PlayerFormValues) => {
-    if (!firestore) {
+    if (!firestore || !user) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Could not connect to database. Please try again.',
+        description: 'You must be logged in to add a player.',
       });
       return;
     }
@@ -67,6 +68,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
     
     const payload = {
         ...data,
+        ownerId: user.uid, // Add ownerId to establish ownership
         avatarUrl: randomAvatar?.imageUrl || '',
     };
 

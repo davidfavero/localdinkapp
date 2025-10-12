@@ -19,19 +19,19 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user, profile } = useUser();
+  const { user } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    // Secure query: Only fetch groups where the current user is the owner.
-    // NOTE: This requires an `ownerId` field on the group documents.
     return query(collection(firestore, 'groups'), where('ownerId', '==', user.uid));
   }, [firestore, user]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
-  // This is now a derived list from the single logged-in user profile, not a collection query.
-  const players: Player[] = profile ? [profile] : [];
-  const isLoadingPlayers = !profile && user;
+  const playersQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.uid) return null;
+    return query(collection(firestore, 'users'), where('ownerId', '==', user.uid));
+  }, [firestore, user]);
+  const { data: players, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
 
 
   const getPlayerName = (player: Player) => {
@@ -109,7 +109,7 @@ export default function GroupsAndPlayersPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {isLoadingPlayers &&
-            Array.from({ length: 1 }).map((_, i) => (
+            Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="p-4">
                 <CardContent className="flex items-center gap-4 p-0">
                   <div className="h-12 w-12 rounded-full bg-muted animate-pulse" />
@@ -120,7 +120,7 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {players.map((player) => (
+          {players?.map((player) => (
             <Card key={player.id} className="p-4">
               <CardContent className="flex items-center gap-4 p-0">
                 <UserAvatar player={player} className="h-12 w-12" />
