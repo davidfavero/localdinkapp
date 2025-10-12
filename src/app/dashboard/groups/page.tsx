@@ -27,16 +27,16 @@ export default function GroupsAndPlayersPage() {
   }, [firestore]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
+  // This now correctly uses the `useUser` hook, which fetches only the current user's profile securely.
+  const players = profile ? [profile] : [];
+  const isLoadingPlayers = isUserLoading;
+
   const getPlayerName = (player: Player) => {
     if (player.firstName && player.lastName) {
       return `${player.firstName} ${player.lastName}`;
     }
     return player.name || 'Unnamed Player';
   }
-
-  // Correctly use only the current user's profile for the player list
-  const players = profile ? [profile] : [];
-  const isLoadingPlayers = isUserLoading;
 
   return (
     <div className="space-y-8">
@@ -117,7 +117,7 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {players?.map((player) => (
+          {players.map((player) => (
             <Card key={player.id} className="p-4">
               <CardContent className="flex items-center gap-4 p-0">
                 <UserAvatar player={player} className="h-12 w-12" />
