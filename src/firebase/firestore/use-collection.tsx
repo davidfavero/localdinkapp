@@ -37,7 +37,7 @@ export interface UseCollectionResult<T> {
  * @returns {UseCollectionResult<T>} Object with data, isLoading, error.
  */
 export function useCollection<T = any>(
-    memoizedQuery: (Query<DocumentData> & {__memo?: boolean}) | null | undefined,
+    memoizedQuery: Query<DocumentData> | null | undefined,
 ): UseCollectionResult<T> {
   type ResultItemType = WithId<T>;
   type StateDataType = ResultItemType[] | null;
@@ -51,6 +51,19 @@ export function useCollection<T = any>(
       setData(null);
       setIsLoading(false);
       setError(null);
+      return;
+    }
+
+    // DEV guard: block blind collection reads (no filters) to avoid Firestore "list" denials
+    const _q: any = memoizedQuery as any;
+    const hasFilters = Array.isArray(_q._query?.filters) && _q._query.filters.length > 0;
+    if (!hasFilters) {
+      const devError = new Error('useCollection requires a filtered Query (add where(...)). Unfiltered collection reads are not allowed.');
+      setError(devError);
+      setIsLoading(false);
+      // We don't emit this one globally as it's a developer error, not a permissions error.
+      // We want this to be visible during development.
+      console.error(devError);
       return;
     }
 
@@ -84,10 +97,6 @@ export function useCollection<T = any>(
 
     return () => unsubscribe();
   }, [memoizedQuery]); // Re-run if the target query changes.
-
-  if(memoizedQuery && !memoizedQuery.__memo) {
-    throw new Error('Query passed to useCollection was not properly memoized using useMemoFirebase');
-  }
 
   return { data, isLoading, error };
 }
