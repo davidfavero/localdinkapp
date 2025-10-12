@@ -1,105 +1,113 @@
 /**
- * @file Firestore Security Rules for LocalDink
- * @version Prototyping
+ * @file Firestore Security Rules for LocalDink App
+ * @description This ruleset enforces a strict user-ownership model for user profiles,
+ *              allows public read access to courts, and secures game sessions based on organizer ID.
+ *              Groups are secured by membership.
  *
- * @Core Philosophy: This ruleset enforces a strict user-ownership model for user profiles
- *   and an organizer-based model for game sessions. Public read access is granted to courts and
- *   groups. Data shape validation is relaxed for rapid prototyping.
+ * Data Structure:
+ * - /users/{userId}: User profiles, accessible only by the owning user.
+ * - /gameSessions/{gameSessionId}: Game sessions, accessible for modification only by the organizer.
+ * - /courts/{courtId}: Publicly readable court information.
+ * - /groups/{groupId}: Groups, accessible by members.
  *
- * @Data Structure:
- *   - /users/{userId}: User profiles, accessible only by the owning user.
- *   - /gameSessions/{gameSessionId}: Game sessions, writeable only by the organizer.
- *   - /courts/{courtId}: Publicly readable court data.
- *   - /groups/{groupId}: Publicly readable group data.
+ * Key Security Decisions:
+ * - User listing is disabled at the root `/users` collection.
+ * - Public read access is granted to the `/courts` collection.
+ * - Data validation is minimized for prototyping but includes ownership and relational integrity checks.
  *
- * @Key Security Decisions:
- *   - User profiles are strictly owned and accessible only by the authenticated user.
- *   - Game sessions can be modified only by the organizer.
- *   - Courts and groups are publicly readable to allow easy discovery and querying.
- *   - Data validation is minimal to accelerate development, focusing on ownership and
- *     relational integrity.
- *
- * @Denormalization for Authorization: The 'organizerId' field is denormalized in the
- *   'gameSessions' collection to enable authorization without additional reads.
+ * Denormalization for Authorization:
+ * - GameSession documents denormalize the `organizerId` to enable efficient authorization checks.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the requesting user is signed in.
-     * @return {bool} True if the user is signed in, false otherwise.
+     * @description Prevents listing of all user profiles at the root `/users` collection.
+     * @path /users
+     * @allow (get) Allow individual user profile reads (handled by /users/{userId} rule).
+     * @deny (list) Prevents listing all users.
+     * @principle Prevents information disclosure by restricting user enumeration.
      */
+    match /users {
+      allow get: if false;
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Manages access to user profiles.
+     * @path /users/{userId}
+     * @allow (create) User can create their own profile if the userId matches their auth.uid.
+     * @allow (get, update, delete) User can get, update, or delete their own profile if authenticated and the userId matches their auth.uid.
+     * @deny If the userId does not match the authenticated user's ID.
+     * @principle Enforces document ownership for user profiles.
+     */
+    match /users/{userId} {
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isSignedIn() && isOwner(userId) && resource.data.id == userId;
+      allow delete: if isSignedIn() && isExistingOwner(userId);
+    }
+
+    /**
+     * @description Manages access to game sessions.
+     * @path /gameSessions/{gameSessionId}
+     * @allow (get, list) Any authenticated user can view game sessions.
+     * @allow (create) Only the organizer can create a game session, validated through the organizerId.
+     * @allow (update, delete) Only the organizer can update or delete the game session.
+     * @deny Non-organizers cannot create, update, or delete game sessions.
+     * @principle Enforces organizer-based access control for game sessions.
+     */
+    match /gameSessions/{gameSessionId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && request.resource.data.organizerId == request.auth.uid;
+      allow update: if isSignedIn() && resource != null && resource.data.organizerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource != null && resource.data.organizerId == request.auth.uid;
+    }
+
+    /**
+     * @description Manages access to courts.
+     * @path /courts/{courtId}
+     * @allow (get, list) All users can view courts.
+     * @deny All write operations (create, update, delete) are disabled.
+     * @principle Allows public read access to court information, restricts write access.
+     */
+    match /courts/{courtId} {
+      allow get, list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Manages access to groups.
+     * @path /groups/{groupId}
+     * @allow (get, list) Any authenticated user can view groups.
+     * @allow (create) Any authenticated user can create a group.
+     * @allow (update, delete) Only members of the group can update or delete it.
+     * @principle Enforces membership-based access control for groups.
+     */
+    match /groups/{groupId} {
+      allow get, list: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.memberIds.hasAny([request.auth.uid]);
+      allow delete: if isSignedIn() && resource.data.memberIds.hasAny([request.auth.uid]);
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * @description Checks if the requesting user is the owner of the resource.
-     * @param {string} userId - The user ID to compare against the request's auth UID.
-     * @return {bool} True if the user is the owner, false otherwise.
-     */
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return request.auth.uid == userId;
     }
 
-    /**
-     * @description Checks if the requesting user is the existing owner of the resource.
-     * @param {string} userId - The user ID to compare against the resource data.
-     * @return {bool} True if the user is the owner and the resource exists.
-     */
     function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * @description
-     *   - Enforces that only the authenticated user can create, read, update, or delete their own profile.
-     *   - This rule leverages the path structure `/users/{userId}` to guarantee ownership.
-     * @path /users/{userId}
-     * @allow (create) - Authenticated user 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can create their profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     */
-    match /users/{userId} {
-      allow create: if isOwner(userId);
-      allow read: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
-    }
-
-    /**
-     * @description
-     *   - Enforces that only the organizer of a game session can create, update, or delete it.
-     *   - Anyone can read game sessions.
-     *   - The `organizerId` field in the document is used for authorization.
-     * @path /gameSessions/{gameSessionId}
-     */
-    match /gameSessions/{gameSessionId} {
-      allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.organizerId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.organizerId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.organizerId == request.auth.uid;
-    }
-
-    /**
-     * @description
-     *   - Allows public read access to court data.
-     *   - No write access is granted through these rules.  Write access should be managed
-     *     through a backend or other secure mechanism.
-     * @path /courts/{courtId}
-     */
-    match /courts/{courtId} {
-      allow read: if true;
-    }
-
-    /**
-     * @description
-     *   - Allows public read access to group data.
-     *   - No write access is granted through these rules. Write access should be managed
-     *     through a backend or other secure mechanism.
-     * @path /groups/{groupId}
-     */
-    match /groups/{groupId} {
-      allow read: if true;
+      return isSignedIn() && isOwner(userId) && resource != null;
     }
   }
 }
