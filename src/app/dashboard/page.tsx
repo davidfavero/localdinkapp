@@ -8,15 +8,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player } from '@/lib/types';
-import { useCollection, useUser, useFirestore } from '@/firebase';
-import { collection, query } from 'firebase/firestore';
-import { useMemoFirebase } from '@/firebase/provider';
-
-// Helper function to check if a message is a simple confirmation
-function isConfirmation(message: string) {
-  const lowerMessage = message.toLowerCase().trim();
-  return ['yes', 'yep', 'yeah', 'ok', 'okay', 'sounds good', 'confirm', 'do it', 'try again', 'i did, yes.'].includes(lowerMessage);
-}
+import { useUser } from '@/firebase';
 
 
 export default function RobinChatPage() {
@@ -31,9 +23,6 @@ export default function RobinChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { profile: currentUser } = useUser();
-  const firestore = useFirestore();
-  const playersQuery = useMemoFirebase(() => (firestore ? query(collection(firestore, 'users')) : null), [firestore]);
-  const { data: players } = useCollection<Player>(playersQuery);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

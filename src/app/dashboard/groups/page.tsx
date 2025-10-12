@@ -19,7 +19,7 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user, profile } = useUser();
+  const { user, profile, isUserLoading } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -34,8 +34,9 @@ export default function GroupsAndPlayersPage() {
     return player.name || 'Unnamed Player';
   }
 
+  // Correctly use only the current user's profile for the player list
   const players = profile ? [profile] : [];
-  const isLoadingPlayers = false;
+  const isLoadingPlayers = isUserLoading;
 
   return (
     <div className="space-y-8">
@@ -105,7 +106,7 @@ export default function GroupsAndPlayersPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {isLoadingPlayers &&
-            Array.from({ length: 8 }).map((_, i) => (
+            Array.from({ length: 1 }).map((_, i) => (
               <Card key={i} className="p-4">
                 <CardContent className="flex items-center gap-4 p-0">
                   <div className="h-12 w-12 rounded-full bg-muted animate-pulse" />

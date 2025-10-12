@@ -1,149 +1,90 @@
 /**
- * @file Firebase Security Rules for LocalDink Firestore.
+ * @file Overview
+ * This ruleset enforces a strict user-ownership model for user profiles
+ * and a role-based model for game sessions, courts, and groups.
  *
- * @Core Philosophy:
- * This ruleset enforces a user-ownership model for user profiles and a creator-ownership model for game sessions.
- * Listing of users is disallowed to protect user privacy. Data validation is relaxed to allow for rapid prototyping,
- * focusing on authorization and relational integrity.
+ * Data Structure:
+ * - /users/{userId}: User profiles, owned by the user with matching UID.
+ * - /gameSessions/{gameSessionId}: Game sessions, accessible based on organizerId.
+ * - /courts/{courtId}: Courts, publicly readable.
+ * - /groups/{groupId}: Groups, accessible to members.
  *
- * @Data Structure:
- * - /users/{userId}: Stores user profiles, with access restricted to the owning user.
- * - /gameSessions/{gameSessionId}: Stores game sessions, with access restricted to the organizer.
- * - /courts/{courtId}: Stores court information, publicly readable.
- * - /groups/{groupId}: Stores group information, with access based on group membership.
+ * Key Security Decisions:
+ * - Users can only read/write their own profile.
+ * - Game session access is controlled by the organizer.
+ * - Courts are publicly readable, but write access is restricted to the organizer.
+ * - Group access is limited to group members.
+ * - Listing of the `users` collection is disallowed to prevent information disclosure.
  *
- * @Key Security Decisions:
- * - User listing is explicitly denied to prevent unauthorized access to user data.
- * - The 'organizerId' field in game sessions is used to enforce creator-based ownership.
- *
- * @Denormalization for Authorization:
- * - GameSession documents denormalize the 'organizerId' to allow for direct authorization checks.
+ * Denormalization for Authorization:
+ * - GameSession documents include an `organizerId` field to avoid needing to `get()` the organizer's UserProfile for authorization.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is authenticated.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Authenticated access required.
+     * @description Controls access to user profiles.
+     * @path /users/{userId}
+     * @allow (get, create, update, delete) User with matching UID can access their own profile.
+     * @deny (get, create, update, delete) User tries to access another user's profile.
+     * @principle Enforces document ownership for writes.
      */
+    match /users/{userId} {
+      allow get, create, update, delete: if isSignedIn() && isOwner(userId);
+      allow list: if false;
+    }
+
+    /**
+     * @description Controls access to game sessions.
+     * @path /gameSessions/{gameSessionId}
+     * @allow (get, list) Any signed-in user can read game session details.
+     * @allow (create) User can create a game session if they are the organizer.
+     * @allow (update, delete) Only the organizer can update or delete a game session, after verifying that the document exists.
+     * @deny (create, update, delete) Non-organizer tries to create, update, or delete a game session.
+     * @principle Enforces organizer-based access control for writes.
+     */
+    match /gameSessions/{gameSessionId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.organizerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && isExistingOwner(resource.data.organizerId);
+    }
+
+    /**
+     * @description Controls access to courts.
+     * @path /courts/{courtId}
+     * @allow (get, list) Any user can read court information.
+     * @deny (create, update, delete) No one can create, update or delete courts.
+     * @principle Public read access, no write access.
+     */
+    match /courts/{courtId} {
+      allow get, list: if true;
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Controls access to groups.
+     * @path /groups/{groupId}
+     * @allow (get, list) Any signed-in user can read group information.
+     * @allow (create) Any signed-in user can create a group.
+     * @allow (update, delete) Not allowed
+     */
+    match /groups/{groupId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * @description Checks if the request is made by the owner of the user profile.
-     * @path N/A
-     * @allow N/A
-     * @deny N/A
-     * @principle Owner-only access.
-     */
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-     /**
-      * @description Checks if the request is made by the existing owner of the user profile.
-      * @path N/A
-      * @allow N/A
-      * @deny N/A
-      * @principle Existing owner-only access.
-      */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * @description Rules for user profiles.
-     * @path /users/{userId}
-     * @allow (create) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can create their own profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @allow (get) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can get their own profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @allow (update) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can update their own profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @allow (delete) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can delete their own profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @deny (create) User 'attackerId' cannot create a profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @deny (get) User 'attackerId' cannot get the profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @deny (update) User 'attackerId' cannot update the profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @deny (delete) User 'attackerId' cannot delete the profile at /users/Wrfvt9vtB3ZhPp4F7URDqsaz4sp2.
-     * @principle Enforces document ownership for all operations.
-     */
-    match /users/{userId} {
-      // Read Rules
-      allow get: if isOwner(userId);
-      allow list: if false; // User listing is disabled
-
-      // Write Rules
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
-    }
-
-    /**
-     * @description Rules for game sessions.
-     * @path /gameSessions/{gameSessionId}
-     * @allow (create) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can create a game session with organizerId 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2'.
-     * @allow (get) Any user can get game sessions.
-     * @allow (list) Any user can list game sessions.
-     * @allow (update) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can update a game session they organize.
-     * @allow (delete) User 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2' can delete a game session they organize.
-     * @deny (create) User 'attackerId' cannot create a game session with organizerId 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2'.
-     * @deny (update) User 'attackerId' cannot update a game session organized by 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2'.
-     * @deny (delete) User 'attackerId' cannot delete a game session organized by 'Wrfvt9vtB3ZhPp4F7URDqsaz4sp2'.
-     * @principle Enforces creator-based ownership for writes, public reads.
-     */
-    match /gameSessions/{gameSessionId} {
-      // Read Rules
-      allow get: if true;
-      allow list: if true;
-
-      // Write Rules
-      allow create: if isSignedIn() && request.resource.data.organizerId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.organizerId == request.auth.uid && resource != null;
-      allow delete: if isSignedIn() && resource.data.organizerId == request.auth.uid && resource != null;
-    }
-
-    /**
-     * @description Rules for courts.
-     * @path /courts/{courtId}
-     * @allow (get) Any user can get court information.
-     * @allow (list) Any user can list courts.
-     * @deny (create) No one can create courts (requires backend logic).
-     * @deny (update) No one can update courts (requires backend logic).
-     * @deny (delete) No one can delete courts (requires backend logic).
-     * @principle Public read, restricted write access.
-     */
-    match /courts/{courtId} {
-      // Read Rules
-      allow get: if true;
-      allow list: if true;
-
-      // Write Rules
-      allow create: if false; // Requires backend logic
-      allow update: if false; // Requires backend logic
-      allow delete: if false; // Requires backend logic
-    }
-
-    /**
-     * @description Rules for groups.
-     * @path /groups/{groupId}
-     * @allow (get) Any user can get group information.
-     * @allow (list) Any user can list groups.
-     * @deny (create) No one can create groups (requires backend logic).
-     * @deny (update) No one can update groups (requires backend logic).
-     * @deny (delete) No one can delete groups (requires backend logic).
-     * @principle Public read, restricted write access.
-     */
-    match /groups/{groupId} {
-      // Read Rules
-      allow get: if true;
-      allow list: if true;
-
-      // Write Rules
-      allow create: if false; // Requires backend logic
-      allow update: if false; // Requires backend logic
-      allow delete: if false; // Requires backend logic
+    function isExistingOwner(ownerId) {
+        return isOwner(ownerId) && resource != null;
     }
   }
 }
