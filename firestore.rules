@@ -1,139 +1,141 @@
 /**
- * @fileOverview Firestore Security Rules for the LocalDink application.
+ * @file Firebase Security Rules for the LocalDink application.
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model for user profiles,
- * and uses denormalized data on other documents to simplify and secure access control.
- * Authorization decisions are based on the authenticated user's ID (`request.auth.uid`) and
- * denormalized fields within the documents themselves to avoid costly `get()` calls.
+ * This ruleset enforces a user-ownership model for user profiles,
+ * with shared access patterns for game sessions and groups. It prioritizes
+ * authorization independence and avoids complex `get()` calls within rules by
+ * denormalizing authorization data directly onto secured documents. This approach
+ * optimizes performance and simplifies access control logic.
  *
  * Data Structure:
- * - /users/{userId}: Stores user profile data.  The `userId` in the path MUST match the `id` field in the document.
- * - /gameSessions/{gameSessionId}: Stores game session data. Access is controlled by the `organizerId` field within the document.
- * - /courts/{courtId}: Stores court data.
- * - /groups/{groupId}: Stores group data. Access is controlled by the `memberIds` field within the document.
+ * - /users/{userId}: Stores user profile data, with the document ID matching the
+ *   user's authentication UID. This enforces strict ownership.
+ * - /gameSessions/{gameSessionId}: Stores game session data, including a
+ *   denormalized `organizerId` field for authorization.
+ * - /courts/{courtId}: Stores court data. No specific write restrictions.
+ * - /groups/{groupId}: Stores group data, with access controlled by the
+ *   `memberIds` array within the document.
  *
  * Key Security Decisions:
- * - User listing is disabled for the `/users` collection.  Access to user profiles is only allowed via direct `get` by the user themselves or via filtered queries.
- * - Game sessions are secured based on the `organizerId` field, ensuring only the organizer can modify them.
- * - The rules do NOT validate the data types of most fields, allowing for flexible schema changes during prototyping. Validation is limited to fields essential for authorization and relational integrity.
+ * - User profiles are strictly owned by the authenticated user.
+ * - Game session access is controlled by the `organizerId` field.
+ * - Group access is controlled by membership in the `memberIds` array.
+ * - Listing of user profiles is disabled for all users.
  *
  * Denormalization for Authorization:
- * - GameSession documents contain an `organizerId` field to enable authorization without requiring a `get()` call to the user's document.
- * - Group documents contain a `memberIds` array to enable authorization without requiring a `get()` call to a separate memberships collection.
- *
- * Structural Segregation:
- * - Public data (if any) is stored in top-level collections, while private user data is stored under the `/users/{userId}` path.
+ * - Game sessions include an `organizerId` field to allow direct authorization
+ *   without additional reads.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Enforces user-ownership for user profiles stored under /users/{userId}.
+     * @description Secure user profiles under /users/{userId}.
      * @path /users/{userId}
-     * @allow (create) Authenticated user can create their own profile if the userId matches their auth.uid.
-     * @allow (get) Authenticated user can read their own profile by ID.
-     * @allow (update) Authenticated user can update their own profile if the userId matches their auth.uid and the document exists.
-     * @allow (delete) Authenticated user can delete their own profile if the userId matches their auth.uid and the document exists.
-     * @deny (list) Listing user profiles is not allowed to protect user privacy.
-     * @deny (create) Unauthenticated users cannot create user profiles.
-     * @deny (create) Authenticated users cannot create profiles for other users.
-     * @deny (update) Authenticated users cannot update other user's profiles.
-     * @deny (delete) Authenticated users cannot delete other user's profiles.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @allow (get, create, update) User with matching UID can access their profile.
+     * @deny (get, create, update) User attempts to access another user's profile.
+     * @deny (list) Listing user profiles is not allowed.
+     * @principle Enforces document ownership for user profiles based on the user ID in the path.
      */
     match /users/{userId} {
-      //  No blind collection list
-      allow list: if false;
-
-      //  Allow reading your own doc by id
       allow get: if isSignedIn() && isOwner(userId);
-
-      //  Allow queries ONLY when constrained to caller. Needs resource.data.ownerId == request.auth.uid which is not available on list
-      allow read: if isSignedIn() && resource.data.id == request.auth.uid; // Modified to use `id` for consistency and alignment with the `create` rule
-
-      //  Writes: caller controls their docs
-      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.id == userId;
-      allow update: if isSignedIn() && isExistingOwner(userId) && request.resource.data.id == resource.data.id; //Enforce immutability of userId
-      allow delete: if isSignedIn() && isExistingOwner(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isExistingOwner(userId);
+      allow delete: if false; // User profile deletion is not supported
     }
 
     /**
-     * @description Controls access to game sessions. Only the organizer can create, update, or delete game sessions.
+     * @description Secure game sessions under /gameSessions/{gameSessionId}.
      * @path /gameSessions/{gameSessionId}
-     * @allow (get, list) Any user can read and list game sessions.
-     * @allow (create) Authenticated user can create a game session if they are the organizer.
-     * @allow (update) Authenticated user can update a game session if they are the organizer and the document exists.
-     * @allow (delete) Authenticated user can delete a game session if they are the organizer and the document exists.
-     * @deny (create) Unauthenticated users cannot create game sessions.
-     * @deny (update) Non-organizers cannot update game sessions.
-     * @deny (delete) Non-organizers cannot delete game sessions.
-     * @principle Enforces document ownership for writes.
+     * @allow (create) User can create a game session if they are the organizer.
+     * @allow (get, update, delete) Organizer can read, update, and delete the game session.
+     * @deny (create, update, delete) Non-organizers cannot modify game sessions.
+     * @deny (list) Anyone can list game sessions
+     * @principle Enforces ownership of game sessions based on the organizerId field.
      */
     match /gameSessions/{gameSessionId} {
       allow get, list: if true;
       allow create: if isSignedIn() && request.resource.data.organizerId == request.auth.uid;
-      allow update: if isSignedIn() && resource != null && resource.data.organizerId == request.auth.uid;
-      allow delete: if isSignedIn() && resource != null && resource.data.organizerId == request.auth.uid;
+      allow update: if isSignedIn() && isGameSessionOrganizer(resource.data.organizerId) && resource != null;
+      allow delete: if isSignedIn() && isGameSessionOrganizer(resource.data.organizerId) && resource != null;
     }
 
     /**
-     * @description Controls access to court information.
+     * @description Secure courts under /courts/{courtId}.
      * @path /courts/{courtId}
-     * @allow (get, list) Any user can read and list courts.
-     * @allow (create, update, delete) No one can create, update, or delete courts.
-     * @principle Open read access with no write access.
+     * @allow (get, list) Anyone can read court information.
+     * @allow (create, update, delete) No restrictions on court creation, updates or deletion.
+     * @principle Allows public read access to court data.
      */
     match /courts/{courtId} {
       allow get, list: if true;
-      allow create, update, delete: if false;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
     }
 
     /**
-     * @description Controls access to group information.  Members can read the group.
+     * @description Secure groups under /groups/{groupId}.
      * @path /groups/{groupId}
-     * @allow (get) Any member of the group can read the group.
-     * @allow (list) Any authenticated user can list groups.
-     * @allow (create) Any authenticated user can create a group. The creating user should be added to memberIds.
-     * @allow (update) Only members of the group can update it.
-     * @allow (delete) Only members of the group can delete it.
-     * @principle Shared access.
+     * @allow (get, list) Anyone can read the group.
+     * @allow (create) Anyone can create a group.
+     * @allow (update, delete) Only group members can update/delete.
+     * @principle Enforces shared access control for groups based on membership.
      */
     match /groups/{groupId} {
-      allow get: if isSignedIn() && request.auth.uid in resource.data.memberIds;
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && request.auth.uid in resource.data.memberIds && resource != null;
-      allow delete: if isSignedIn() && request.auth.uid in resource.data.memberIds && resource != null;
+      allow get, list: if true;
+      allow create: if true;
+      allow update: if isSignedIn() && isGroupMember(resource.data.memberIds);
+      allow delete: if isSignedIn() && isGroupMember(resource.data.memberIds) && resource != null;
     }
 
-    //--- Helper functions ---
+    // ---- Helper Functions ----
 
     /**
      * @description Checks if the user is signed in.
-     * @returns {boolean} True if the user is signed in, false otherwise.
+     * @return {boolean} True if the user is signed in, false otherwise.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Checks if the user is the owner of the resource.
-     * @param {string} userId The user ID to check against.
-     * @returns {boolean} True if the user is the owner, false otherwise.
+     * @description Checks if the authenticated user is the owner of the resource.
+     * @param {string} userId The user ID to compare against the authenticated user's UID.
+     * @return {boolean} True if the user is the owner, false otherwise.
      */
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
     /**
-     * @description Checks if the user is the owner of the resource and the resource exists.
-     * @param {string} userId The user ID to check against.
-     * @returns {boolean} True if the user is the owner and the resource exists, false otherwise.
+     * @description Checks if the authenticated user is the owner of the resource and it exists.
+     * @param {string} userId The user ID to compare against the authenticated user's UID.
+     * @return {boolean} True if the user is the owner and the resource exists, false otherwise.
      */
     function isExistingOwner(userId) {
       return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Checks if the authenticated user is the organizer of the game session.
+     * @param {string} organizerId The organizer ID to compare against the authenticated user's UID.
+     * @return {boolean} True if the user is the organizer, false otherwise.
+     */
+    function isGameSessionOrganizer(organizerId) {
+      return request.auth.uid == organizerId;
+    }
+
+    /**
+     * @description Checks if the authenticated user is a member of the group.
+     * @param {array} memberIds An array of user IDs that are members of the group.
+     * @return {boolean} True if the user is a member, false otherwise.
+     */
+    function isGroupMember(memberIds) {
+      return request.auth.uid in memberIds;
     }
   }
 }

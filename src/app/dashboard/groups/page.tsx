@@ -31,7 +31,7 @@ export default function GroupsAndPlayersPage() {
     if (!firestore || !user?.uid) return null;
     return query(collection(firestore, 'users'), where('ownerId', '==', user.uid));
   }, [firestore, user]);
-  const { data: players, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
+  const { data: players, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
 
 
   const getPlayerName = (player: Player) => {
@@ -101,7 +101,7 @@ export default function GroupsAndPlayersPage() {
       {/* Players Section */}
       <section>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold font-headline">Players</h2>
+          <h2 className="text-2xl font-bold font-headline">My Players</h2>
           <Button onClick={() => setIsPlayerSheetOpen(true)} variant="outline">
             <Plus className="-ml-1 mr-2 h-4 w-4" />
             Add Player
@@ -134,16 +134,21 @@ export default function GroupsAndPlayersPage() {
             </Card>
           ))}
           {!isLoadingPlayers && players?.length === 0 && (
-            <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
-              <Users className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="text-xl font-medium text-muted-foreground mt-4">No Players Found</h3>
-              <p className="text-muted-foreground mt-2">Add a player to get started.</p>
-              <Button onClick={() => setIsPlayerSheetOpen(true)} className="mt-4">
-                  <Plus className="-ml-1 mr-2 h-4 w-4" />
-                  Add Player
-               </Button>
-            </div>
+             <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
+               <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+               <h3 className="text-xl font-medium text-muted-foreground mt-4">No Players Yet</h3>
+               <p className="text-muted-foreground mt-2">Add players you frequently play with to your personal roster.</p>
+                <Button onClick={() => setIsPlayerSheetOpen(true)} className="mt-4">
+                   <Plus className="-ml-1 mr-2 h-4 w-4" />
+                   Add Player
+                </Button>
+             </div>
           )}
+           {playersError && (
+             <div className="col-span-full text-center py-12 border rounded-lg bg-destructive/5 text-destructive">
+                 <p className="font-medium">Error loading players: {playersError.message}</p>
+             </div>
+            )}
         </div>
       </section>
     </div>
