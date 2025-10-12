@@ -19,13 +19,7 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user } = useUser();
-
-  const playersQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(collection(firestore, 'users'));
-  }, [firestore]);
-  const { data: players, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
+  const { user, profile } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -39,6 +33,9 @@ export default function GroupsAndPlayersPage() {
     }
     return player.name || 'Unnamed Player';
   }
+
+  const players = profile ? [profile] : [];
+  const isLoadingPlayers = false;
 
   return (
     <div className="space-y-8">
