@@ -2,9 +2,12 @@
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
-import { Firestore } from 'firebase/firestore';
+import { Firestore, doc } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
+import { useDoc } from './firestore/use-doc';
+import type { Player } from '@/lib/types';
+
 
 interface FirebaseProviderProps {
   children: ReactNode;
@@ -29,7 +32,7 @@ export interface FirebaseContextState {
   // User authentication state
   user: User | null;
   isUserLoading: boolean; // True during initial auth check
-  userError: Error | null; // Error from auth listener
+  userError: Error | null;
 }
 
 // Return type for useFirebase()
@@ -43,8 +46,9 @@ export interface FirebaseServicesAndUser {
 }
 
 // Return type for useUser() - specific to user auth state
-export interface UserHookResult { // Renamed from UserAuthHookResult for consistency if desired, or keep as UserAuthHookResult
+export interface UserHookResult { 
   user: User | null;
+  profile: Player | null; // The user's profile from Firestore
   isUserLoading: boolean;
   userError: Error | null;
 }
@@ -174,11 +178,25 @@ export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T | 
 }
 
 /**
- * Hook specifically for accessing the authenticated user's state.
- * This provides the User object, loading status, and any auth errors.
- * @returns {UserHookResult} Object with user, isUserLoading, userError.
+ * Hook specifically for accessing the authenticated user's state and Firestore profile.
+ * This provides the User object, the user's profile data, loading status, and any auth errors.
+ * @returns {UserHookResult} Object with user, profile, isUserLoading, userError.
  */
-export const useUser = (): UserHookResult => { // Renamed from useAuthUser
-  const { user, isUserLoading, userError } = useFirebase(); // Leverages the main hook
-  return { user, isUserLoading, userError };
+export const useUser = (): UserHookResult => {
+  const { user, isUserLoading: isAuthLoading, userError } = useFirebase();
+  const firestore = useFirestore();
+
+  const userDocRef = useMemoFirebase(
+    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+
+  const { data: profile, isLoading: isProfileLoading } = useDoc<Player>(userDocRef);
+
+  return {
+    user,
+    profile,
+    isUserLoading: isAuthLoading || isProfileLoading,
+    userError,
+  };
 };

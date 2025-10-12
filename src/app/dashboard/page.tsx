@@ -30,11 +30,10 @@ export default function RobinChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { user } = useUser();
+  const { profile: currentUser } = useUser();
   const firestore = useFirestore();
   const playersQuery = useMemoFirebase(() => (firestore ? query(collection(firestore, 'users')) : null), [firestore]);
   const { data: players } = useCollection<Player>(playersQuery);
-  const currentUser = players?.find((p) => p.id === user?.uid);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

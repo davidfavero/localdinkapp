@@ -103,7 +103,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
       
       const organizerSnap = await getDoc(doc(firestore, 'users', rawSession.organizerId));
-      const organizer = organizerSnap.exists() ? { id: organizerSnap.id, isCurrentUser: organizerSnap.id === currentUser.uid, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '' } as Player;
+      const organizer = organizerSnap.exists() ? { id: organizerSnap.id, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '' } as Player;
 
       const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
         const playerSnap = await getDoc(doc(firestore, 'users', id));
@@ -126,7 +126,10 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       setHydratedSession({
         id: rawSession.id,
         court,
-        organizer,
+        organizer: {
+            ...organizer,
+            isCurrentUser: organizer.id === currentUser.uid,
+        },
         date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
         time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         type: rawSession.isDoubles ? 'Doubles' : 'Singles',

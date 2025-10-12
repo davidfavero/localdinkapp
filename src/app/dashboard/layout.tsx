@@ -6,10 +6,7 @@ import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
 import { PickleballOutlineIcon } from '@/components/icons/pickleball-outline-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
-import { useCollection, useFirestore, useUser } from '@/firebase';
-import { collection, query } from 'firebase/firestore';
-import type { Player } from '@/lib/types';
-import { useMemoFirebase } from '@/firebase/provider';
+import { useUser } from '@/firebase';
 import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -43,13 +40,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
 
-  const { user, isUserLoading } = useUser();
-  const firestore = useFirestore();
-  const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
-  const { data: players, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
-  const currentUser = players?.find((p) => p.id === user?.uid);
-  const isLoading = isUserLoading || isLoadingPlayers;
-
+  const { profile: currentUser, isUserLoading: isLoading } = useUser();
 
   return (
     <div className="flex flex-col min-h-screen w-full">

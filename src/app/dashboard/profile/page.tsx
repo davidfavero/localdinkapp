@@ -43,18 +43,13 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 export default function ProfilePage() {
   const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
-  const { user } = useUser();
+  const { user, profile: currentUser } = useUser();
   const firestore = useFirestore();
   const storage = useStorage();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-
-
-  const playersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
-  const { data: players } = useCollection<Player>(playersQuery);
-  const currentUser = players?.find((p) => p.id === user?.uid);
 
   const courtsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'courts')) : null, [firestore]);
   const { data: courts, isLoading: isLoadingCourts } = useCollection<Court>(courtsQuery);
