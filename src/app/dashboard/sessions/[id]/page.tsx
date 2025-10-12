@@ -97,50 +97,60 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
     const hydrate = async () => {
       setIsHydrating(true);
-
-      const courtSnap = await getDoc(doc(firestore, 'courts', rawSession.courtId));
-      const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
       
-      const organizerSnap = await getDoc(doc(firestore, 'users', rawSession.organizerId));
-      const organizer = organizerSnap.exists() ? { id: organizerSnap.id, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '' } as Player;
-
-      const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
-        const playerSnap = await getDoc(doc(firestore, 'users', id));
-        const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, firstName: 'Unknown', lastName: 'Player', avatarUrl: '' } as Player;
+      try {
+        const courtSnap = await getDoc(doc(firestore, 'courts', rawSession.courtId));
+        const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
         
-        // In a real app, status would come from `/game-sessions/{id}/players/{userId}`
-        const playerStatusRef = doc(firestore, 'game-sessions', rawSession.id, 'players', id);
-        const playerStatusSnap = await getDoc(playerStatusRef);
-        const status = playerStatusSnap.exists() ? playerStatusSnap.data().status as RsvpStatus : 'CONFIRMED';
+        const organizerSnap = await getDoc(doc(firestore, 'users', rawSession.organizerId));
+        const organizer = organizerSnap.exists() ? { id: organizerSnap.id, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '' } as Player;
+
+        const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
+          const playerSnap = await getDoc(doc(firestore, 'users', id));
+          const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, firstName: 'Unknown', lastName: 'Player', avatarUrl: '' } as Player;
+          
+          // In a real app, status would come from `/game-sessions/{id}/players/{userId}`
+          const playerStatusRef = doc(firestore, 'game-sessions', rawSession.id, 'players', id);
+          const playerStatusSnap = await getDoc(playerStatusRef);
+          const status = playerStatusSnap.exists() ? playerStatusSnap.data().status as RsvpStatus : 'CONFIRMED';
+          
+          return { player: playerData, status };
+        });
+        const players = await Promise.all(playerPromises);
+
+        // TODO: Fetch alternates when that data model is finalized
+        const alternates: Player[] = [];
         
-        return { player: playerData, status };
-      });
-      const players = await Promise.all(playerPromises);
+        const sessionDate = rawSession.startTime?.toDate ? rawSession.startTime.toDate() : new Date();
 
-      // TODO: Fetch alternates when that data model is finalized
-      const alternates: Player[] = [];
-      
-      const sessionDate = rawSession.startTime?.toDate ? rawSession.startTime.toDate() : new Date();
-
-      setHydratedSession({
-        id: rawSession.id,
-        court,
-        organizer: {
-            ...organizer,
-            isCurrentUser: organizer.id === currentUser.uid,
-        },
-        date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
-        time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        type: rawSession.isDoubles ? 'Doubles' : 'Singles',
-        players: players,
-        alternates: alternates,
-      });
-      setIsHydrating(false);
+        setHydratedSession({
+          id: rawSession.id,
+          court,
+          organizer: {
+              ...organizer,
+              isCurrentUser: organizer.id === currentUser.uid,
+          },
+          date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+          time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          type: rawSession.isDoubles ? 'Doubles' : 'Singles',
+          players: players,
+          alternates: alternates,
+        });
+      } catch (e: any) {
+        console.error("Hydration error:", e);
+        toast({
+          variant: 'destructive',
+          title: 'Error Loading Session',
+          description: 'Could not load all session details. ' + (e?.message ?? ''),
+        })
+      } finally {
+        setIsHydrating(false);
+      }
     };
 
     hydrate();
 
-  }, [rawSession, firestore, currentUser, isLoadingSession]);
+  }, [rawSession, firestore, currentUser, isLoadingSession, toast]);
 
   const session = hydratedSession;
 
