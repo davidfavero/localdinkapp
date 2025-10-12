@@ -61,8 +61,6 @@ export function useCollection<T = any>(
       const devError = new Error('useCollection requires a filtered Query (add where(...)). Unfiltered collection reads are not allowed.');
       setError(devError);
       setIsLoading(false);
-      // We don't emit this one globally as it's a developer error, not a permissions error.
-      // We want this to be visible during development.
       console.error(devError);
       return;
     }
@@ -79,8 +77,11 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
-        const path = "unknown/path"; // We can't easily get the path from a general query.
-        
+        let path = "unknown/path";
+        try {
+            path = (memoizedQuery as any)._query.path.canonicalString();
+        } catch {}
+
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path, // The error from Firestore will contain the actual path.

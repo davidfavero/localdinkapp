@@ -1,8 +1,8 @@
 'use client';
 
 import { useParams, notFound } from 'next/navigation';
-import { useDoc, useFirestore, useUser, errorEmitter } from '@/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useDoc, useFirestore, useUser, errorEmitter, useCollection } from '@/firebase';
+import { doc, getDoc, updateDoc, collection, query, where } from 'firebase/firestore';
 import type { GameSession as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
 import { handleCancellationAction } from '@/lib/actions';
@@ -85,7 +85,6 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     [firestore, params.id]
   );
   const { data: rawSession, isLoading: isLoadingSession } = useDoc<RawGameSession>(sessionRef);
-
   const [hydratedSession, setHydratedSession] = useState<GameSession | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
 
