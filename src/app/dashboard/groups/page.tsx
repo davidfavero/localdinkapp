@@ -19,7 +19,7 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, profile: currentUser } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
@@ -40,6 +40,21 @@ export default function GroupsAndPlayersPage() {
     }
     return player.name || 'Unnamed Player';
   }
+
+  // Combine the current user with the fetched players, ensuring no duplicates.
+  const allOwnedPlayers = useMemoFirebase(() => {
+    const playerMap = new Map<string, Player>();
+    if (currentUser) {
+      playerMap.set(currentUser.id, { ...currentUser, isCurrentUser: true });
+    }
+    players?.forEach(p => {
+      // Don't overwrite the main currentUser object if it exists
+      if (!playerMap.has(p.id)) {
+        playerMap.set(p.id, p);
+      }
+    });
+    return Array.from(playerMap.values());
+  }, [currentUser, players]);
 
   return (
     <div className="space-y-8">
@@ -120,7 +135,7 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {players?.map((player) => (
+          {allOwnedPlayers?.map((player) => (
             <Card key={player.id} className="p-4">
               <CardContent className="flex items-center gap-4 p-0">
                 <UserAvatar player={player} className="h-12 w-12" />
@@ -133,7 +148,7 @@ export default function GroupsAndPlayersPage() {
               </CardContent>
             </Card>
           ))}
-          {!isLoadingPlayers && players?.length === 0 && (
+          {!isLoadingPlayers && allOwnedPlayers?.length === 0 && (
              <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
                <Users className="mx-auto h-12 w-12 text-muted-foreground" />
                <h3 className="text-xl font-medium text-muted-foreground mt-4">No Players Yet</h3>
