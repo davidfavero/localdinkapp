@@ -19,7 +19,7 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user, profile, isUserLoading } = useUser();
+  const { user } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -27,9 +27,11 @@ export default function GroupsAndPlayersPage() {
   }, [firestore]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
-  // This now correctly uses the `useUser` hook, which fetches only the current user's profile securely.
-  const players = profile ? [profile] : [];
-  const isLoadingPlayers = isUserLoading;
+  const playersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'users'));
+  }, [firestore]);
+  const { data: players, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
 
   const getPlayerName = (player: Player) => {
     if (player.firstName && player.lastName) {
@@ -106,7 +108,7 @@ export default function GroupsAndPlayersPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {isLoadingPlayers &&
-            Array.from({ length: 1 }).map((_, i) => (
+            Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="p-4">
                 <CardContent className="flex items-center gap-4 p-0">
                   <div className="h-12 w-12 rounded-full bg-muted animate-pulse" />
@@ -117,7 +119,7 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {players.map((player) => (
+          {players?.map((player) => (
             <Card key={player.id} className="p-4">
               <CardContent className="flex items-center gap-4 p-0">
                 <UserAvatar player={player} className="h-12 w-12" />
@@ -146,5 +148,3 @@ export default function GroupsAndPlayersPage() {
     </div>
   );
 }
-
-    
