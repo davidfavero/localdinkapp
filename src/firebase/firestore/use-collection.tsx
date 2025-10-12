@@ -6,7 +6,6 @@ import {
   onSnapshot,
   DocumentData,
   FirestoreError,
-  QuerySnapshot,
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -70,7 +69,7 @@ export function useCollection<T = any>(
 
     const unsubscribe = onSnapshot(
       memoizedQuery,
-      (snapshot: QuerySnapshot<DocumentData>) => {
+      (snapshot) => {
         const results: ResultItemType[] = snapshot.docs.map(doc => ({ ...(doc.data() as T), id: doc.id }));
         setData(results);
         setError(null);

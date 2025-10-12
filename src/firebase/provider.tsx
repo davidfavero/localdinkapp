@@ -204,12 +204,12 @@ export const useUser = (): UserHookResult => {
     [firestore, user]
   );
 
-  const { data: profile, isLoading: isProfileLoading } = useDoc<Player>(userDocRef);
+  const { data: profile, isLoading: isProfileLoading, error: profileError } = useDoc<Player>(userDocRef);
 
   return {
     user,
     profile,
     isUserLoading: isAuthLoading || isProfileLoading,
-    userError,
+    userError: userError || profileError,
   };
 };
