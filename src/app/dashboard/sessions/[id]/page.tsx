@@ -1,10 +1,9 @@
 'use client';
 
 import { useParams, notFound } from 'next/navigation';
-import { useDoc, useFirestore, useUser, errorEmitter, useCollection } from '@/firebase';
+import { useDoc, useFirestore, useUser, errorEmitter, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, getDoc, updateDoc, collection, query, where } from 'firebase/firestore';
 import type { GameSession as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
-import { useMemoFirebase } from '@/firebase/provider';
 import { handleCancellationAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';

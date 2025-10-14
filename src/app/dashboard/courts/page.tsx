@@ -10,10 +10,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useCollection, useFirestore } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query } from 'firebase/firestore';
 import type { Court } from '@/lib/types';
-import { useMemoFirebase } from '@/firebase/provider';
 import { AddCourtSheet } from '@/components/add-court-sheet';
 
 export default function CourtsPage() {

@@ -4,6 +4,7 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore'
+import { useMemo, type DependencyList } from 'react';
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -39,6 +40,19 @@ export function getSdks(firebaseApp: FirebaseApp) {
     firestore: getFirestore(firebaseApp)
   };
 }
+
+
+type MemoFirebase <T> = T & {__memo?: boolean};
+
+export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T | (MemoFirebase<T>) {
+  const memoized = useMemo(factory, deps);
+  
+  if(typeof memoized !== 'object' || memoized === null) return memoized;
+  (memoized as MemoFirebase<T>).__memo = true;
+  
+  return memoized;
+}
+
 
 export * from './provider';
 export * from './client-provider';
