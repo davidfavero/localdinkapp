@@ -8,7 +8,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player } from '@/lib/types';
-import { useUser } from '@/firebase';
+import { useUser } from '@/firebase/provider';
 
 
 export default function RobinChatPage() {

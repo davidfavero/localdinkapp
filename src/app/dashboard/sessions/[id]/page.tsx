@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, notFound } from 'next/navigation';
-import { useDoc, useFirestore, useUser, errorEmitter, useCollection, useMemoFirebase } from '@/firebase';
+import { useDoc, useFirestore, useUser, errorEmitter, useCollection, useMemoFirebase } from '@/firebase/provider';
 import { doc, getDoc, updateDoc, collection, query, where } from 'firebase/firestore';
 import type { GameSession as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
 import { handleCancellationAction } from '@/lib/actions';

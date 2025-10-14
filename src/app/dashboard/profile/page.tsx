@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useFirestore, useUser, useStorage, errorEmitter, useMemoFirebase } from '@/firebase';
+import { useFirestore, useUser, errorEmitter, useMemoFirebase } from '@/firebase/provider';
+import { getStorage } from 'firebase/storage';
 import { extractPreferencesAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -25,6 +26,7 @@ import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { app } from '@/firebase/app';
 
 
 const profileSchema = z.object({
@@ -44,7 +46,7 @@ export default function ProfilePage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const { user, profile: currentUser } = useUser();
   const firestore = useFirestore();
-  const storage = useStorage();
+  const storage = getStorage(app);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);

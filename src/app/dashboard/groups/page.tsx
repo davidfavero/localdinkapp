@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { UserAvatar } from '@/components/user-avatar';
 import { Button } from '@/components/ui/button';
 import { Plus, Users } from 'lucide-react';
-import { useCollection, useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { useCollection, useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
 import type { Player, Group } from '@/lib/types';
 import { useState, useMemo } from 'react';
@@ -17,7 +17,7 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, profile } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
@@ -28,9 +28,12 @@ export default function GroupsAndPlayersPage() {
   // This query is now secure and fetches only players owned by the current user.
   const playersQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'users'), where('ownerId', '==', user.uid));
+    // We fetch all users for now, but in a real app you might want to fetch
+    // only users the current user has interacted with or "owns".
+    // For this app, we'll show all users but distinguish the current user.
+    return query(collection(firestore, 'users'));
   }, [firestore, user]);
-  const { data: ownedPlayers, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
+  const { data: allPlayers, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
 
   const getPlayerName = (player: Player) => {
     if (player.firstName && player.lastName) {
@@ -39,21 +42,18 @@ export default function GroupsAndPlayersPage() {
     return player.name || 'Unnamed Player';
   }
 
-  // Combine the current user's own doc with the players they own.
-  const allOwnedPlayers = useMemo(() => {
-    const playerMap = new Map<string, Player>();
-    if (user?.profile) {
-      playerMap.set(user.profile.id, { ...user.profile, isCurrentUser: true });
-    }
-    if (ownedPlayers) {
-      ownedPlayers.forEach(player => {
-        if (!playerMap.has(player.id)) {
-          playerMap.set(player.id, player);
-        }
-      });
-    }
-    return Array.from(playerMap.values());
-  }, [user, ownedPlayers]);
+  // Memoize the list of players to display
+  const displayPlayers = useMemo(() => {
+    if (!allPlayers) return [];
+    return allPlayers.map(p => ({
+      ...p,
+      isCurrentUser: p.id === user?.uid
+    })).sort((a, b) => {
+      if (a.isCurrentUser) return -1;
+      if (b.isCurrentUser) return 1;
+      return (a.firstName || '').localeCompare(b.firstName || '');
+    });
+  }, [allPlayers, user]);
 
   return (
     <div className="space-y-8">
@@ -115,7 +115,7 @@ export default function GroupsAndPlayersPage() {
       {/* Players Section */}
       <section>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold font-headline">My Players</h2>
+          <h2 className="text-2xl font-bold font-headline">All Players</h2>
           <Button onClick={() => setIsPlayerSheetOpen(true)} variant="outline">
             <Plus className="-ml-1 mr-2 h-4 w-4" />
             Add Player
@@ -134,20 +134,20 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {allOwnedPlayers?.map((player) => (
+          {displayPlayers?.map((player) => (
             <Card key={player.id} className="p-4">
               <CardContent className="flex items-center gap-4 p-0">
                 <UserAvatar player={player} className="h-12 w-12" />
                 <div>
                   <p className="font-semibold">{getPlayerName(player)}</p>
-                  {player.id === user?.uid && (
+                  {player.isCurrentUser && (
                     <p className="text-sm text-muted-foreground">This is you</p>
                   )}
                 </div>
               </CardContent>
             </Card>
           ))}
-          {!isLoadingPlayers && allOwnedPlayers?.length === 0 && (
+          {!isLoadingPlayers && displayPlayers?.length === 0 && (
              <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
                <Users className="mx-auto h-12 w-12 text-muted-foreground" />
                <h3 className="text-xl font-medium text-muted-foreground mt-4">No Players Yet</h3>

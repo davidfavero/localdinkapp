@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { NewGameSheet } from '@/components/new-game-sheet';
 import { GameSessionCard } from '@/components/game-session-card';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import type { GameSession, Player, Court } from '@/lib/types';
 
