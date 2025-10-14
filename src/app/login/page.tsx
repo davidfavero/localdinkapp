@@ -4,7 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { useAuth, useToast } from '@/firebase';
+import { useAuth } from '@/firebase';
+import { useToast } from '@/hooks/use-toast';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,10 @@ export default function LoginPage() {
   });
 
   const onLoginSubmit = async (data: LoginFormValues) => {
+    if (!auth) {
+        toast({ variant: 'destructive', title: 'Auth not ready', description: 'Please try again in a moment.' });
+        return;
+    }
     try {
       await signInWithEmailAndPassword(auth, data.email, data.password);
       toast({ title: 'Login Successful', description: "Welcome back!" });
@@ -57,6 +62,10 @@ export default function LoginPage() {
   };
   
   const onSignupSubmit = async (data: SignupFormValues) => {
+    if (!auth) {
+        toast({ variant: 'destructive', title: 'Auth not ready', description: 'Please try again in a moment.' });
+        return;
+    }
     try {
       await createUserWithEmailAndPassword(auth, data.email, data.password);
       // In a real app, you would also create a user document in Firestore here.
