@@ -8,6 +8,8 @@ import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
 import { useDoc } from './firestore/use-doc';
 import type { Player } from '@/lib/types';
+import { FirestorePermissionError } from './errors';
+import { errorEmitter } from './error-emitter';
 
 
 interface FirebaseProviderProps {
@@ -90,17 +92,35 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       async (firebaseUser) => { // Auth state determined
         if (firebaseUser) {
            const userDocRef = doc(firestore, 'users', firebaseUser.uid);
-           const userDoc = await getDoc(userDocRef);
-           if (!userDoc.exists()) {
-             // Create a new user document if it doesn't exist
-             const [firstName, ...lastNameParts] = (firebaseUser.displayName || 'New User').split(' ');
-             await setDoc(userDocRef, {
-               firstName: firstName || 'New',
-               lastName: lastNameParts.join(' ') || 'User',
-               email: firebaseUser.email,
-               phone: firebaseUser.phoneNumber,
-               avatarUrl: firebaseUser.photoURL,
-             }, { merge: true });
+           
+           try {
+            const userDoc = await getDoc(userDocRef);
+            if (!userDoc.exists()) {
+                const [firstName, ...lastNameParts] = (firebaseUser.displayName || 'New User').split(' ');
+                const payload = {
+                    firstName: firstName || 'New',
+                    lastName: lastNameParts.join(' ') || 'User',
+                    email: firebaseUser.email,
+                    phone: firebaseUser.phoneNumber,
+                    avatarUrl: firebaseUser.photoURL,
+                };
+                // Use non-blocking write with specific error handling
+                setDoc(userDocRef, payload, { merge: true })
+                    .catch((error) => {
+                        const permissionError = new FirestorePermissionError({
+                            path: userDocRef.path,
+                            operation: 'create',
+                            requestResourceData: payload,
+                        });
+                        errorEmitter.emit('permission-error', permissionError);
+                    });
+            }
+           } catch (error) {
+             const permissionError = new FirestorePermissionError({
+                path: userDocRef.path,
+                operation: 'get',
+             });
+             errorEmitter.emit('permission-error', permissionError);
            }
         }
 
