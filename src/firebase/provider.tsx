@@ -10,9 +10,7 @@ import type { Player } from '@/lib/types';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 import { FirestorePermissionError } from './errors';
 import { errorEmitter } from './error-emitter';
-import { isFirebaseConfigured } from './app';
 import { RobinIcon } from '@/components/icons/robin-icon';
-import { Button } from '@/components/ui/button';
 
 // This combines the Firebase User with their Firestore profile
 export type AppUser = User & {
@@ -21,6 +19,7 @@ export type AppUser = User & {
 
 type AuthContextValue = {
   user: AppUser | null;
+  profile: Player | null;
   isUserLoading: boolean;
   signInGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -73,15 +72,12 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth || !db) {
-        setLoading(false);
-        return;
-    }
+    // Because app.ts now throws, if we get here, auth and db will be initialized.
     const unsub = onAuthStateChanged(auth, async (u) => {
       setLoading(true);
       if (u) {
         await ensureUserDocument(u);
-        const userDocRef = doc(db, 'users', u.uid);
+        const userDocRef = doc(db!, 'users', u.uid);
         const unsubProfile = onSnapshot(userDocRef, (userDocSnap) => {
             if (userDocSnap.exists()) {
                 setProfile({ id: userDocSnap.id, ...userDocSnap.data() } as Player);
@@ -111,12 +107,13 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
     return {
       user: appUser,
+      profile: profile,
       isUserLoading: loading,
       signInGoogle: async () => { await signInWithGoogleOnly(); },
       signOut: async () => { auth && await firebaseSignOut(auth); },
     };
   }, [user, profile, loading]);
-
+  
   if (loading) {
     return (
         <div className="flex items-center justify-center min-h-screen">
@@ -140,13 +137,12 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 export function useUser() {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    // This can happen if Firebase isn't configured, so we return a default state
-    return { user: null, profile: null, isUserLoading: false, signOut: async () => {}, signInGoogle: async () => {} };
+    throw new Error('useUser must be used within a FirebaseProvider');
   }
-  return { ...ctx, profile: ctx.user?.profile ?? null };
+  return ctx;
 }
 
-// Keeping these for other parts of the app that might use them, but pointing to the new hook
+// Keeping these for other parts of the app that might use them
 export const useAuth = useUser;
 export const useFirestore = () => db;
 export const useFirebaseApp = () => auth?.app;

@@ -7,10 +7,8 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth, signInWithGoogleOnly } from '@/firebase/auth';
-import { isFirebaseConfigured } from '@/firebase/app';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,7 +16,6 @@ import { RobinIcon } from '@/components/icons/robin-icon';
 import { useEffect } from 'react';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/firebase/provider';
-import { AlertCircle } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -35,27 +32,12 @@ const signupSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 type SignupFormValues = z.infer<typeof signupSchema>;
 
-const FirebaseConfigWarning = () => (
-    <Alert variant="destructive" className="mb-6">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Firebase Not Configured</AlertTitle>
-        <AlertDescription>
-            Your application's Firebase client configuration is missing or incomplete. Please copy the configuration from your Firebase project settings into your `.env` file and restart the development server.
-        </AlertDescription>
-    </Alert>
-);
-
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const authHook = useAuth();
+  const { user, isUserLoading: loading } = useAuth();
   
-  // useAuth can be null if firebase isn't configured, so we handle that.
-  const user = authHook?.user;
-  const loading = authHook?.isUserLoading ?? !isFirebaseConfigured;
-
-
   useEffect(() => {
     if (!loading && user) {
         router.push('/dashboard');
@@ -93,14 +75,12 @@ export default function LoginPage() {
     if (!auth) return;
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-      const [firstName, ...lastNameParts] = data.name.split(' ');
       
       await updateProfile(userCredential.user, { 
         displayName: data.name,
       });
 
-      // We still need to create the user document in firestore
-      // This will be handled by the onAuthStateChanged listener in the provider
+      // The onAuthStateChanged listener in the provider will handle creating the user document.
       
       toast({ title: 'Signup Successful', description: 'Welcome to LocalDink!' });
       // The useEffect will handle the redirect.
@@ -137,10 +117,8 @@ export default function LoginPage() {
                 <p className="text-muted-foreground mt-2">Sign in or create an account to start scheduling.</p>
             </div>
             
-            {!isFirebaseConfigured && <FirebaseConfigWarning />}
-
              <div className="bg-card p-6 rounded-lg shadow-sm">
-                <Button variant="outline" className="w-full" onClick={onGoogleSignIn} disabled={loading || !isFirebaseConfigured}>
+                <Button variant="outline" className="w-full" onClick={onGoogleSignIn} disabled={loading}>
                     <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 381.5 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 21.2 172.4 56.2L376.8 128C340.6 96.7 298.4 80 248 80c-82.3 0-150.1 63.3-150.1 140.2-0.1 76.5 61.2 138.3 138.8 138.3 43.1 0 81.9-20.3 108.6-52.9 14-17.1 21.6-38.3 21.6-61.9H248v-85.3h236.1c2.3 12.7 3.9 25.9 3.9 40.2z"></path></svg>
                     {loading ? 'Loading...' : 'Sign in with Google'}
                 </Button>
@@ -151,8 +129,8 @@ export default function LoginPage() {
                 </div>
                 <Tabs defaultValue="login" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="login" disabled={!isFirebaseConfigured}>Log In</TabsTrigger>
-                        <TabsTrigger value="signup" disabled={!isFirebaseConfigured}>Sign Up</TabsTrigger>
+                        <TabsTrigger value="login">Log In</TabsTrigger>
+                        <TabsTrigger value="signup">Sign Up</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="login">
@@ -164,7 +142,7 @@ export default function LoginPage() {
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Email</FormLabel>
-                                            <FormControl><Input placeholder="you@example.com" {...field} disabled={!isFirebaseConfigured} /></FormControl>
+                                            <FormControl><Input placeholder="you@example.com" {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -175,12 +153,12 @@ export default function LoginPage() {
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Password</FormLabel>
-                                            <FormControl><Input type="password" placeholder="password" {...field} disabled={!isFirebaseConfigured} /></FormControl>
+                                            <FormControl><Input type="password" placeholder="password" {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
-                                <Button type="submit" className="w-full" disabled={loginForm.formState.isSubmitting || !isFirebaseConfigured}>
+                                <Button type="submit" className="w-full" disabled={loginForm.formState.isSubmitting}>
                                     {loginForm.formState.isSubmitting ? 'Logging In...' : 'Log In'}
                                 </Button>
                             </form>
@@ -196,7 +174,7 @@ export default function LoginPage() {
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Full Name</FormLabel>
-                                            <FormControl><Input placeholder="Alex Johnson" {...field} disabled={!isFirebaseConfigured} /></FormControl>
+                                            <FormControl><Input placeholder="Alex Johnson" {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -207,7 +185,7 @@ export default function LoginPage() {
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Email</FormLabel>
-                                            <FormControl><Input placeholder="you@example.com" {...field} disabled={!isFirebaseConfigured} /></FormControl>
+                                            <FormControl><Input placeholder="you@example.com" {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -218,12 +196,12 @@ export default function LoginPage() {
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Password</FormLabel>
-                                            <FormControl><Input type="password" {...field} disabled={!isFirebaseConfigured} /></FormControl>
+                                            <FormControl><Input type="password" {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
-                                <Button type="submit" className="w-full" disabled={signupForm.formState.isSubmitting || !isFirebaseConfigured}>
+                                <Button type="submit" className="w-full" disabled={signupForm.formState.isSubmitting}>
                                     {signupForm.formState.isSubmitting ? 'Creating Account...' : 'Sign Up'}
                                 </Button>
                             </form>
