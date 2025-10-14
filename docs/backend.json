@@ -12,36 +12,36 @@
         },
         "firstName": {
           "type": "string",
-          "description": "First name of the user."
+          "description": "User's first name."
         },
         "lastName": {
           "type": "string",
-          "description": "Last name of the user."
+          "description": "User's last name."
         },
         "email": {
           "type": "string",
-          "description": "Email address of the user.",
+          "description": "User's email address.",
           "format": "email"
         },
         "phone": {
           "type": "string",
-          "description": "Phone number of the user."
+          "description": "User's phone number for SMS notifications."
         },
         "defaultDoubles": {
           "type": "boolean",
-          "description": "Default preference for doubles games."
+          "description": "Preferred doubles game setting."
         },
         "homeCourtId": {
           "type": "string",
-          "description": "Reference to Court. Default home court of the user. (Relationship: UserProfile 1:N Court)"
+          "description": "Reference to Court. (Relationship: UserProfile 1:N Court, this is the default court)"
         },
         "availability": {
           "type": "string",
-          "description": "User's availability for scheduling games."
+          "description": "User's default availability for scheduling."
         },
-        "groupIds": {
+        "groupdIds": {
           "type": "array",
-          "description": "References to Groups. Groups the user belongs to. (Relationship: UserProfile N:N Group)",
+          "description": "References to Groups. (Relationship: UserProfile N:N Group)",
           "items": {
             "type": "string"
           }
@@ -66,45 +66,36 @@
         },
         "organizerId": {
           "type": "string",
-          "description": "Reference to UserProfile. Organizer of the game session. (Relationship: UserProfile 1:N GameSession)"
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N GameSession, the user who organized this session)"
         },
         "courtId": {
           "type": "string",
-          "description": "Reference to Court. Court where the game session is to be played. (Relationship: Court 1:N GameSession)"
+          "description": "Reference to Court. (Relationship: Court 1:N GameSession, the court where the session is held)"
         },
         "startTime": {
           "type": "string",
-          "description": "Scheduled start time of the game session.",
+          "description": "Start time of the game session.",
           "format": "date-time"
         },
-        "gameType": {
+        "endTime": {
           "type": "string",
-          "description": "Type of game (e.g., singles, doubles)."
+          "description": "End time of the game session.",
+          "format": "date-time"
         },
         "playerIds": {
           "type": "array",
-          "description": "References to UserProfiles. Players participating in the game session. (Relationship: UserProfile N:N GameSession)",
+          "description": "References to UserProfile. (Relationship: UserProfile N:N GameSession, the players who are invited to the game session)",
           "items": {
             "type": "string"
           }
         },
-        "inviteeIds": {
-          "type": "array",
-          "description": "References to UserProfiles. Players invited to the game session. (Relationship: UserProfile N:N GameSession)",
-          "items": {
-            "type": "string"
-          }
-        },
-        "alternateIds": {
-          "type": "array",
-          "description": "References to UserProfiles. Players on the alternate list for the game session. (Relationship: UserProfile N:N GameSession)",
-          "items": {
-            "type": "string"
-          }
-        },
-        "cancellationManagement": {
+        "status": {
           "type": "string",
-          "description": "Cancellation and re-notification details."
+          "description": "Status of the game session (e.g., scheduled, confirmed, cancelled)."
+        },
+        "isDoubles": {
+          "type": "boolean",
+          "description": "Indicates if the game is doubles or singles."
         }
       },
       "required": [
@@ -112,7 +103,8 @@
         "organizerId",
         "courtId",
         "startTime",
-        "gameType"
+        "endTime",
+        "status"
       ]
     },
     "Court": {
@@ -131,11 +123,15 @@
         },
         "location": {
           "type": "string",
-          "description": "Location of the court (e.g., address)."
+          "description": "Location of the court."
         },
-        "isHomeCourt": {
+        "surfaceType": {
+          "type": "string",
+          "description": "Type of the court surface (e.g., asphalt, clay)."
+        },
+        "isIndoor": {
           "type": "boolean",
-          "description": "Indicates if the court is a home court for a user."
+          "description": "Indicates if the court is indoors."
         }
       },
       "required": [
@@ -158,12 +154,20 @@
           "type": "string",
           "description": "Name of the group."
         },
+        "description": {
+          "type": "string",
+          "description": "Description of the group."
+        },
         "memberIds": {
           "type": "array",
-          "description": "References to UserProfiles. Members of the group. (Relationship: UserProfile N:N Group)",
+          "description": "References to UserProfile. (Relationship: UserProfile N:N Group, the members of this group)",
           "items": {
             "type": "string"
           }
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N Group, the user who owns/created this group)"
         }
       },
       "required": [
@@ -187,11 +191,11 @@
           "schema": {
             "$ref": "#/backend/entities/UserProfile"
           },
-          "description": "Stores user profile information. User ID from authentication used as document ID. Guarantees ownership. No denormalization required due to path-based ownership.",
+          "description": "Stores user profiles. Path-based ownership for private user data.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier for the user, corresponding to their Firebase Authentication UID."
+              "description": "The unique identifier for the user."
             }
           ]
         }
@@ -203,7 +207,7 @@
           "schema": {
             "$ref": "#/backend/entities/GameSession"
           },
-          "description": "Stores game session information. Includes denormalized 'organizerId' field for authorization independence.",
+          "description": "Stores game sessions. Includes denormalized 'playerIds' array for authorization independence.",
           "params": [
             {
               "name": "gameSessionId",
@@ -235,7 +239,7 @@
           "schema": {
             "$ref": "#/backend/entities/Group"
           },
-          "description": "Stores group information. Access control based on member list.",
+          "description": "Stores group information. Includes denormalized 'memberIds' array for authorization independence.",
           "params": [
             {
               "name": "groupId",
@@ -245,6 +249,6 @@
         }
       }
     ],
-    "reasoning": "The Firestore structure is designed to support the LocalDink application's core features, emphasizing authorization independence, clear access modeling, and data clarity. The design denormalizes authorization data to avoid using `get()` calls in security rules, simplifying rules and enabling atomic operations.  \n\n1.  **User Profiles:** User profiles are stored in a path-based structure under `/users/{userId}`. This pattern enforces strict ownership, making security rules straightforward.\n2.  **Game Sessions:** Game sessions are organized under `/gameSessions/{gameSessionId}`. Access is controlled via the denormalized `organizerId` field, which is duplicated in the document, enabling independent authorization without needing to fetch the organizer's information.  The `playerIds`, `inviteeIds`, and `alternateIds` are arrays, providing a record of relationships between users and game sessions.\n3.  **Courts:** Courts are stored in a top-level collection `/courts/{courtId}`.  This makes courts globally accessible, enabling easy querying for available courts.\n4.  **Groups:** Groups are stored in a top-level collection `/groups/{groupId}`. The `memberIds` field stores an array of user IDs for group membership, enabling efficient group management and querying.\n\n**Authorization Independence:**\n\n*   **User Profiles:** Stored under `/users/{userId}`, ensuring that access control is based solely on the authenticated user ID (`request.auth.uid`).\n*   **Game Sessions:** The `organizerId` field is denormalized to each game session document. This allows security rules to validate if the requesting user is the organizer without performing a `get()` operation.\n\n**QAPs (Rules are not Filters):**\n\n*   The structure enables secure `list` operations by avoiding the need to filter based on data in other documents. For example, listing game sessions requires no parent document lookups.\n\n**Invariants:**\n\n*   Ownership of UserProfiles is guaranteed by the path structure `/users/{userId}`.\n    "
+    "reasoning": "The Firestore structure is designed to ensure authorization independence, clarity, and scalability for the LocalDink application. User profiles are stored under `/users/{userId}` for private user data with straightforward path-based ownership. Game sessions are stored under `/gameSessions/{gameSessionId}` with denormalized 'playerIds' and 'organizerId' arrays within each document to facilitate simpler security rules without requiring `get()` calls. Courts and Groups are top-level collections to avoid unnecessary nesting. The `groups` collection contains a denormalized list of `memberIds` to simplify group membership checks in security rules. The structure supports required QAPs by segregating user data and using membership models where needed."
   }
 }
