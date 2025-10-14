@@ -2,7 +2,7 @@
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
-import { Firestore, doc } from 'firebase/firestore';
+import { Firestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { Storage } from 'firebase/storage';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
@@ -87,7 +87,23 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
 
     const unsubscribe = onAuthStateChanged(
       auth,
-      (firebaseUser) => { // Auth state determined
+      async (firebaseUser) => { // Auth state determined
+        if (firebaseUser) {
+           const userDocRef = doc(firestore, 'users', firebaseUser.uid);
+           const userDoc = await getDoc(userDocRef);
+           if (!userDoc.exists()) {
+             // Create a new user document if it doesn't exist
+             const [firstName, ...lastNameParts] = (firebaseUser.displayName || 'New User').split(' ');
+             await setDoc(userDocRef, {
+               firstName: firstName || 'New',
+               lastName: lastNameParts.join(' ') || 'User',
+               email: firebaseUser.email,
+               phone: firebaseUser.phoneNumber,
+               avatarUrl: firebaseUser.photoURL,
+             }, { merge: true });
+           }
+        }
+
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => { // Auth listener error
@@ -96,7 +112,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       }
     );
     return () => unsubscribe(); // Cleanup
-  }, [auth]); // Depends on the auth instance
+  }, [auth, firestore]); // Depends on the auth instance
 
   // Memoize the context value
   const contextValue = useMemo((): FirebaseContextState => {

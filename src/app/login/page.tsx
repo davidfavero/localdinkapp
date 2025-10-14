@@ -4,9 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -43,6 +44,7 @@ type CodeFormValues = z.infer<typeof codeSchema>;
 
 export default function LoginPage() {
   const auth = useAuth();
+  const firestore = useFirestore();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -113,13 +115,31 @@ export default function LoginPage() {
   };
   
   const onSignupSubmit = async (data: SignupFormValues) => {
-    if (!auth) {
+    if (!auth || !firestore) {
         toast({ variant: 'destructive', title: 'Auth not ready', description: 'Please try again in a moment.' });
         return;
     }
     try {
-      await createUserWithEmailAndPassword(auth, data.email, data.password);
-      // In a real app, you would also create a user document in Firestore here.
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+      
+      // Update display name
+      await updateProfile(user, { displayName: data.name });
+
+      // Create user document in Firestore
+      const [firstName, ...lastNameParts] = data.name.split(' ');
+      const lastName = lastNameParts.join(' ');
+      
+      const userDocRef = doc(firestore, 'users', user.uid);
+      await setDoc(userDocRef, {
+        firstName: firstName || 'New',
+        lastName: lastName || 'User',
+        email: user.email,
+        phone: user.phoneNumber,
+        avatarUrl: user.photoURL,
+      }, { merge: true });
+
+
       toast({ title: 'Signup Successful', description: 'Welcome to LocalDink!' });
       router.push('/dashboard');
     } catch (error: any) {
