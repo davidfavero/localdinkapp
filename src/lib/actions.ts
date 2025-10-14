@@ -25,28 +25,13 @@ function isConfirmation(message: string) {
   const m = message.toLowerCase().trim().replace(/[!.\s]+$/g, "");
   if (!m) return false;
 
-  // quick exact hits
   if (
     [
-      "y",
-      "yes",
-      "yeah",
-      "yep",
-      "ok",
-      "okay",
-      "confirm",
-      "confirmed",
-      "do it",
-      "sure",
-      "sounds good",
-      "go ahead",
-      "try again",
-      "i did, yes",
-      "i did",
+      "y","yes","yeah","yep","ok","okay","confirm","confirmed","do it","sure",
+      "sounds good","go ahead","try again","i did, yes","i did",
     ].includes(m)
   ) return true;
 
-  // looser patterns (prefix/suffix forms)
   if (/^(y|yes|yeah|yep|ok|okay)\b/.test(m)) return true;
   if (/(sounds\s+good|looks\s+good|please\s+do|go\s+ahead|try\s+again|confirmed)/.test(m)) return true;
 
@@ -57,12 +42,10 @@ function isConfirmation(message: string) {
 type ParsedTime = { hour: number; minute: number; ambiguous: boolean };
 function parseTimeFlexible(input: string): ParsedTime {
   let s = input.trim().toUpperCase().replace(/\s+/g, "");
-  // common forms: "7", "7PM", "7:30PM", "730PM", "7:30", "730"
   let ampm: "AM" | "PM" | null = null;
   if (s.endsWith("AM")) { ampm = "AM"; s = s.slice(0, -2); }
   else if (s.endsWith("PM")) { ampm = "PM"; s = s.slice(0, -2); }
 
-  // insert colon if "730" → "7:30"
   if (/^\d{3,4}$/.test(s)) {
     if (s.length === 3) s = s[0] + ":" + s.slice(1);
     else s = s.slice(0, s.length - 2) + ":" + s.slice(-2);
@@ -74,15 +57,11 @@ function parseTimeFlexible(input: string): ParsedTime {
     hour = Math.max(0, Math.min(12, parseInt(m[1], 10)));
     minute = m[2] ? Math.max(0, Math.min(59, parseInt(m[2], 10))) : 0;
   } else {
-    // fallback: 7pm typed as "7 P M" or other oddity—default 0:00 ambiguous
     return { hour: 0, minute: 0, ambiguous: true };
   }
 
   let ambiguous = false;
   if (ampm === null) {
-    // If missing AM/PM, make a pragmatic guess, but mark ambiguous so chat() can clarify.
-    // Typical rec play often evenings; bias 6–11 → PM, 5–11 → AM if stated morning contexts upstream.
-    // Here we choose: 6–11 → PM, otherwise AM, and flag as ambiguous.
     if (hour >= 6 && hour <= 11) ampm = "PM";
     else if (hour === 12) ampm = "PM";
     else ampm = "AM";
@@ -100,26 +79,23 @@ function resolveDateToYMD(dateStr: string): { y: number; m: number; d: number } 
   const now = new Date();
   const s = dateStr.trim().toLowerCase();
 
-  if (s === "today") {
-    return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
-  }
+  if (s === "today") return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
+
   if (s === "tomorrow") {
     const t = new Date(now);
     t.setDate(now.getDate() + 1);
     return { y: t.getFullYear(), m: t.getMonth() + 1, d: t.getDate() };
   }
-  // Simple "YYYY-MM-DD"
+
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  if (m) {
-    return { y: parseInt(m[1], 10), m: parseInt(m[2], 10), d: parseInt(m[3], 10) };
-  }
+  if (m) return { y: parseInt(m[1], 10), m: parseInt(m[2], 10), d: parseInt(m[3], 10) };
+
   return null;
 }
 
 // 3) Safe local date construction
 function toStartDateLocal(dateStr: string, timeStr: string): { date: Date; ambiguousTime: boolean } {
   const ymd = resolveDateToYMD(dateStr);
-  // If not recognizable, fall back to "today"
   const base = ymd ?? (() => {
     const now = new Date();
     return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
@@ -143,7 +119,6 @@ type GameType = "singles" | "doubles";
 function determineGameType(currentUser: Player | null, totalPlayersMentioned: number): GameType {
   const defaultType = (currentUser as any)?.defaultGameType as GameType | undefined;
   if (defaultType === "singles" || defaultType === "doubles") return defaultType;
-  // Fallback: if organizer mentions 4+ including self → doubles, else singles
   return totalPlayersMentioned >= 4 ? "doubles" : "singles";
 }
 
@@ -180,89 +155,99 @@ export async function handleCancellationAction(
 }
 
 export async function chatAction(input: ChatInput, currentUser: Player | null): Promise<ChatOutput> {
-  // Fetch contacts (players) once using the Admin SDK
+  // Load players with Admin SDK (bypasses security rules)
   const usersSnapshot = await adminDb.collection("users").get();
   const allPlayers: Player[] = [];
   usersSnapshot.forEach((userDoc) => {
     const data = userDoc.data() as any;
     allPlayers.push({
       id: userDoc.id,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      avatarUrl: data.avatarUrl,
-      phone: data.phone,
+      firstName: data.firstName ?? "",
+      lastName: data.lastName ?? "",
+      email: data.email ?? "",
+      avatarUrl: data.avatarUrl ?? "",
+      phone: data.phone ?? "",
       isCurrentUser: userDoc.id === currentUser?.id,
     } as Player);
   });
 
   try {
-    // Your chat flow should do primary NLU, disambiguation, etc.
+    // NLU + planning
     const result = await chat(allPlayers, input);
-
     const wasConfirmation = isConfirmation(input.message);
 
-    // If we have a full instruction set and the organizer confirmed, save + notify
-    if (
-      wasConfirmation &&
-      result.date &&
-      result.time &&
-      result.location &&
-      result.invitedPlayers &&
-      result.currentUser
-    ) {
-      const { date, time, location, invitedPlayers, currentUser } = result;
+    // Only proceed to create/notify if we truly have enough info
+    const hasAllInputs =
+      !!result?.date && !!result?.time && !!result?.location &&
+      Array.isArray(result?.invitedPlayers) && !!result?.currentUser;
 
-      // Build final Date safely; note if time was ambiguous
-      const { date: startDate } = toStartDateLocal(date, time);
+    let confirmationText: string | undefined;
 
-      // Prepare participant lists
-      const organizerId = currentUser.id;
+    if (wasConfirmation && hasAllInputs) {
+      const { date, time, location, invitedPlayers } = result;
+
+      // Build Date safely
+      const { date: startDate } = toStartDateLocal(date!, time!);
+
+      // Participants
+      const organizerId = result.currentUser!.id!;
       const participantIds = Array.from(
-        new Set(invitedPlayers.map((p) => p.id).filter((id): id is string => !!id))
+        new Set(invitedPlayers!.map((p) => p.id).filter((id): id is string => !!id))
       );
 
-      const otherPlayers = invitedPlayers.filter((p) => p.id !== organizerId);
+      const otherPlayers = invitedPlayers!.filter((p) => p.id !== organizerId);
       const otherPlayerNames = otherPlayers.map(displayName).join(" and ");
 
-      // Determine game type
-      const gameType = determineGameType(currentUser, (invitedPlayers?.length ?? 0));
+      // Game type heuristic
+      const gameType = determineGameType(result.currentUser!, invitedPlayers!.length ?? 0);
 
-      // Notify invitees (concurrent SMS sends to avoid N+1 latency)
+      // SMS body
       const smsBody =
         `Pickleball Game Invitation! You're invited to a ${gameType} game on ${date} at ${time} at ${location}. ` +
         `Reply YES or NO. Manage your profile at https://localdink.app/join`;
 
-      await Promise.all(
+      // Send all SMS without failing the whole action on one error
+      const smsResults = await Promise.allSettled(
         otherPlayers
           .filter((p) => !!p.phone)
-          .map((p) => sendSmsTool({ to: p.phone as string, body: smsBody }))
+          .map((p) => sendSmsTool({ to: String(p.phone), body: smsBody }))
       );
 
+      const failedSms = smsResults.filter(r => r.status === "rejected").length;
+      if (failedSms > 0) {
+        console.warn(`SMS send failures: ${failedSms}/${smsResults.length}`);
+      }
+
+      // Save the game session (Admin SDK)
       try {
         const gameSessionsRef = adminDb.collection('game-sessions');
         await gameSessionsRef.add({
-          courtId: result.location, // Assuming location is court ID for now
+          courtId: location,              // If you later map names->IDs, swap here
           organizerId,
-          startTime: startDate,
+          startTime: startDate,           // Firestore stores JS Date as Timestamp
           isDoubles: gameType === 'doubles',
           durationMinutes: 120,
           status: 'scheduled',
           playerIds: participantIds,
+          createdAt: new Date(),
         });
 
-        result.confirmationText = otherPlayerNames
-          ? `Excellent. I will notify ${otherPlayerNames} and get this scheduled right away.`
+        confirmationText = otherPlayerNames
+          ? `Excellent. I notified ${otherPlayerNames} and scheduled your game.`
           : `Excellent. I have scheduled your game.`;
 
       } catch (e) {
         console.error("Failed to save game session to Firestore with Admin SDK", e);
-        result.confirmationText =
+        confirmationText =
           "I sent the invites, but saving the session failed. Please check your Games list.";
       }
     }
 
-    return result;
+    // Do NOT mutate `result` if `ChatOutput` type doesn't include confirmationText
+    return (confirmationText
+      ? ({ ...result, confirmationText } as ChatOutput)
+      : result
+    );
   } catch (error) {
     console.error("Error in chatAction:", error);
     throw new Error("Failed to get response from AI.");
@@ -293,13 +278,15 @@ export async function seedDatabaseAction(): Promise<{
 
     if (usersSnap.empty) {
       for (const p of mockPlayers) {
+        if (!p?.id) continue; // guard
         const docRef = usersRef.doc(p.id); // keep your fixed ids
         batch.set(docRef, {
-          firstName: p.firstName,
-          lastName: p.lastName,
-          email: `${p.firstName?.toLowerCase()}.${p.lastName?.toLowerCase()}@example.com`,
+          firstName: p.firstName ?? '',
+          lastName: p.lastName ?? '',
+          email: p.email ?? `${(p.firstName ?? 'player').toLowerCase()}.${(p.lastName ?? 'user').toLowerCase()}@example.com`,
           avatarUrl: p.avatarUrl ?? '',
           phone: p.phone ?? '',
+          createdAt: new Date(),
         });
         usersAdded++;
       }
@@ -308,10 +295,13 @@ export async function seedDatabaseAction(): Promise<{
     if (courtsSnap.empty) {
       for (const c of mockCourts) {
         const docRef = courtsRef.doc(); // auto id
+        const name = c?.name ?? '';
+        const location = c?.location ?? '';
         batch.set(docRef, {
-          name: c.name,
-          location: c.location,
-          slug: slugify(c.name ?? c.location ?? docRef.id),
+          name,
+          location,
+          slug: slugify(name || location || docRef.id),
+          createdAt: new Date(),
         });
         courtsAdded++;
       }
@@ -324,7 +314,11 @@ export async function seedDatabaseAction(): Promise<{
     await batch.commit();
     return { success: true, message: `Added ${usersAdded} users & ${courtsAdded} courts.`, usersAdded, courtsAdded };
   } catch (err: any) {
-    // Surface a clean message to your client component
-    return { success: false, message: `Error seeding database: ${err?.message ?? String(err)}`, usersAdded: 0, courtsAdded: 0 };
+    return {
+      success: false,
+      message: `Error seeding database: ${err?.message ?? String(err)}`,
+      usersAdded: 0,
+      courtsAdded: 0
+    };
   }
 }
