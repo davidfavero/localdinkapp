@@ -1,156 +1,120 @@
 /**
- * @file Firestore Security Rules for LocalDink
- * @core_philosophy This ruleset enforces a strict user-ownership model for user profiles,
- * while leveraging denormalized data for efficient authorization of game sessions. It allows
- * public read access to courts, with write access restricted. Group access is managed via
- * membership lists.
- * @data_structure
- *   - /users/{userId}: User profiles, owned by the user with matching UID.
- *   - /gameSessions/{gameSessionId}: Game session data, with denormalized organizerId for authorization.
- *   - /courts/{courtId}: Publicly readable court data, write-protected.
- *   - /groups/{groupId}: Group data, with access controlled by a list of memberIds.
- * @key_security_decisions
- *   - User listing is disallowed for privacy.
- *   - Game session writes are restricted to the organizer.
- *   - Courts are publicly readable but not writable by regular users.
- *   - Groups are accessible to members.
- * @denormalization_for_authorization
- *   - GameSession documents include the organizerId field, allowing direct authorization checks
- *     without additional reads.
+ * @file Firestore Security Rules for LocalDink Application
+ * @core Philosophy: This ruleset enforces a strict user-ownership model for user profiles and a role-based model for other data entities.  It prioritizes security and data integrity.
+ * @data Structure:
+ *   - User profiles are stored under `/users/{userId}`, ensuring user-specific data isolation.
+ *   - Game sessions, courts, and groups are stored in top-level collections (`/gameSessions`, `/courts`, `/groups`).
+ * @key Security Decisions:
+ *   - User listing is disabled to prevent unauthorized access to user data.
+ *   - Data validation is limited to authorization-critical fields for rapid prototyping.
+ * @denormalization for Authorization: The `organizerId` is denormalized within the `gameSessions` collection to avoid costly `get()` calls.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile data.
+     * @description Checks if the user is signed in.
+     * @return {boolean} True if the user is signed in, false otherwise.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the authenticated user is the owner of the resource.
+     * @param {string} userId - The user ID to compare against the authenticated user's ID.
+     * @return {boolean} True if the user is the owner, false otherwise.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the authenticated user is the existing owner of the resource.
+     * @param {string} userId - The user ID to compare against the authenticated user's ID.
+     * @return {boolean} True if the user is the owner and the resource exists, false otherwise.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /******************** User Profiles ********************/
+
+    /**
+     * @description Controls access to user profile documents.
      * @path /users/{userId}
-     * @allow (create) User with UID 'user123' can create their own profile if the document ID matches their UID.
-     * @allow (get, update, delete) User with UID 'user123' can read, update, and delete their own profile.
-     * @deny (create, get, update, delete) User with UID 'user456' cannot access user profile 'user123'.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create) User with ID 'user123' can create their profile.
+     * @allow (get, update, delete) User with ID 'user123' can access/modify their profile.
+     * @deny (create) User with ID 'user456' cannot create a profile for 'user123'.
+     * @deny (update, delete) User with ID 'user456' cannot modify/delete profile of 'user123'.
+     * @principle Enforces document ownership for writes.
      */
     match /users/{userId} {
-      // Helper function to check if the user is signed in
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      // Helper function to check if the requesting user is the owner of the document
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      // Helper function to check if the user is the existing owner of the document
-      function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
-      }
-
-      // Allow a user to read their own profile.
-      allow get: if isSignedIn() && isOwner(userId);
-
-      // Allow a user to list their own "profile" - actually denied to protect privacy.
+      // Prevent listing all users
       allow list: if false;
 
-      // Allow a user to create their own profile, but only if the userId matches their auth.uid.
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == userId;
+      allow get: if isOwner(userId);
 
-      // Allow a user to update their own profile.
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+
       allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
 
-      // Allow a user to delete their own profile.
       allow delete: if isExistingOwner(userId);
     }
 
+    /******************** Game Sessions ********************/
+
     /**
-     * @description Controls access to game session data.
+     * @description Controls access to game session documents.
      * @path /gameSessions/{gameSessionId}
-     * @allow (create) User with UID 'user123' can create a game session if they are the organizer.
-     * @allow (get, list) Any authenticated user can read game session details.
-     * @allow (update, delete) Only the organizer (user123) can update or delete the game session.
-     * @deny (update, delete) User with UID 'user456' cannot update or delete game session created by 'user123'.
-     * @principle Enforces organizer-only write access, public read access.
+     * @allow (create) User 'user123' can create a game session with organizerId 'user123'.
+     * @allow (get, list) Any user can view any game session.
+     * @allow (update, delete) User 'user123' can modify/delete game session if they are the organizer.
+     * @deny (create) User 'user456' cannot create a game session with organizerId 'user123'.
+     * @deny (update, delete) User 'user456' cannot modify/delete game session organized by 'user123'.
+     * @principle Enforces organizer-based access for writes, public read for all.
      */
     match /gameSessions/{gameSessionId} {
-      // Helper function to check if the user is signed in
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      // Helper function to check if the requesting user is the organizer of the game session
-      function isOrganizer(organizerId) {
-        return request.auth.uid == organizerId;
-      }
-
-       // Helper function to check if the requesting user is the existing organizer of the game session
-      function isExistingOrganizer(organizerId) {
-        return isOrganizer(organizerId) && resource != null;
-      }
-
-      // Allow anyone to read game sessions.
       allow get, list: if true;
 
-      // Allow an organizer to create a game session.
-      allow create: if isSignedIn() && isOrganizer(request.resource.data.organizerId);
+      allow create: if isSignedIn() && request.resource.data.organizerId == request.auth.uid;
 
-      // Allow the organizer to update the game session.
-      allow update: if isExistingOrganizer(resource.data.organizerId);
+      allow update: if isSignedIn() && resource != null && resource.data.organizerId == request.auth.uid;
 
-      // Allow the organizer to delete the game session.
-      allow delete: if isExistingOrganizer(resource.data.organizerId);
+      allow delete: if isSignedIn() && resource != null && resource.data.organizerId == request.auth.uid;
     }
 
+    /******************** Courts ********************/
+
     /**
-     * @description Controls access to court data.
+     * @description Controls access to court documents.
      * @path /courts/{courtId}
-     * @allow (get, list) Any user can read court data.
-     * @deny (create, update, delete) No user can create, update, or delete court data.
-     * @principle Public read access, write-protected.
+     * @allow (get, list) Any user can view any court.
+     * @allow (create, update, delete) No one can create, update, or delete courts. // TODO: Add owner validation once the schema is updated with an ownership field.
+     * @principle Public read, owner-only writes (currently disabled until schema update).
      */
     match /courts/{courtId} {
-      // Allow anyone to read court data.
       allow get, list: if true;
 
-      // Nobody can create, update, or delete courts (for now).
-      allow create, update, delete: if false;
+      // CRITICAL: Cannot implement owner-only writes. The 'Court' entity is missing an 'ownerId' or 'authorId' field.
+      allow create, update, delete: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
     }
 
+    /******************** Groups ********************/
+
     /**
-     * @description Controls access to group data.
+     * @description Controls access to group documents based on membership.
      * @path /groups/{groupId}
-     * @allow (get, list) Any user can read group data.
-     * @allow (create) Any signed in user can create a group.
-     * @allow (update, delete) Only group members can update or delete the group.
-     * @deny (update, delete) Non-members cannot update or delete the group.
-     * @principle Group members have read/write access.
+     * @allow (get, list) Any user can view any group.
+     * @allow (create, update, delete) No one can create, update, or delete groups. // TODO: Add owner validation once the schema is updated with an ownership field.
+     * @principle Public read, owner-only writes (currently disabled until schema update).
      */
     match /groups/{groupId} {
-      // Helper function to check if the user is signed in
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      // Helper function to check if the user is a member of the group
-      function isMember(memberIds) {
-        return request.auth.uid in memberIds;
-      }
-
-      // Helper function to check if the user is an existing member of the group
-      function isExistingMember(memberIds) {
-        return isMember(memberIds) && resource != null;
-      }
-
-      // Allow anyone to read group data.
       allow get, list: if true;
 
-      // Allow a user to create a group.
-      allow create: if isSignedIn();
-
-      // Allow a group member to update the group.
-      allow update: if isExistingMember(resource.data.memberIds);
-
-      // Allow a group member to delete the group.
-      allow delete: if isExistingMember(resource.data.memberIds);
+      // CRITICAL: Cannot implement owner-only writes. The 'Group' entity is missing an 'ownerId' or 'authorId' field.
+      allow create, update, delete: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
     }
   }
 }
