@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth } from '@/firebase/auth'; // Direct import
+import { auth, signInWithGoogleOnly } from '@/firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { useEffect } from 'react';
 import { Separator } from '@/components/ui/separator';
-import { useAuth } from '@/firebase/provider'; // Direct import
+import { useAuth } from '@/firebase/provider';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -36,7 +36,7 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { signInGoogle, user, loading } = useAuth();
+  const { user, loading } = useAuth();
   
   useEffect(() => {
     if (!loading && user) {
@@ -87,7 +87,7 @@ export default function LoginPage() {
 
   const onGoogleSignIn = async () => {
     try {
-      await signInGoogle();
+      await signInWithGoogleOnly();
       // The useEffect hook will handle the redirect and user doc creation.
       toast({ title: 'Signed in with Google!', description: 'Welcome to LocalDink!' });
     } catch (error: any) {
