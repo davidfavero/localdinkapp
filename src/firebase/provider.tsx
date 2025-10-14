@@ -72,6 +72,13 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Temporary log to debug environment variables
+    console.log('FB cfg ->', {
+      apiKey: process.env.NEXT_PUBLIC_FB_API_KEY?.slice(0,8),
+      projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID,
+      appId: process.env.NEXT_PUBLIC_FB_APP_ID?.slice(0,8),
+    });
+
     // Because app.ts now throws, if we get here, auth and db will be initialized.
     const unsub = onAuthStateChanged(auth, async (u) => {
       setLoading(true);
