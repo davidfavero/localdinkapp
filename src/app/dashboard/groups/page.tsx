@@ -19,7 +19,7 @@ export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
   const firestore = useFirestore();
-  const { user, profile: currentUser } = useUser();
+  const { user } = useUser();
 
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
@@ -27,14 +27,12 @@ export default function GroupsAndPlayersPage() {
   }, [firestore, user]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
-  // This query was causing the permission error. We will now only show the current user.
+  // This query is now secure and fetches only players owned by the current user.
   const playersQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    // Securely query ONLY the current user's document.
-    return query(collection(firestore, 'users'), where('__name__', '==', user.uid));
+    return query(collection(firestore, 'users'), where('ownerId', '==', user.uid));
   }, [firestore, user]);
-  const { data: players, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
-
+  const { data: ownedPlayers, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
 
   const getPlayerName = (player: Player) => {
     if (player.firstName && player.lastName) {
@@ -43,17 +41,21 @@ export default function GroupsAndPlayersPage() {
     return player.name || 'Unnamed Player';
   }
 
-  // Combine the current user with the fetched players, ensuring no duplicates.
+  // Combine the current user's own doc with the players they own.
   const allOwnedPlayers = useMemo(() => {
     const playerMap = new Map<string, Player>();
-    // The `useUser` hook already provides the current user profile securely.
-    if (currentUser) {
-      playerMap.set(currentUser.id, { ...currentUser, isCurrentUser: true });
+    if (user?.profile) {
+      playerMap.set(user.profile.id, { ...user.profile, isCurrentUser: true });
     }
-    // We no longer fetch all players, only the current user.
-    // If you need a roster, it should be fetched based on group membership or ownership.
+    if (ownedPlayers) {
+      ownedPlayers.forEach(player => {
+        if (!playerMap.has(player.id)) {
+          playerMap.set(player.id, player);
+        }
+      });
+    }
     return Array.from(playerMap.values());
-  }, [currentUser]);
+  }, [user, ownedPlayers]);
 
   return (
     <div className="space-y-8">
@@ -122,7 +124,7 @@ export default function GroupsAndPlayersPage() {
           </Button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {isLoadingPlayers &&
+          {(isLoadingPlayers || !user) &&
             Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="p-4">
                 <CardContent className="flex items-center gap-4 p-0">
