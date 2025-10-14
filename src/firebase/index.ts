@@ -1,8 +1,3 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { firebaseConfig } from './config';
 import { useMemo, type DependencyList } from 'react';
 
 
@@ -18,16 +13,6 @@ export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T | 
   return memoized;
 }
 
-// Main initialization function
-export function initializeFirebase() {
-  const firebaseApp = initializeApp(firebaseConfig);
-  const auth = getAuth(firebaseApp);
-  const firestore = getFirestore(firebaseApp);
-  const storage = getStorage(firebaseApp);
-  
-  return { firebaseApp, auth, firestore, storage };
-}
-
 // Re-export providers and hooks for convenience, ensuring they don't create circular dependencies
 export * from './provider';
 export * from './client-provider';
@@ -40,4 +25,4 @@ export * from './error-emitter';
 // New exports for direct access to SDK instances
 export { auth } from './auth';
 export { db } from './db';
-export { app } from './app';
+

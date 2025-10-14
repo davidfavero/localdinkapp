@@ -1,4 +1,5 @@
 import { getFirestore } from 'firebase/firestore';
 import { app } from './app';
 
-export const db = getFirestore(app);
+// getFirestore() will throw if the app is not initialized.
+export const db = app ? getFirestore(app) : null;
