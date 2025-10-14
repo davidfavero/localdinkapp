@@ -27,9 +27,10 @@ export type Court = {
 export type Group = {
   id: string;
   name: string;
-  avatarUrl: string;
   description?: string;
+  avatarUrl: string;
   members: string[]; // Now an array of user IDs
+  ownerId: string;
 };
 
 export type RsvpStatus = 'CONFIRMED' | 'DECLINED' | 'PENDING';

@@ -4,10 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { useAuth, useFirestore } from '@/firebase';
+import { useAuth, useFirestore, errorEmitter } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, updateProfile, GoogleAuthProvider, signInWithPopup, type User } from 'firebase/auth';
+import { doc, setDoc, getDoc, Firestore } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { useState, useRef, useEffect } from 'react';
 import { Separator } from '@/components/ui/separator';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -42,6 +43,33 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 type PhoneFormValues = z.infer<typeof phoneSchema>;
 type CodeFormValues = z.infer<typeof codeSchema>;
 
+// Helper to create user document if it doesn't exist. This is the critical fix.
+const ensureUserDocument = async (firestore: Firestore, user: User) => {
+  const userDocRef = doc(firestore, 'users', user.uid);
+  const docSnap = await getDoc(userDocRef);
+
+  if (!docSnap.exists()) {
+    const [firstName, ...lastNameParts] = (user.displayName || 'New User').split(' ');
+    const lastName = lastNameParts.join(' ');
+    const payload = {
+        firstName: firstName || 'New',
+        lastName: lastName || 'User',
+        email: user.email,
+        phone: user.phoneNumber,
+        avatarUrl: user.photoURL,
+    };
+    
+    setDoc(userDocRef, payload, { merge: true }).catch((error) => {
+        const permissionError = new FirestorePermissionError({
+          path: userDocRef.path,
+          operation: 'create',
+          requestResourceData: payload,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+    });
+  }
+};
+
 
 export default function LoginPage() {
   const auth = useAuth();
@@ -53,24 +81,6 @@ export default function LoginPage() {
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
 
-  // Helper to create user document if it doesn't exist
-  const ensureUserDocument = async (user: import('firebase/auth').User) => {
-    if (!firestore) return;
-    const userDocRef = doc(firestore, 'users', user.uid);
-    const docSnap = await getDoc(userDocRef);
-
-    if (!docSnap.exists()) {
-        const [firstName, ...lastNameParts] = (user.displayName || 'New User').split(' ');
-        const lastName = lastNameParts.join(' ');
-        await setDoc(userDocRef, {
-            firstName: firstName || 'New',
-            lastName: lastName || 'User',
-            email: user.email,
-            phone: user.phoneNumber,
-            avatarUrl: user.photoURL,
-        }, { merge: true });
-    }
-  };
 
   useEffect(() => {
     if (auth && recaptchaContainerRef.current && !((window as any).recaptchaVerifier)) {
@@ -104,13 +114,13 @@ export default function LoginPage() {
 
 
   const onLoginSubmit = async (data: LoginFormValues) => {
-    if (!auth) {
+    if (!auth || !firestore) {
         toast({ variant: 'destructive', title: 'Auth not ready', description: 'Please try again in a moment.' });
         return;
     }
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      await ensureUserDocument(userCredential.user);
+      await ensureUserDocument(firestore, userCredential.user);
       toast({ title: 'Login Successful', description: "Welcome back!" });
       router.push('/dashboard');
     } catch (error: any) {
@@ -132,7 +142,7 @@ export default function LoginPage() {
       const user = userCredential.user;
       
       await updateProfile(user, { displayName: data.name });
-      await ensureUserDocument(user);
+      await ensureUserDocument(firestore, user);
 
       toast({ title: 'Signup Successful', description: 'Welcome to LocalDink!' });
       router.push('/dashboard');
@@ -146,14 +156,14 @@ export default function LoginPage() {
   };
 
   const onGoogleSignIn = async () => {
-    if (!auth) {
+    if (!auth || !firestore) {
       toast({ variant: 'destructive', title: 'Auth not ready' });
       return;
     }
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
-      await ensureUserDocument(result.user);
+      await ensureUserDocument(firestore, result.user);
       toast({ title: 'Signed in with Google!', description: 'Welcome to LocalDink!' });
       router.push('/dashboard');
     } catch (error: any) {
@@ -185,13 +195,13 @@ export default function LoginPage() {
   };
 
   const onCodeSubmit = async (data: CodeFormValues) => {
-    if (!confirmationResult) {
+    if (!confirmationResult || !firestore) {
         toast({ variant: 'destructive', title: 'No confirmation pending' });
         return;
     }
     try {
         const userCredential = await confirmationResult.confirm(data.code);
-        await ensureUserDocument(userCredential.user);
+        await ensureUserDocument(firestore, userCredential.user);
         toast({ title: 'Phone Verification Successful', description: "Welcome to LocalDink!" });
         router.push('/dashboard');
     } catch (error: any) {
