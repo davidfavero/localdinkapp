@@ -14,7 +14,7 @@ export default function LandingPage() {
           </h1>
         </div>
         <Button asChild variant="ghost">
-          <Link href="/dashboard">Enter App</Link>
+          <Link href="/login">Enter App</Link>
         </Button>
       </header>
 
@@ -33,7 +33,7 @@ export default function LandingPage() {
                 LocalDink uses AI to effortlessly schedule your pickleball matches, manage RSVPs, and find substitutes, so you can focus on playing.
               </p>
               <Button asChild size="lg" className="bg-gradient-to-r from-primary to-green-700 text-primary-foreground hover:opacity-90 transition-opacity shadow-lg">
-                <Link href="/dashboard">
+                <Link href="/login">
                   Schedule Your First Game <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>

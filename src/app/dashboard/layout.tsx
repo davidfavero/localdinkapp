@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
 import { PickleballOutlineIcon } from '@/components/icons/pickleball-outline-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
@@ -26,7 +27,6 @@ const getPageTitle = (pathname: string) => {
   if (pathname.startsWith('/dashboard/messages')) return 'Messages';
   if (pathname === '/dashboard') return 'Robin';
   
-  // Adjusted to handle multi-line labels
   const item = navItems.find(item => item.href === pathname);
 
   return item ? item.label.replace('\n', ' ') : 'Dashboard';
@@ -38,9 +38,29 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const pageTitle = getPageTitle(pathname);
 
-  const { profile: currentUser, isUserLoading: isLoading } = useUser();
+  const { user, profile: currentUser, isUserLoading: isLoading } = useUser();
+  
+  useEffect(() => {
+    // If auth is done loading and there's no user, redirect to login
+    if (!isLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isLoading, router]);
+
+  // Render a loading state or nothing while checking for auth
+  if (isLoading || !user) {
+    return (
+        <div className="flex items-center justify-center min-h-screen">
+            <div className="flex flex-col items-center gap-4">
+                <RobinIcon className="h-16 w-16 text-primary animate-pulse" />
+                <p className="text-muted-foreground">Loading LocalDink...</p>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen w-full">
