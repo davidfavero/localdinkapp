@@ -49,8 +49,13 @@ const FirebaseConfigWarning = () => (
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { user, loading } = useAuth();
+  const authHook = useAuth();
   
+  // useAuth can be null if firebase isn't configured, so we handle that.
+  const user = authHook?.user;
+  const loading = authHook?.isUserLoading ?? !isFirebaseConfigured;
+
+
   useEffect(() => {
     if (!loading && user) {
         router.push('/dashboard');
@@ -88,7 +93,15 @@ export default function LoginPage() {
     if (!auth) return;
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-      await updateProfile(userCredential.user, { displayName: data.name });
+      const [firstName, ...lastNameParts] = data.name.split(' ');
+      
+      await updateProfile(userCredential.user, { 
+        displayName: data.name,
+      });
+
+      // We still need to create the user document in firestore
+      // This will be handled by the onAuthStateChanged listener in the provider
+      
       toast({ title: 'Signup Successful', description: 'Welcome to LocalDink!' });
       // The useEffect will handle the redirect.
     } catch (error: any) {
