@@ -9,7 +9,7 @@ import { collection, query, where } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import type { Player, Group } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AddPlayerSheet } from '@/components/add-player-sheet';
 import { AddGroupSheet } from '@/components/add-group-sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -27,9 +27,11 @@ export default function GroupsAndPlayersPage() {
   }, [firestore, user]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
+  // This query was causing the permission error. We will now only show the current user.
   const playersQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'users'), where('ownerId', '==', user.uid));
+    // Securely query ONLY the current user's document.
+    return query(collection(firestore, 'users'), where('__name__', '==', user.uid));
   }, [firestore, user]);
   const { data: players, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
 
@@ -42,19 +44,16 @@ export default function GroupsAndPlayersPage() {
   }
 
   // Combine the current user with the fetched players, ensuring no duplicates.
-  const allOwnedPlayers = useMemoFirebase(() => {
+  const allOwnedPlayers = useMemo(() => {
     const playerMap = new Map<string, Player>();
+    // The `useUser` hook already provides the current user profile securely.
     if (currentUser) {
       playerMap.set(currentUser.id, { ...currentUser, isCurrentUser: true });
     }
-    players?.forEach(p => {
-      // Don't overwrite the main currentUser object if it exists
-      if (!playerMap.has(p.id)) {
-        playerMap.set(p.id, p);
-      }
-    });
+    // We no longer fetch all players, only the current user.
+    // If you need a roster, it should be fetched based on group membership or ownership.
     return Array.from(playerMap.values());
-  }, [currentUser, players]);
+  }, [currentUser]);
 
   return (
     <div className="space-y-8">
