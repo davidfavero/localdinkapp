@@ -232,7 +232,7 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
           createdAt: new Date(),
         });
 
-        confirmationText = otherPlayerNames
+        confirmationText = otherPlayers.length > 0
           ? `Excellent. I notified ${otherPlayerNames} and scheduled your game.`
           : `Excellent. I have scheduled your game.`;
 
