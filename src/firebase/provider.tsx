@@ -1,155 +1,72 @@
+
+// src/firebase/provider.tsx
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
-import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { auth, signInWithGoogleOnly } from '@/firebase/auth';
-import { db } from '@/firebase/db';
-import type { Player } from '@/lib/types';
-import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
-import { FirestorePermissionError } from './errors';
-import { errorEmitter } from './error-emitter';
+import { onAuth, signInWithGoogleOnly } from '@/firebase/auth';
+import { app } from './app';
 import { RobinIcon } from '@/components/icons/robin-icon';
 
-// This combines the Firebase User with their Firestore profile
-export type AppUser = User & {
-  profile: Player | null;
-};
-
-type AuthContextValue = {
-  user: AppUser | null;
-  profile: Player | null;
-  isUserLoading: boolean;
-  signInGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
-};
-
-const AuthContext = createContext<AuthContextValue | null>(null);
-
-// Helper to create user document if it doesn't exist.
-const ensureUserDocument = async (user: User) => {
-  if (!user || !db) return;
-  const userDocRef = doc(db, 'users', user.uid);
-  try {
-    const docSnap = await getDoc(userDocRef);
-
-    if (!docSnap.exists()) {
-      const [firstName, ...lastNameParts] = (user.displayName || 'New User').split(' ');
-      const lastName = lastNameParts.join(' ');
-      const payload: Omit<Player, 'id'> = {
-          firstName: firstName || 'New',
-          lastName: lastName || 'User',
-          email: user.email ?? '',
-          phone: user.phoneNumber ?? '',
-          avatarUrl: user.photoURL ?? '',
-      };
-      
-      setDoc(userDocRef, payload, { merge: true }).catch(err => {
-        const permissionError = new FirestorePermissionError({
-          path: userDocRef.path,
-          operation: 'create',
-          requestResourceData: payload,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-      });
-
-    }
-  } catch (error) {
-    console.error("Error ensuring user document:", error);
-    // This is a good place to emit a specific error if needed
-    const permissionError = new FirestorePermissionError({
-        path: userDocRef.path,
-        operation: 'get', // or 'create' depending on where it failed
-    });
-    errorEmitter.emit('permission-error', permissionError);
-  }
-};
+// The configuration check is now primarily handled by the stricter `must` function in `app.ts`.
+// This provider will render its children if the app instance is available.
+const isFirebaseConfigured = !!app;
 
 export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Player | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Temporary log to debug environment variables
-    console.log('FB cfg ->', {
-      apiKey: process.env.NEXT_PUBLIC_FB_API_KEY?.slice(0,8),
-      projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID,
-      appId: process.env.NEXT_PUBLIC_FB_APP_ID?.slice(0,8),
-    });
-
-    // Because app.ts now throws, if we get here, auth and db will be initialized.
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setLoading(true);
-      if (u) {
-        await ensureUserDocument(u);
-        const userDocRef = doc(db!, 'users', u.uid);
-        const unsubProfile = onSnapshot(userDocRef, (userDocSnap) => {
-            if (userDocSnap.exists()) {
-                setProfile({ id: userDocSnap.id, ...userDocSnap.data() } as Player);
-            } else {
-                setProfile(null);
-            }
-            setUser(u); // Set user after profile is potentially loaded
-            setLoading(false);
-        }, (error) => {
-            console.error("Error listening to profile:", error);
-            setProfile(null);
-            setUser(u); // Still set the user
-            setLoading(false);
-        });
-        return () => unsubProfile(); 
-      } else {
-        setUser(null);
-        setProfile(null);
-        setLoading(false);
-      }
+    if (!isFirebaseConfigured) {
+      setLoading(false);
+      // The error will be thrown by `app.ts` before this component even tries to render.
+      // This UI is now a fallback, but the app will likely crash before showing it.
+      return;
+    }
+    const unsub = onAuth(u => {
+      setUser(u);
+      setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  const value = useMemo<AuthContextValue>(() => {
-    const appUser = user ? { ...user, profile } : null;
-
-    return {
-      user: appUser,
-      profile: profile,
-      isUserLoading: loading,
-      signInGoogle: async () => { await signInWithGoogleOnly(); },
-      signOut: async () => { auth && await firebaseSignOut(auth); },
-    };
-  }, [user, profile, loading]);
-  
   if (loading) {
     return (
-        <div className="flex items-center justify-center min-h-screen">
-             <div className="flex flex-col items-center gap-4">
-                <RobinIcon className="h-16 w-16 text-primary animate-pulse" />
-                <p className="text-muted-foreground">Loading LocalDink...</p>
-            </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <RobinIcon className="h-16 w-16 text-primary animate-pulse" />
+          <p className="text-muted-foreground">Loading LocalDink...</p>
         </div>
+      </div>
     );
   }
 
-  // Children are login page or dashboard, they will handle the user state
-  return (
-    <AuthContext.Provider value={value}>
-        <FirebaseErrorListener />
-        {children}
-    </AuthContext.Provider>
-  );
-}
-
-export function useUser() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useUser must be used within a FirebaseProvider');
+  if (!user) {
+    // Simple Google-only gate
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center text-center p-4 bg-background">
+        <div className="max-w-sm p-8 border rounded-lg shadow-sm bg-card space-y-4">
+          <RobinIcon className="h-12 w-12 text-primary mx-auto" />
+          <h1 className="text-2xl font-bold text-foreground font-headline">Welcome to LocalDink</h1>
+          <p className="text-sm text-muted-foreground">Sign in with your Google account to continue.</p>
+          <button
+            className="inline-flex items-center justify-center rounded-md border px-4 py-2 w-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            onClick={async () => {
+              try {
+                await signInWithGoogleOnly();
+              } catch (e) {
+                console.error("Google Sign-In Failed:", e);
+              }
+            }}
+          >
+            Continue with Google
+          </button>
+        </div>
+      </div>
+    );
   }
-  return ctx;
+
+  return <>{children}</>;
 }
 
-// Keeping these for other parts of the app that might use them
-export const useAuth = useUser;
-export const useFirestore = () => db;
-export const useFirebaseApp = () => auth?.app;
+    

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -15,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { useEffect } from 'react';
 import { Separator } from '@/components/ui/separator';
-import { useAuth } from '@/firebase/provider';
+import { useUser } from '@/firebase';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -36,7 +37,7 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { user, isUserLoading: loading } = useAuth();
+  const { user, isUserLoading: loading } = useUser();
   
   useEffect(() => {
     if (!loading && user) {
@@ -213,3 +214,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
