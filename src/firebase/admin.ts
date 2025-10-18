@@ -1,3 +1,4 @@
+
 import { getApps, initializeApp, cert, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -5,8 +6,9 @@ function getCredential() {
   const json = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (json) {
     const parsed = JSON.parse(json);
+    // This is the critical fix: Correctly format the private key.
     if (typeof parsed.private_key === 'string') {
-      parsed.private_key = parsed.private_key.replace(/\n/g, '\n');
+      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
     }
     return cert(parsed);
   }
@@ -14,9 +16,9 @@ function getCredential() {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY;
-  const privateKey = typeof privateKeyRaw === 'string' ? privateKeyRaw.replace(/\n/g, '\n') : undefined;
-
-  if (projectId && clientEmail && privateKey) {
+  
+  if (projectId && clientEmail && privateKeyRaw) {
+    const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
     return cert({ projectId, clientEmail, privateKey });
   }
 
