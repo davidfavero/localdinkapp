@@ -1,72 +1,108 @@
-
-// src/firebase/provider.tsx
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  ReactNode,
+  useEffect,
+  useState,
+  useMemo,
+} from 'react';
 import type { User } from 'firebase/auth';
-import { onAuth, signInWithGoogleOnly } from '@/firebase/auth';
-import { app } from './app';
-import { RobinIcon } from '@/components/icons/robin-icon';
+import { onAuth } from './auth';
+import { getClientApp } from './app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import type { FirebaseApp } from 'firebase/app';
+import type { Auth } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
 
-// The configuration check is now primarily handled by the stricter `must` function in `app.ts`.
-// This provider will render its children if the app instance is available.
-const isFirebaseConfigured = !!app;
+interface FirebaseContextValue {
+  app: FirebaseApp | null;
+  auth: Auth | null;
+  firestore: Firestore | null;
+  user: User | null;
+  isUserLoading: boolean;
+}
+
+const FirebaseContext = createContext<FirebaseContextValue | undefined>(
+  undefined
+);
 
 export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isUserLoading, setIsUserLoading] = useState(true);
 
+  const app = useMemo(getClientApp, []);
+  const auth = useMemo(() => getAuth(app), [app]);
+  const firestore = useMemo(() => getFirestore(app), [app]);
+  
   useEffect(() => {
-    if (!isFirebaseConfigured) {
-      setLoading(false);
-      // The error will be thrown by `app.ts` before this component even tries to render.
-      // This UI is now a fallback, but the app will likely crash before showing it.
-      return;
-    }
-    const unsub = onAuth(u => {
-      setUser(u);
-      setLoading(false);
+    // This console.log is for debugging purposes to verify environment variables.
+    console.log('FB cfg ->', {
+      apiKey: process.env.NEXT_PUBLIC_FB_API_KEY?.slice(0, 8),
+      projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID,
+      appId: process.env.NEXT_PUBLIC_FB_APP_ID?.slice(0, 8),
     });
-    return () => unsub();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-4">
-          <RobinIcon className="h-16 w-16 text-primary animate-pulse" />
-          <p className="text-muted-foreground">Loading LocalDink...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const unsubscribe = onAuth(auth, (user) => {
+      setUser(user);
+      setIsUserLoading(false);
+    });
+    return () => unsubscribe();
+  }, [auth]);
 
-  if (!user) {
-    // Simple Google-only gate
-    return (
-      <div className="flex flex-col min-h-screen items-center justify-center text-center p-4 bg-background">
-        <div className="max-w-sm p-8 border rounded-lg shadow-sm bg-card space-y-4">
-          <RobinIcon className="h-12 w-12 text-primary mx-auto" />
-          <h1 className="text-2xl font-bold text-foreground font-headline">Welcome to LocalDink</h1>
-          <p className="text-sm text-muted-foreground">Sign in with your Google account to continue.</p>
-          <button
-            className="inline-flex items-center justify-center rounded-md border px-4 py-2 w-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-            onClick={async () => {
-              try {
-                await signInWithGoogleOnly();
-              } catch (e) {
-                console.error("Google Sign-In Failed:", e);
-              }
-            }}
-          >
-            Continue with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const value: FirebaseContextValue = {
+    app,
+    auth,
+    firestore,
+    user,
+    isUserLoading,
+  };
 
-  return <>{children}</>;
+  return (
+    <FirebaseContext.Provider value={value}>
+        {children}
+    </FirebaseContext.Provider>
+  );
 }
 
-    
+export const useFirebase = () => {
+  const context = useContext(FirebaseContext);
+  if (context === undefined) {
+    throw new Error('useFirebase must be used within a FirebaseProvider');
+  }
+  return context;
+};
+
+export const useAuth = () => {
+  const { user, auth, isUserLoading } = useFirebase();
+  return { user, auth, isUserLoading };
+}
+
+export const useFirestore = () => {
+    const { firestore } = useFirebase();
+    return firestore;
+}
+
+export const useFirebaseApp = () => {
+    const { app } = useFirebase();
+    return app;
+}
+
+export const useMemoFirebase = <T>(
+  factory: () => T,
+  deps: React.DependencyList
+): T | null => {
+  const { firestore, auth } = useFirebase(); // Or just get what you need
+  return useMemo(() => {
+    // Ensure Firebase services are initialized before running the factory
+    if (!firestore || !auth) {
+      return null;
+    }
+    return factory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps); // Your original dependencies
+};

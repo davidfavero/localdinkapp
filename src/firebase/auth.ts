@@ -1,4 +1,3 @@
-// src/firebase/auth.ts
 'use client';
 
 import {
@@ -9,15 +8,16 @@ import {
   onAuthStateChanged,
   type User,
 } from 'firebase/auth';
-import { app } from './app';
+import { getClientApp } from './app';
 
+const app = getClientApp();
 export const auth = getAuth(app);
 
 export function onAuth(cb: (user: User | null) => void) {
   return onAuthStateChanged(auth, cb);
 }
 
-export async function signInWithGoogleOnly() {
+export function signInWithGoogleOnly() {
   return signInWithPopup(auth, new GoogleAuthProvider());
 }
 
