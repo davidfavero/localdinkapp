@@ -3,7 +3,7 @@
 
 import dynamic from 'next/dynamic';
 import type { ReactNode } from 'react';
-import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 
 // Dynamically import components that should only be rendered on the client side.
 const Toaster = dynamic(() => import('@/components/ui/toaster').then(m => m.Toaster), {
@@ -21,10 +21,11 @@ const DatabaseSeeder = dynamic(
  */
 export function ClientProviders({ children }: { children: ReactNode }) {
   return (
-    <FirebaseClientProvider>
+    <>
+      <FirebaseErrorListener />
       <DatabaseSeeder />
       {children}
       <Toaster />
-    </FirebaseClientProvider>
+    </>
   );
 }

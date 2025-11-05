@@ -3,12 +3,13 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { addDoc, collection } from 'firebase/firestore';
-import { useFirestore, useUser } from '@/firebase/provider';
+import { addDoc, collection, query, where } from 'firebase/firestore';
+import { useFirestore, useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Sheet,
   SheetContent,
@@ -18,14 +19,18 @@ import {
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { UserAvatar } from '@/components/user-avatar';
+import type { Player } from '@/lib/types';
+import { useMemo, useState } from 'react';
 
 const groupSchema = z.object({
   name: z.string().min(1, 'Group name is required.'),
   description: z.string().optional(),
+  members: z.array(z.string()).min(1, 'Select at least one member.'),
 });
 
 type GroupFormValues = z.infer<typeof groupSchema>;
@@ -38,20 +43,28 @@ interface AddGroupSheetProps {
 export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user: authUser } = useFirebase();
+
+  // Fetch available players
+  const playersQuery = useMemoFirebase(() => {
+    if (!authUser?.uid) return null;
+    return query(collection(firestore, 'players'), where('ownerId', '==', authUser.uid));
+  }, [authUser?.uid]);
+  const { data: availablePlayers } = useCollection<Player>(playersQuery);
 
   const form = useForm<GroupFormValues>({
     resolver: zodResolver(groupSchema),
     defaultValues: {
       name: '',
       description: '',
+      members: [],
     },
   });
 
   const { isSubmitting } = form.formState;
 
   const onSubmit = (data: GroupFormValues) => {
-    if (!firestore || !user) {
+    if (!firestore || !authUser) {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -65,8 +78,10 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
     const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
 
     const payload = {
-        ...data,
-        ownerId: user.uid,
+        name: data.name,
+        description: data.description || '',
+        members: data.members,
+        ownerId: authUser.uid,
         avatarUrl: randomAvatar?.imageUrl || '',
     };
 
@@ -75,18 +90,24 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
       .then(() => {
         toast({
           title: 'Group Created!',
-          description: `${data.name} has been created.`,
+          description: `${data.name} has been created with ${data.members.length} member(s).`,
         });
         form.reset();
         onOpenChange(false);
       })
       .catch((error) => {
+        console.error('Error creating group:', error);
         const permissionError = new FirestorePermissionError({
           path: groupsRef.path,
           operation: 'create',
           requestResourceData: payload,
         });
         errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: 'destructive',
+          title: 'Failed to create group',
+          description: error.message,
+        });
       });
   };
 
@@ -126,6 +147,64 @@ export function AddGroupSheet({ open, onOpenChange }: AddGroupSheetProps) {
                     <FormControl>
                       <Textarea placeholder="A short description of your group." {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="members"
+                render={() => (
+                  <FormItem>
+                    <div className="mb-4">
+                      <FormLabel>Members</FormLabel>
+                      <FormDescription>
+                        Select players to add to this group.
+                      </FormDescription>
+                    </div>
+                    {availablePlayers && availablePlayers.length > 0 ? (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {availablePlayers.map((player) => (
+                          <FormField
+                            key={player.id}
+                            control={form.control}
+                            name="members"
+                            render={({ field }) => {
+                              return (
+                                <FormItem
+                                  key={player.id}
+                                  className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 hover:bg-accent"
+                                >
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={field.value?.includes(player.id)}
+                                      onCheckedChange={(checked) => {
+                                        return checked
+                                          ? field.onChange([...field.value, player.id])
+                                          : field.onChange(
+                                              field.value?.filter(
+                                                (value) => value !== player.id
+                                              )
+                                            );
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <UserAvatar player={player} className="h-8 w-8" />
+                                  <FormLabel className="text-sm font-normal cursor-pointer flex-1">
+                                    {player.firstName} {player.lastName}
+                                  </FormLabel>
+                                </FormItem>
+                              );
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No players available. Add players first to create a group.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

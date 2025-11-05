@@ -73,9 +73,11 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
         avatarUrl: randomAvatar?.imageUrl || '',
     };
 
-    const usersRef = collection(firestore, 'users');
-    addDoc(usersRef, payload)
-      .then(() => {
+    const playersRef = collection(firestore, 'players');
+    console.log('Adding player to collection:', playersRef.path, 'Payload:', payload);
+    addDoc(playersRef, payload)
+      .then((docRef) => {
+        console.log('Player added successfully with ID:', docRef.id);
         toast({
           title: 'Player Added!',
           description: `${data.firstName} ${data.lastName} has been added to your players.`,
@@ -84,8 +86,11 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
         onOpenChange(false);
       })
       .catch((error) => {
+        console.error('Error adding player - Full error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
         const permissionError = new FirestorePermissionError({
-          path: usersRef.path,
+          path: playersRef.path,
           operation: 'create',
           requestResourceData: payload,
         });
@@ -93,7 +98,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
         toast({
           variant: 'destructive',
           title: 'Uh oh! Something went wrong.',
-          description: 'Could not add the player. Check permissions.',
+          description: `Could not add the player: ${error.message}`,
         });
       });
   };

@@ -13,11 +13,12 @@ import type { User } from 'firebase/auth';
 import { onAuth } from './auth';
 import { getClientApp } from './app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { Player } from '@/lib/types';
+import { useDoc } from './firestore/use-doc';
 
 interface FirebaseContextValue {
   app: FirebaseApp | null;
@@ -40,6 +41,7 @@ export const UserContext = createContext<UserContextValue | undefined>(undefined
 export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
 
   const app = useMemo(getClientApp, []);
   const auth = useMemo(() => getAuth(app), [app]);
@@ -62,6 +64,45 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, [auth]);
 
+  // Fetch user profile
+  const userDocRef = useMemo(
+    () => (firestore && user?.uid ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+
+  const {
+    data: profile,
+    isLoading: isProfileLoading,
+    error: profileError,
+  } = useDoc<Player>(userDocRef);
+
+  // Create profile if it doesn't exist
+  useEffect(() => {
+    if (user && !profile && !isProfileLoading && !isCreatingProfile && !profileError) {
+      const createProfile = async () => {
+        if (!firestore || !userDocRef) return;
+        
+        setIsCreatingProfile(true);
+        try {
+          const [firstName, ...lastName] = (user.displayName || 'New User').split(' ');
+          const newUserProfile: Omit<Player, 'id'> & { ownerId: string } = {
+            firstName,
+            lastName: lastName.join(' '),
+            email: user.email || '',
+            avatarUrl: user.photoURL || '',
+            ownerId: user.uid,
+          };
+          await setDoc(userDocRef, newUserProfile);
+        } catch (error) {
+          console.error('Error creating user profile:', error);
+        } finally {
+          setIsCreatingProfile(false);
+        }
+      };
+      createProfile();
+    }
+  }, [user, profile, isProfileLoading, isCreatingProfile, userDocRef, firestore, profileError]);
+
   const value: FirebaseContextValue = {
     app,
     auth,
@@ -71,9 +112,11 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
   const userContextValue: UserContextValue = {
     user,
-    profile: null,
-    isUserLoading: isAuthLoading,
+    profile: profile && user ? { ...profile, id: user.uid } : null,
+    isUserLoading: isAuthLoading || isProfileLoading || isCreatingProfile,
   };
+  
+  console.log('🔥 FirebaseProvider rendering - user:', user?.uid, 'isAuthLoading:', isAuthLoading, 'profile:', !!profile);
 
   return (
     <FirebaseContext.Provider value={value}>

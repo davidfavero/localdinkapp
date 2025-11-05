@@ -4,36 +4,61 @@ import { Card, CardContent } from '@/components/ui/card';
 import { UserAvatar } from '@/components/user-avatar';
 import { Button } from '@/components/ui/button';
 import { Plus, Users } from 'lucide-react';
-import { useCollection, useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { Badge } from '@/components/ui/badge';
+import { useCollection, useUser, useFirestore, useFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import type { Player, Group } from '@/lib/types';
 import { useState, useMemo } from 'react';
 import { AddPlayerSheet } from '@/components/add-player-sheet';
 import { AddGroupSheet } from '@/components/add-group-sheet';
+import { EditGroupSheet } from '@/components/edit-group-sheet';
+import { EditPlayerSheet } from '@/components/edit-player-sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 
 export default function GroupsAndPlayersPage() {
   const [isPlayerSheetOpen, setIsPlayerSheetOpen] = useState(false);
   const [isGroupSheetOpen, setIsGroupSheetOpen] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<(Group & { id: string }) | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<(Player & { id: string }) | null>(null);
   const firestore = useFirestore();
-  const { user, profile } = useUser();
+  const { user: authUser } = useFirebase();  // Get user directly from FirebaseContext
+  const { profile } = useUser();
+  
+  console.log('🔍 Direct auth user:', { authUser: authUser?.uid, hasUid: !!authUser?.uid });
 
-  const groupsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'groups'), where('ownerId', '==', user.uid));
-  }, [firestore, user]);
+  const groupsQuery = useMemo(() => {
+    if (!firestore || !authUser?.uid) {
+      console.log('⚠️ Groups query - no authUser yet');
+      return null;
+    }
+    console.log('✅ Creating groups query for user:', authUser.uid);
+    const q = query(collection(firestore, 'groups'), where('ownerId', '==', authUser.uid));
+    (q as any).__memo = true;  // Mark for useCollection
+    return q;
+  }, [firestore, authUser?.uid]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
-  // This query is now secure and fetches only players owned by the current user.
-  const playersQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.uid) return null;
-    // We fetch all users for now, but in a real app you might want to fetch
-    // only users the current user has interacted with or "owns".
-    // For this app, we'll show all users but distinguish the current user.
-    return query(collection(firestore, 'users'));
-  }, [firestore, user]);
-  const { data: allPlayers, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
+  // Fetch players from the players collection (contacts the user has added)
+  const playersQuery = useMemo(() => {
+    if (!firestore || !authUser?.uid) {
+      console.log('⚠️ Players query - no authUser yet, authUser.uid:', authUser?.uid);
+      return null;
+    }
+    console.log('✅ Creating players query for user:', authUser.uid);
+    const q = query(collection(firestore, 'players'), where('ownerId', '==', authUser.uid));
+    (q as any).__memo = true;  // Mark for useCollection
+    return q;
+  }, [firestore, authUser?.uid]);
+  const { data: addedPlayers, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
+  
+  console.log('📊 Players state:', { 
+    addedPlayers, 
+    isLoadingPlayers, 
+    playersError,
+    queryExists: !!playersQuery,
+    authUserUid: authUser?.uid
+  });
 
   const getPlayerName = (player: Player) => {
     if (player.firstName && player.lastName) {
@@ -42,23 +67,50 @@ export default function GroupsAndPlayersPage() {
     return player.name || 'Unnamed Player';
   }
 
-  // Memoize the list of players to display
+  // Memoize the list of players to display (current user + added players)
   const displayPlayers = useMemo(() => {
-    if (!allPlayers) return [];
-    return allPlayers.map(p => ({
-      ...p,
-      isCurrentUser: p.id === user?.uid
-    })).sort((a, b) => {
+    const players: (Player & { id: string; isCurrentUser?: boolean })[] = [];
+    
+    // Add current user first
+    if (profile && authUser) {
+      players.push({
+        ...profile,
+        id: authUser.uid,
+        isCurrentUser: true,
+      });
+    }
+    
+    // Add all other players
+    if (addedPlayers) {
+      players.push(...addedPlayers.map(p => ({
+        ...p,
+        isCurrentUser: false
+      })));
+    }
+    
+    // Sort: current user first, then alphabetically
+    return players.sort((a, b) => {
       if (a.isCurrentUser) return -1;
       if (b.isCurrentUser) return 1;
       return (a.firstName || '').localeCompare(b.firstName || '');
     });
-  }, [allPlayers, user]);
+  }, [addedPlayers, profile, authUser]);
 
   return (
     <div className="space-y-8">
       <AddPlayerSheet open={isPlayerSheetOpen} onOpenChange={setIsPlayerSheetOpen} />
       <AddGroupSheet open={isGroupSheetOpen} onOpenChange={setIsGroupSheetOpen} />
+      <EditGroupSheet 
+        group={selectedGroup} 
+        open={!!selectedGroup} 
+        onOpenChange={(open) => !open && setSelectedGroup(null)} 
+      />
+      <EditPlayerSheet 
+        player={selectedPlayer} 
+        groups={groups || []}
+        open={!!selectedPlayer} 
+        onOpenChange={(open) => !open && setSelectedPlayer(null)} 
+      />
 
       {/* Groups Section */}
       <section>
@@ -82,20 +134,30 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {groups?.map((group) => (
-            <Card key={group.id} className="p-4">
-              <CardContent className="flex items-center gap-4 p-0">
-                <Avatar className="h-12 w-12">
-                    <AvatarImage src={group.avatarUrl} alt={group.name} />
-                    <AvatarFallback>{group.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold">{group.name}</p>
-                   <p className="text-sm text-muted-foreground">{group.description}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {groups?.map((group) => {
+            const memberCount = group.members?.length || 0;
+            return (
+              <Card 
+                key={group.id} 
+                className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => setSelectedGroup(group)}
+              >
+                <CardContent className="flex items-center gap-4 p-0">
+                  <Avatar className="h-12 w-12">
+                      <AvatarImage src={group.avatarUrl} alt={group.name} />
+                      <AvatarFallback>{group.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <p className="font-semibold">{group.name}</p>
+                    <p className="text-sm text-muted-foreground">{group.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {memberCount} {memberCount === 1 ? 'member' : 'members'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
           {!isLoadingGroups && groups?.length === 0 && (
             <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
                <Users className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -122,7 +184,7 @@ export default function GroupsAndPlayersPage() {
           </Button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {(isLoadingPlayers || !user) &&
+          {(isLoadingPlayers || !authUser) &&
             Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="p-4">
                 <CardContent className="flex items-center gap-4 p-0">
@@ -134,19 +196,37 @@ export default function GroupsAndPlayersPage() {
                 </CardContent>
               </Card>
             ))}
-          {displayPlayers?.map((player) => (
-            <Card key={player.id} className="p-4">
-              <CardContent className="flex items-center gap-4 p-0">
-                <UserAvatar player={player} className="h-12 w-12" />
-                <div>
-                  <p className="font-semibold">{getPlayerName(player)}</p>
-                  {player.isCurrentUser && (
-                    <p className="text-sm text-muted-foreground">This is you</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {displayPlayers?.map((player) => {
+            // Find groups this player belongs to
+            const playerGroups = groups?.filter(g => g.members?.includes(player.id)) || [];
+            
+            return (
+              <Card 
+                key={player.id} 
+                className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => setSelectedPlayer(player)}
+              >
+                <CardContent className="flex items-center gap-4 p-0">
+                  <UserAvatar player={player} className="h-12 w-12" />
+                  <div className="flex-1">
+                    <p className="font-semibold">{getPlayerName(player)}</p>
+                    {player.isCurrentUser && (
+                      <p className="text-sm text-muted-foreground">This is you</p>
+                    )}
+                    {playerGroups.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {playerGroups.map(group => (
+                          <Badge key={group.id} variant="secondary" className="text-xs">
+                            {group.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
           {!isLoadingPlayers && displayPlayers?.length === 0 && (
              <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
                <Users className="mx-auto h-12 w-12 text-muted-foreground" />
