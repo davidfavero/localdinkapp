@@ -8,18 +8,37 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   type ConfirmationResult,
+  type Auth,
 } from 'firebase/auth';
 import { getClientApp } from './app';
 
-const app = getClientApp();
-export const auth = getAuth(app);
+let authInstance: Auth | null = null;
 
-export function onAuth(cb: (user: User | null) => void) {
+function assertClientEnvironment() {
+  if (typeof window === 'undefined') {
+    throw new Error('getClientAuth() is only available in the browser');
+  }
+}
+
+export function getClientAuth(): Auth {
+  assertClientEnvironment();
+
+  if (authInstance) {
+    return authInstance;
+  }
+
+  const app = getClientApp();
+  authInstance = getAuth(app);
+  return authInstance;
+}
+
+export function onAuth(cb: (user: User | null) => void, authOverride?: Auth) {
+  const auth = authOverride ?? getClientAuth();
   return onAuthStateChanged(auth, cb);
 }
 
 export function signOutUser() {
-  return signOut(auth);
+  return signOut(getClientAuth());
 }
 
 // SMS Authentication
@@ -38,7 +57,7 @@ let recaptchaVerifier: RecaptchaVerifier | null = null;
  * - reCAPTCHA is properly configured for your Firebase project
  */
 export function setupRecaptcha(containerId: string, invisible: boolean = false) {
-  if (!auth) throw new Error('Auth not initialized');
+  const auth = getClientAuth();
   
   // Clean up existing verifier
   if (recaptchaVerifier) {
@@ -106,7 +125,7 @@ export function clearRecaptcha() {
 }
 
 export async function sendSMSCode(phoneNumber: string): Promise<ConfirmationResult> {
-  if (!auth) throw new Error('Auth not initialized');
+  const auth = getClientAuth();
   if (!recaptchaVerifier) {
     throw new Error('Recaptcha not initialized. Call setupRecaptcha first.');
   }

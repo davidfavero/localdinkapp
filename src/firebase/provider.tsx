@@ -10,9 +10,8 @@ import {
   useMemo,
 } from 'react';
 import type { User } from 'firebase/auth';
-import { onAuth } from './auth';
+import { onAuth, getClientAuth } from './auth';
 import { getClientApp } from './app';
-import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
@@ -42,10 +41,13 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const [firebaseState, setFirebaseState] = useState<{
+    app: FirebaseApp | null;
+    auth: Auth | null;
+    firestore: Firestore | null;
+  }>({ app: null, auth: null, firestore: null });
 
-  const app = useMemo(getClientApp, []);
-  const auth = useMemo(() => getAuth(app), [app]);
-  const firestore = useMemo(() => getFirestore(app), [app]);
+  const { app, auth, firestore } = firebaseState;
   
   useEffect(() => {
     // This console.log is for debugging purposes to verify environment variables.
@@ -57,12 +59,59 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuth((user) => {
-      setUser(user);
-      setIsAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, [auth]);
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let didCancel = false;
+    let unsubscribe: (() => void) | null = null;
+
+    const initialize = () => {
+      try {
+        const appInstance = getClientApp();
+        const authInstance = getClientAuth();
+        const firestoreInstance = getFirestore(appInstance);
+
+        if (didCancel) {
+          return;
+        }
+
+        setFirebaseState({
+          app: appInstance,
+          auth: authInstance,
+          firestore: firestoreInstance,
+        });
+
+        setIsAuthLoading(true);
+        unsubscribe = onAuth((nextUser) => {
+          if (didCancel) {
+            return;
+          }
+          setUser(nextUser);
+          setIsAuthLoading(false);
+        }, authInstance);
+      } catch (error) {
+        console.error('Failed to initialize Firebase client SDK:', error);
+        if (!didCancel) {
+          setFirebaseState({ app: null, auth: null, firestore: null });
+          setIsAuthLoading(false);
+        }
+      }
+    };
+
+    initialize();
+
+    return () => {
+      didCancel = true;
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.error('Error unsubscribing from Firebase auth state changes:', error);
+        }
+      }
+    };
+  }, []);
 
   // Fetch user profile
   const userDocRef = useMemo(

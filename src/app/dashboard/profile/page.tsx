@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,7 +27,7 @@ import { ImageCropDialog } from '@/components/image-crop-dialog';
 import { getCroppedImg } from '@/lib/crop-image';
 import type { Area } from 'react-easy-crop';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { app } from '@/firebase/app';
+import { getClientApp } from '@/firebase/app';
 
 
 const profileSchema = z.object({
@@ -47,7 +47,17 @@ export default function ProfilePage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const { user, profile: currentUser } = useUser();
   const firestore = useFirestore();
-  const storage = getStorage(app);
+  const storage = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    try {
+      return getStorage(getClientApp());
+    } catch (error) {
+      console.error('Failed to initialize Firebase storage on the client:', error);
+      return null;
+    }
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);

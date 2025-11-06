@@ -6,7 +6,6 @@ import type { User } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useDoc } from './firestore/use-doc';
 import { useFirebase } from './provider';
-import { db } from './db';
 import type { Player } from '@/lib/types';
 import { useMemoFirebase } from './provider';
 

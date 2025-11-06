@@ -1,8 +1,10 @@
 
-import { getApps, initializeApp, cert, getApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import type { App } from 'firebase-admin/app';
+import type { Firestore } from 'firebase-admin/firestore';
 
-function getCredential() {
+async function getCredential() {
+  const { cert } = await import('firebase-admin/app');
+  
   const json = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (json) {
     const parsed = JSON.parse(json);
@@ -21,11 +23,44 @@ function getCredential() {
   else if (process.env.FIREBASE_PRIVATE_KEY)
     privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
 
-  if (!projectId || !clientEmail || !privateKey)
-    throw new Error('Missing Firebase Admin envs.');
+  if (!projectId || !clientEmail || !privateKey) {
+    return null;
+  }
 
   return cert({ projectId, clientEmail, privateKey });
 }
 
-const adminApp = getApps().length ? getApp() : initializeApp({ credential: getCredential() });
-export const adminDb = getFirestore(adminApp);
+let adminApp: App | null = null;
+let adminDbInstance: Firestore | null = null;
+let initPromise: Promise<void> | null = null;
+
+async function initializeAdmin() {
+  if (initPromise) return initPromise;
+  
+  initPromise = (async () => {
+    try {
+      const credential = await getCredential();
+      if (!credential) {
+        console.warn('Firebase Admin credentials not available');
+        return;
+      }
+
+      const { getApps, getApp, initializeApp } = await import('firebase-admin/app');
+      const { getFirestore } = await import('firebase-admin/firestore');
+
+      adminApp = getApps().length ? getApp() : initializeApp({ credential });
+      adminDbInstance = getFirestore(adminApp);
+    } catch (error) {
+      console.warn('Firebase Admin SDK initialization failed:', error);
+    }
+  })();
+
+  return initPromise;
+}
+
+export async function getAdminDb(): Promise<Firestore | null> {
+  if (!adminDbInstance) {
+    await initializeAdmin();
+  }
+  return adminDbInstance;
+}

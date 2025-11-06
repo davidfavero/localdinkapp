@@ -1,17 +1,14 @@
 'use server';
 
-import {
-  extractProfilePreferences,
-  type ProfilePreferenceExtractionInput,
-  type ProfilePreferenceExtractionOutput,
+import type {
+  ProfilePreferenceExtractionInput,
+  ProfilePreferenceExtractionOutput,
 } from "@/ai/flows/profile-preference-extraction";
-import {
-  handleCancellation,
-  type HandleCancellationInput,
-  type HandleCancellationOutput,
+import type {
+  HandleCancellationInput,
+  HandleCancellationOutput,
 } from "@/ai/flows/automated-cancellation-management";
-import { chat } from "@/ai/flows/chat";
-import { adminDb } from "@/firebase/admin";
+import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
 import type { ChatInput, ChatOutput, Player } from "./types";
 
@@ -19,6 +16,7 @@ export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
 ): Promise<ProfilePreferenceExtractionOutput> {
   try {
+    const { extractProfilePreferences } = await import("@/ai/flows/profile-preference-extraction");
     return await extractProfilePreferences(input);
   } catch (error) {
     console.error("Error in extractPreferencesAction:", error);
@@ -30,6 +28,7 @@ export async function handleCancellationAction(
   input: HandleCancellationInput
 ): Promise<HandleCancellationOutput> {
   try {
+    const { handleCancellation } = await import("@/ai/flows/automated-cancellation-management");
     return await handleCancellation(input);
   } catch (error) {
     console.error("Error in handleCancellationAction:", error);
@@ -39,6 +38,11 @@ export async function handleCancellationAction(
 
 export async function chatAction(input: ChatInput, currentUser: Player | null): Promise<ChatOutput> {
     const { message, history } = input;
+
+    const adminDb = await getAdminDb();
+    if (!adminDb) {
+        return { confirmationText: "Sorry, the database is not available. Please try again later." };
+    }
 
     // In a real app, you'd fetch known players for the current user from a database.
     const allUsersSnap = await adminDb.collection('users').get();
@@ -53,6 +57,7 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
     }));
     
     try {
+        const { chat } = await import("@/ai/flows/chat");
         const response = await chat(knownPlayers, { message, history });
         return response;
     } catch (error) {
@@ -63,6 +68,11 @@ export async function chatAction(input: ChatInput, currentUser: Player | null): 
 
 export async function seedDatabaseAction(): Promise<{ success: boolean, message: string, usersAdded: number, courtsAdded: number }> {
     try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available', usersAdded: 0, courtsAdded: 0 };
+        }
+
         let usersAdded = 0;
         let courtsAdded = 0;
 

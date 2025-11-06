@@ -8,5 +8,3 @@ export * from './provider';
 export * from './firestore/use-collection';
 export * from './firestore/use-doc';
 export * from './non-blocking-updates';
-export * from './use-user';
-export * from './client-provider';
