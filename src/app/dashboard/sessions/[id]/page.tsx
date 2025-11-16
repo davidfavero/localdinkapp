@@ -3,19 +3,21 @@
 import { useParams, notFound } from 'next/navigation';
 import { useDoc, useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { errorEmitter } from '@/firebase/error-emitter';
-import { doc, getDoc, updateDoc, collection, query, where } from 'firebase/firestore';
-import type { GameSession as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import type { GameSession_Firestore as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
 import { handleCancellationAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { EditGameSessionSheet } from '@/components/edit-game-session-sheet';
+import { normalizeAttendees } from '@/lib/session-attendees';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/user-avatar';
-import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut, Loader2 } from 'lucide-react';
+import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut, Loader2, Edit } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +36,12 @@ const statusInfo: { [key in RsvpStatus]: { icon: React.ElementType, text: string
   CONFIRMED: { icon: UserCheck, text: 'Confirmed', color: 'text-green-500' },
   PENDING: { icon: Clock, text: 'Pending', color: 'text-yellow-500' },
   DECLINED: { icon: UserX, text: 'Declined', color: 'text-red-500' },
+};
+
+const RSVP_PRIORITY: Record<RsvpStatus, number> = {
+  DECLINED: 1,
+  PENDING: 2,
+  CONFIRMED: 3,
 };
 
 const SessionDetailSkeleton = () => (
@@ -77,6 +85,8 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
   const { toast } = useToast();
   const { user: currentUser } = useUser();
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
+  const [allCourts, setAllCourts] = useState<Court[]>([]);
   const firestore = useFirestore();
 
   // 1. Fetch the raw game session document
@@ -100,23 +110,69 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       
       try {
         const courtSnap = await getDoc(doc(firestore, 'courts', rawSession.courtId));
-        const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '' };
+        const court = courtSnap.exists() ? { id: courtSnap.id, ...courtSnap.data() } as Court : { id: 'unknown', name: 'Unknown Court', location: '', ownerId: '' } as Court;
         
         const organizerSnap = await getDoc(doc(firestore, 'users', rawSession.organizerId));
-        const organizer = organizerSnap.exists() ? { id: organizerSnap.id, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '' } as Player;
+        const organizer = organizerSnap.exists() ? { id: organizerSnap.id, ...organizerSnap.data() } as Player : { id: 'unknown', firstName: 'Unknown', lastName: 'Organizer', avatarUrl: '', email: '' } as Player;
 
-        const playerPromises = (rawSession.playerIds || []).map(async (id: string) => {
-          const playerSnap = await getDoc(doc(firestore, 'users', id));
-          const playerData = playerSnap.exists() ? { id: playerSnap.id, isCurrentUser: playerSnap.id === currentUser.uid, ...playerSnap.data() } as Player : { id, firstName: 'Unknown', lastName: 'Player', avatarUrl: '' } as Player;
-          
-          // In a real app, status would come from `/game-sessions/{id}/players/{userId}`
+        const attendees = normalizeAttendees(rawSession);
+        const playerPromises = attendees.map(async ({ id, source }) => {
+          const primaryCollection = source === 'player' ? 'players' : 'users';
+          const secondaryCollection = source === 'player' ? 'users' : 'players';
+
+          const primaryRef = doc(firestore, primaryCollection, id);
+          let playerSnap = await getDoc(primaryRef);
+
+          if (!playerSnap.exists()) {
+            const secondaryRef = doc(firestore, secondaryCollection, id);
+            playerSnap = await getDoc(secondaryRef);
+          }
+
+          let playerData: Player;
+
+          if (playerSnap.exists()) {
+            const data = playerSnap.data() as any;
+            playerData = {
+              id,
+              ...data,
+              email: data?.email ?? '',
+            } as Player;
+          } else {
+            playerData = {
+              id,
+              firstName: source === 'player' ? 'Roster' : 'Unknown',
+              lastName: 'Player',
+              avatarUrl: '',
+              email: '',
+            } as Player;
+          }
+
+          if (source === 'user' && currentUser && id === currentUser.uid) {
+            playerData = { ...playerData, isCurrentUser: true };
+          }
+
           const playerStatusRef = doc(firestore, 'game-sessions', rawSession.id, 'players', id);
           const playerStatusSnap = await getDoc(playerStatusRef);
-          const status = playerStatusSnap.exists() ? playerStatusSnap.data().status as RsvpStatus : 'CONFIRMED';
-          
+          const fallbackStatuses = (rawSession as Partial<RawGameSession> & {
+            playerStatuses?: Record<string, RsvpStatus>;
+          }).playerStatuses;
+          const status = playerStatusSnap.exists()
+            ? (playerStatusSnap.data().status as RsvpStatus)
+            : (fallbackStatuses?.[id] ?? (id === rawSession.organizerId ? 'CONFIRMED' : 'PENDING'));
+
           return { player: playerData, status };
         });
         const players = await Promise.all(playerPromises);
+
+        const dedupedPlayersMap = new Map<string, { player: Player; status: RsvpStatus }>();
+        players.forEach((entry) => {
+          const key = entry.player.id ?? `${entry.player.firstName}-${entry.player.lastName}`;
+          const existing = dedupedPlayersMap.get(key);
+          if (!existing || RSVP_PRIORITY[entry.status] >= RSVP_PRIORITY[existing.status]) {
+            dedupedPlayersMap.set(key, entry);
+          }
+        });
+        const normalizedPlayers = Array.from(dedupedPlayersMap.values());
 
         // TODO: Fetch alternates when that data model is finalized
         const alternates: Player[] = [];
@@ -133,7 +189,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
           date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
           time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
           type: rawSession.isDoubles ? 'Doubles' : 'Singles',
-          players: players,
+          players: normalizedPlayers,
           alternates: alternates,
         });
       } catch (e: any) {
@@ -152,7 +208,23 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
   }, [rawSession, firestore, currentUser, isLoadingSession, toast]);
 
+  // Fetch all courts for the edit sheet
+  useEffect(() => {
+    if (!firestore) return;
+    (async () => {
+      try {
+        const courtsSnap = await getDocs(collection(firestore, 'courts'));
+        const courts = courtsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Court));
+        setAllCourts(courts);
+      } catch (e) {
+        console.error('Error fetching courts:', e);
+      }
+    })();
+  }, [firestore]);
+
   const session = hydratedSession;
+
+  const isOrganizer = session && currentUser && session.organizer.id === currentUser.uid;
 
   const onCancel = async () => {
     if (!session || !currentUser || !firestore) return;
@@ -218,8 +290,21 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
   const currentUserInGame = session.players.find(p => p.player.id === currentUser?.uid);
 
   return (
-    <div className="grid md:grid-cols-3 gap-6">
-      <div className="md:col-span-2 space-y-6">
+    <>
+      <EditGameSessionSheet
+        open={isEditSheetOpen}
+        onOpenChange={setIsEditSheetOpen}
+        sessionId={rawSession?.id || null}
+        sessionData={rawSession ? {
+          courtId: rawSession.courtId,
+          startTime: rawSession.startTime?.toDate() || new Date(),
+          isDoubles: rawSession.isDoubles,
+        } : null}
+        courts={allCourts}
+      />
+
+      <div className="grid md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 space-y-6">
         <Card>
           <CardHeader>
             <div className="flex justify-between items-start">
@@ -287,43 +372,54 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
         )}
       </div>
 
-      <div className="md:col-span-1 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {currentUserInGame && currentUserInGame.status !== 'DECLINED' ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="w-full" disabled={isCancelling}>
-                    {isCancelling ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <LogOut className="mr-2 h-4 w-4" />
-                    )}
-                    {isCancelling ? 'Cancelling...' : 'Cancel My Spot'}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure you want to cancel?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will notify the organizer and Robin will attempt to find a replacement from the alternates list.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Nevermind</AlertDialogCancel>
-                    <AlertDialogAction onClick={onCancel}>Yes, Cancel My Spot</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            ) : (
-                <p className="text-sm text-muted-foreground">You are not in this game or have already declined.</p>
-            )}
-          </CardContent>
-        </Card>
+        <div className="md:col-span-1 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {isOrganizer && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setIsEditSheetOpen(true)}
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Session
+                </Button>
+              )}
+              {currentUserInGame && currentUserInGame.status !== 'DECLINED' ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full" disabled={isCancelling}>
+                      {isCancelling ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                          <LogOut className="mr-2 h-4 w-4" />
+                      )}
+                      {isCancelling ? 'Cancelling...' : 'Cancel My Spot'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure you want to cancel?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will notify the organizer and Robin will attempt to find a replacement from the alternates list.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Nevermind</AlertDialogCancel>
+                      <AlertDialogAction onClick={onCancel}>Yes, Cancel My Spot</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : !isOrganizer && (
+                  <p className="text-sm text-muted-foreground">You are not in this game or have already declined.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

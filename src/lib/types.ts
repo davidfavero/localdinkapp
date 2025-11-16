@@ -18,10 +18,15 @@ export type Player = {
 
 export type Court = {
   id: string;
-  name:string;
+  name: string;
   location: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
   isHome?: boolean;
   isFavorite?: boolean;
+  ownerId: string; // User who created this court
 };
 
 export type Group = {
@@ -29,8 +34,17 @@ export type Group = {
   name: string;
   description?: string;
   avatarUrl: string;
-  members: string[]; // Now an array of user IDs
-  ownerId: string;
+  members: string[]; // Array of user IDs
+  ownerId: string; // Primary owner/organizer
+  admins: string[]; // Array of admin user IDs (can manage the group)
+  homeCourtId?: string; // Default court for this group
+};
+
+export type AttendeeSource = 'user' | 'player';
+
+export type GameSessionAttendee = {
+  id: string;
+  source: AttendeeSource;
 };
 
 export type RsvpStatus = 'CONFIRMED' | 'DECLINED' | 'PENDING';
@@ -43,6 +57,9 @@ export type GameSession_Firestore = {
   startTime: Timestamp;
   isDoubles: boolean;
   playerIds: string[];
+  attendees?: GameSessionAttendee[];
+  groupIds?: string[];
+  playerStatuses?: Record<string, RsvpStatus>;
   // and other Firestore-specific fields
 }
 

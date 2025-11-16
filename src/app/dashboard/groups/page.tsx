@@ -67,34 +67,20 @@ export default function GroupsAndPlayersPage() {
     return player.name || 'Unnamed Player';
   }
 
-  // Memoize the list of players to display (current user + added players)
+  // Memoize the list of players to display (exclude the authenticated user)
   const displayPlayers = useMemo(() => {
-    const players: (Player & { id: string; isCurrentUser?: boolean })[] = [];
-    
-    // Add current user first
-    if (profile && authUser) {
-      players.push({
-        ...profile,
-        id: authUser.uid,
-        isCurrentUser: true,
-      });
+    if (!addedPlayers) {
+      return [];
     }
-    
-    // Add all other players
-    if (addedPlayers) {
-      players.push(...addedPlayers.map(p => ({
-        ...p,
-        isCurrentUser: false
-      })));
-    }
-    
-    // Sort: current user first, then alphabetically
-    return players.sort((a, b) => {
-      if (a.isCurrentUser) return -1;
-      if (b.isCurrentUser) return 1;
-      return (a.firstName || '').localeCompare(b.firstName || '');
-    });
-  }, [addedPlayers, profile, authUser]);
+
+    const filteredPlayers = authUser?.uid
+      ? addedPlayers.filter((player) => player.id !== authUser.uid)
+      : addedPlayers;
+
+    return filteredPlayers.sort((a, b) =>
+      (a.firstName || '').localeCompare(b.firstName || '')
+    );
+  }, [addedPlayers, authUser?.uid]);
 
   return (
     <div className="space-y-8">
@@ -210,9 +196,6 @@ export default function GroupsAndPlayersPage() {
                   <UserAvatar player={player} className="h-12 w-12" />
                   <div className="flex-1">
                     <p className="font-semibold">{getPlayerName(player)}</p>
-                    {player.isCurrentUser && (
-                      <p className="text-sm text-muted-foreground">This is you</p>
-                    )}
                     {playerGroups.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {playerGroups.map(group => (

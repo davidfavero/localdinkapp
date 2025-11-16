@@ -59,6 +59,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // CRITICAL: Only run in browser, never on server
     if (typeof window === 'undefined') {
       return;
     }
@@ -66,7 +67,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     let didCancel = false;
     let unsubscribe: (() => void) | null = null;
 
-    const initialize = () => {
+    // Delay initialization to ensure we're fully client-side
+    const timeoutId = setTimeout(() => {
       try {
         const appInstance = getClientApp();
         const authInstance = getClientAuth();
@@ -97,12 +99,11 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
           setIsAuthLoading(false);
         }
       }
-    };
-
-    initialize();
+    }, 0);
 
     return () => {
       didCancel = true;
+      clearTimeout(timeoutId);
       if (unsubscribe) {
         try {
           unsubscribe();
@@ -208,7 +209,7 @@ export const useFirebaseApp = () => {
     return app;
 }
 
-export const useMemoFirebase = <T>(
+export const useMemoFirebase = <T,>(
   factory: () => T,
   deps: React.DependencyList
 ): T | null => {

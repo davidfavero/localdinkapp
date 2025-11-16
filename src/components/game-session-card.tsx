@@ -25,6 +25,17 @@ const StatusBadge = ({ status }: { status: RsvpStatus }) => {
     return <Badge variant="outline" className={cn('capitalize text-xs', badgeStyles[status])}>{status.toLowerCase()}</Badge>
 }
 
+const getDisplayName = (player: GameSession['organizer']) => {
+  if (player.isCurrentUser) {
+    return 'You';
+  }
+  const composed = `${player.firstName ?? ''} ${player.lastName ?? ''}`.trim();
+  if (composed.length > 0) {
+    return composed;
+  }
+  return (player as any)?.name ?? 'Unknown Organizer';
+};
+
 export function GameSessionCard({ session }: GameSessionCardProps) {
   const confirmedPlayers = session.players.filter(p => p.status === 'CONFIRMED');
 
@@ -61,7 +72,7 @@ export function GameSessionCard({ session }: GameSessionCardProps) {
                 </div>
             </div>
             <div className="text-sm text-muted-foreground">
-                Organized by {session.organizer.isCurrentUser ? 'You' : session.organizer.name}
+                Organized by {getDisplayName(session.organizer)}
             </div>
         </CardContent>
       </Card>

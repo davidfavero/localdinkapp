@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { addDoc, collection } from 'firebase/firestore';
-import { useFirestore } from '@/firebase/provider';
+import { useFirestore, useFirebase } from '@/firebase';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,10 @@ import { FirestorePermissionError } from '@/firebase/errors';
 const courtSchema = z.object({
   name: z.string().min(1, 'Court name is required.'),
   location: z.string().min(1, 'Location is required.'),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
 });
 
 type CourtFormValues = z.infer<typeof courtSchema>;
@@ -36,29 +40,39 @@ interface AddCourtSheetProps {
 export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user: authUser } = useFirebase();
 
   const form = useForm<CourtFormValues>({
     resolver: zodResolver(courtSchema),
     defaultValues: {
       name: '',
       location: '',
+      address: '',
+      city: '',
+      state: '',
+      zipCode: '',
     },
   });
 
   const { isSubmitting, setFocus } = form.formState;
 
   const onSubmit = (data: CourtFormValues) => {
-    if (!firestore) {
+    if (!firestore || !authUser) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Could not connect to database. Please try again.',
+        description: 'You must be logged in to add a court.',
       });
       return;
     }
 
+    const payload = {
+      ...data,
+      ownerId: authUser.uid,
+    };
+
     const courtsRef = collection(firestore, 'courts');
-    addDoc(courtsRef, data)
+    addDoc(courtsRef, payload)
       .then(() => {
         toast({
           title: 'Court Added!',
@@ -117,6 +131,64 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
                     <FormLabel>Location</FormLabel>
                     <FormControl>
                       <Input placeholder="e.g., Sunnyvale, CA" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Street Address (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., 123 Main St" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Sunnyvale" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="state"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>State (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., CA" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="zipCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ZIP Code (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., 94086" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -1,5 +1,7 @@
 'use client';
 
+import '@/firebase/polyfills/local-storage.server';
+
 import {
   getAuth,
   signOut,

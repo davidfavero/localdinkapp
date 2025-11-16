@@ -1,3 +1,5 @@
+'use client';
+
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getClientApp } from './app';
 

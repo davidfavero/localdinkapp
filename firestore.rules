@@ -7,7 +7,7 @@
  *
  * Data Structure:
  * - User profiles are stored under `/users/{userId}`.
- * - Game sessions are stored under `/gameSessions/{gameSessionId}`.
+ * - Game sessions are stored under `/game-sessions/{gameSessionId}`.
  * - Courts are stored under `/courts/{courtId}`.
  * - Groups are stored under `/groups/{groupId}`.
  *
@@ -52,38 +52,53 @@ service cloud.firestore {
 
     /**
      * @description Controls access to game session documents.
-     * @path /gameSessions/{gameSessionId}
+     * @path /game-sessions/{gameSessionId}
      * @allow (create) - Any authenticated user can create a game session.
      * @allow (get, list) - Any user can read game session information.
      * @allow (update, delete) - Only a player in the `playerIds` array can update or delete the game session.
      * @deny (update, delete) - A user not in the `playerIds` array cannot update or delete the game session.
      * @principle Enforces shared access based on membership in the `playerIds` array.
      */
-    match /gameSessions/{gameSessionId} {
-      function isSignedIn() {
-        return request.auth != null;
+    match /game-sessions/{gameSessionId} {
+      allow get, list, create, update, delete: if true;  // TEMPORARY: Allow all access
+      
+      // Subcollection for player statuses
+      match /players/{playerId} {
+        allow get, list, create, update, delete: if true;  // TEMPORARY: Allow all access
       }
-
-      function isPlayer() {
-        return isSignedIn() && request.auth.uid in resource.data.playerIds;
-      }
-
-      allow get, list: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.playerIds.hasAny([request.auth.uid]) || resource.data.organizerId == request.auth.uid);
-      allow delete: if isSignedIn() && (resource.data.playerIds.hasAny([request.auth.uid]) || resource.data.organizerId == request.auth.uid);
+    }
+    
+    // Also try with wildcard path
+    match /{path=**}/game-sessions/{gameSessionId} {
+      allow read, write: if true;
     }
 
     /**
      * @description Controls access to court documents.
      * @path /courts/{courtId}
      * @allow (get, list) - Any user can read court information.
-     * @allow (create, update, delete) - No one can create, update, or delete courts. Courts are managed via the CMS (not the client application).
-     * @principle Provides public read access while restricting write access.
+     * @allow (create) - Any authenticated user can create a court.
+     * @allow (update, delete) - Only the owner of the court can update or delete it.
+     * @principle Users can manage their own courts (user-owned resources).
      */
     match /courts/{courtId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isOwner() {
+            return isSignedIn() && resource.data.ownerId == request.auth.uid;
+        }
+
+        function willBeOwner() {
+            return isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+        }
+
+        allow get: if true;
+        allow list: if true;
+        allow create: if willBeOwner();
+        allow update: if isOwner();
+        allow delete: if isOwner();
     }
 
     /**

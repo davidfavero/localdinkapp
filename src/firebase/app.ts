@@ -1,3 +1,4 @@
+'use client';
 
 // src/firebase/app.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Star, Home, Plus } from 'lucide-react';
@@ -10,30 +10,46 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query } from 'firebase/firestore';
+import { useCollection, useFirestore, useFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 import type { Court } from '@/lib/types';
 import { AddCourtSheet } from '@/components/add-court-sheet';
+import { EditCourtSheet } from '@/components/edit-court-sheet';
 
 export default function CourtsPage() {
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
+  const [selectedCourt, setSelectedCourt] = useState<(Court & { id: string }) | null>(null);
   const firestore = useFirestore();
-  const courtsQuery = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'courts')) : null),
-    [firestore]
-  );
+  const { user: authUser } = useFirebase();
+
+  // Fetch courts owned by the current user
+  const courtsQuery = useMemo(() => {
+    if (!firestore || !authUser?.uid) {
+      return null;
+    }
+    const q = query(collection(firestore, 'courts'), where('ownerId', '==', authUser.uid));
+    (q as any).__memo = true;
+    return q;
+  }, [firestore, authUser?.uid]);
+
   const { data: courts, isLoading } = useCollection<Court>(courtsQuery);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end items-center">
-        <Button onClick={() => setIsSheetOpen(true)}>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold font-headline">Courts</h2>
+        <Button onClick={() => setIsAddSheetOpen(true)}>
           <Plus className="-ml-1 mr-2 h-4 w-4" />
           Add Court
         </Button>
       </div>
 
-      <AddCourtSheet open={isSheetOpen} onOpenChange={setIsSheetOpen} />
+      <AddCourtSheet open={isAddSheetOpen} onOpenChange={setIsAddSheetOpen} />
+      <EditCourtSheet 
+        court={selectedCourt} 
+        open={!!selectedCourt} 
+        onOpenChange={(open) => !open && setSelectedCourt(null)} 
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading &&
@@ -48,7 +64,11 @@ export default function CourtsPage() {
             </Card>
           ))}
         {courts?.map((court) => (
-          <Card key={court.id}>
+          <Card 
+            key={court.id}
+            className="cursor-pointer hover:bg-accent/50 transition-colors"
+            onClick={() => setSelectedCourt(court)}
+          >
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>{court.name}</span>
@@ -80,12 +100,36 @@ export default function CourtsPage() {
                 </div>
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span>{court.location}</span>
+            <CardContent className="space-y-2 text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 flex-shrink-0" />
+                <span>{court.location}</span>
+              </div>
+              {court.address && (
+                <div className="text-sm">
+                  <p>{court.address}</p>
+                  {(court.city || court.state || court.zipCode) && (
+                    <p>
+                      {court.city}{court.city && (court.state || court.zipCode) ? ', ' : ''}
+                      {court.state} {court.zipCode}
+                    </p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
+        {!isLoading && courts?.length === 0 && (
+          <div className="col-span-full text-center py-12 border-2 border-dashed rounded-lg">
+            <MapPin className="mx-auto h-12 w-12 text-muted-foreground" />
+            <h3 className="text-xl font-medium text-muted-foreground mt-4">No Courts Yet</h3>
+            <p className="text-muted-foreground mt-2">Add your favorite pickleball courts to keep track of where you play.</p>
+            <Button onClick={() => setIsAddSheetOpen(true)} className="mt-4">
+              <Plus className="-ml-1 mr-2 h-4 w-4" />
+              Add Court
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

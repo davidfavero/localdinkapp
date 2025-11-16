@@ -19,11 +19,13 @@ const allPlayers: Player[] = [
 export const players = allPlayers;
 
 
+const seedOwnerId = 'seed-owner';
+
 export const courts: Omit<Court, 'id'>[] = [
-  { name: 'Sunnyvale Park', location: 'Sunnyvale, CA', isHome: true, isFavorite: true },
-  { name: 'Mountain View Tennis', location: 'Mountain View, CA', isFavorite: true },
-  { name: 'Cupertino Sports Center', location: 'Cupertino, CA' },
-  { name: 'Mitchell Park', location: 'Palo Alto, CA', isFavorite: true },
+  { name: 'Sunnyvale Park', location: 'Sunnyvale, CA', isHome: true, isFavorite: true, ownerId: seedOwnerId },
+  { name: 'Mountain View Tennis', location: 'Mountain View, CA', isFavorite: true, ownerId: seedOwnerId },
+  { name: 'Cupertino Sports Center', location: 'Cupertino, CA', ownerId: seedOwnerId },
+  { name: 'Mitchell Park', location: 'Palo Alto, CA', isFavorite: true, ownerId: seedOwnerId },
 ];
 
 export const mockCourts = courts;
@@ -36,26 +38,32 @@ export const groups: Group[] = [
         id: 'g1',
         name: 'Weekend Warriors',
         avatarUrl: PlaceHolderImages.find(p => p.id === 'group1')?.imageUrl || '',
-        members: [referencePlayers[0].id, referencePlayers[1].id, referencePlayers[2].id, referencePlayers[4].id]
+        members: [referencePlayers[0].id, referencePlayers[1].id, referencePlayers[2].id, referencePlayers[4].id],
+        ownerId: seedOwnerId,
+        admins: [referencePlayers[0].id],
     },
     {
         id: 'g2',
         name: 'Morning Dinkers',
         avatarUrl: PlaceHolderImages.find(p => p.id === 'group2')?.imageUrl || '',
-        members: [referencePlayers[3].id, referencePlayers[5].id, referencePlayers[6].id]
+        members: [referencePlayers[3].id, referencePlayers[5].id, referencePlayers[6].id],
+        ownerId: seedOwnerId,
+        admins: [referencePlayers[3].id],
     },
     {
         id: 'g3',
         name: 'South Bay Paddlers',
         avatarUrl: PlaceHolderImages.find(p => p.id === 'group3')?.imageUrl || '',
-        members: [referencePlayers[0].id, referencePlayers[2].id, referencePlayers[3].id, referencePlayers[5].id, referencePlayers[7].id]
+        members: [referencePlayers[0].id, referencePlayers[2].id, referencePlayers[3].id, referencePlayers[5].id, referencePlayers[7].id],
+        ownerId: seedOwnerId,
+        admins: [referencePlayers[2].id],
     },
 ];
 
 export const gameSessions: GameSession[] = [
   {
     id: 'gs1',
-    court: { id: 'c1', name: 'Sunnyvale Park', location: 'Sunnyvale, CA' },
+    court: { id: 'c1', name: 'Sunnyvale Park', location: 'Sunnyvale, CA', ownerId: seedOwnerId },
     organizer: referencePlayers[1],
     date: 'Today',
     time: '5:00 PM',
@@ -70,7 +78,7 @@ export const gameSessions: GameSession[] = [
   },
   {
     id: 'gs2',
-    court: { id: 'c2', name: 'Mountain View Tennis', location: 'Mountain View, CA' },
+    court: { id: 'c2', name: 'Mountain View Tennis', location: 'Mountain View, CA', ownerId: seedOwnerId },
     organizer: referencePlayers[0],
     date: 'Tomorrow',
     time: '10:00 AM',
@@ -85,7 +93,7 @@ export const gameSessions: GameSession[] = [
   },
   {
     id: 'gs3',
-    court: { id: 'c3', name: 'Mitchell Park', location: 'Palo Alto, CA' },
+    court: { id: 'c3', name: 'Mitchell Park', location: 'Palo Alto, CA', ownerId: seedOwnerId },
     organizer: referencePlayers[3],
     date: 'Friday',
     time: '6:30 PM',
