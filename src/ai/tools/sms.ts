@@ -8,7 +8,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import Twilio from 'twilio';
+import { normalizeToE164, sendSmsMessage } from '@/server/twilio';
 
 const SendSmsSchema = z.object({
   to: z.string().describe("The recipient's phone number."),
@@ -27,17 +27,9 @@ export const sendSmsTool = ai.defineTool(
     }),
   },
   async ({ to, body }) => {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const from = process.env.TWILIO_PHONE_NUMBER;
-
-    if (!accountSid || !authToken || !from) {
-      const missingVars = [];
-      if (!accountSid) missingVars.push('TWILIO_ACCOUNT_SID');
-      if (!authToken) missingVars.push('TWILIO_AUTH_TOKEN');
-      if (!from) missingVars.push('TWILIO_PHONE_NUMBER');
-      
-      const errorMsg = `Twilio configuration is missing. Please set the following environment variables: ${missingVars.join(', ')}`;
+    const normalizedTo = normalizeToE164(to);
+    if (!normalizedTo) {
+      const errorMsg = `The phone number "${to}" is not a valid SMS destination. Please use a full number (e.g., +18885551234).`;
       console.error(errorMsg);
       return {
         success: false,
@@ -45,14 +37,11 @@ export const sendSmsTool = ai.defineTool(
       };
     }
 
-    const client = Twilio(accountSid, authToken);
-
     try {
-      console.log(`Sending SMS from: ${from}, to: ${to}`);
-      const message = await client.messages.create({
+      console.log(`Sending SMS to: ${normalizedTo}`);
+      const message = await sendSmsMessage({
         body,
-        from,
-        to,
+        to: normalizedTo,
       });
       console.log('SMS sent successfully, SID:', message.sid);
       return { success: true, messageSid: message.sid };

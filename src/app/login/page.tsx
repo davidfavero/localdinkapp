@@ -25,6 +25,13 @@ export default function LoginPage() {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const recaptchaInitialized = useRef(false);
 
+  // DEV MODE: Allow bypassing login for testing
+  const handleDevBypass = () => {
+    if (process.env.NODE_ENV === 'development') {
+      router.push('/dashboard');
+    }
+  };
+
   useEffect(() => {
     if (!loading && user) {
       console.log('User detected, redirecting to dashboard...', user.uid);
@@ -321,6 +328,19 @@ export default function LoginPage() {
         <p className="text-center text-sm text-muted-foreground">
           By continuing, you agree to our Terms of Service and Privacy Policy
         </p>
+
+        {/* DEV MODE BYPASS */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="text-center">
+            <Button
+              onClick={handleDevBypass}
+              variant="outline"
+              className="text-xs"
+            >
+              🔧 Dev: Skip Login
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

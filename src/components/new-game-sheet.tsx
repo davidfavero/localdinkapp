@@ -4,9 +4,8 @@ import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { addDoc, collection, query, Timestamp, where } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { errorEmitter } from '@/firebase/error-emitter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -37,7 +36,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { UserAvatar } from '@/components/user-avatar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Court, Group, Player, RsvpStatus } from '@/lib/types';
-import { FirestorePermissionError } from '@/firebase/errors';
 import { createAttendee, uniqueAttendees } from '@/lib/session-attendees';
 
 const gameSchema = z.object({
@@ -177,12 +175,12 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
   const previewPlayers = invitedPlayersPreview.slice(0, PREVIEW_LIMIT);
   const previewOverflow = Math.max(0, invitedPlayersPreview.length - PREVIEW_LIMIT);
 
-  const onSubmit = (data: GameFormValues) => {
-    if (!firestore || !user) {
+  const onSubmit = async (data: GameFormValues) => {
+    if (!user) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Could not connect to database. Please try again.',
+        description: 'You must be logged in to create a game session.',
       });
       return;
     }
@@ -243,10 +241,15 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
     const playerIds = Array.from(new Set(attendees.map((attendee) => attendee.id)));
     const groupIds = Array.from(new Set(data.groupIds ?? []));
 
+    const selectedCourt = courts.find((court) => court.id === data.courtId);
+
     const payload = {
       courtId: data.courtId,
       organizerId: user.uid,
-      startTime: Timestamp.fromDate(startTime),
+      startTime: startTime.toISOString(),
+      startTimeDisplay: format(startTime, "EEEE, MMMM d 'at' h:mm a"),
+      courtName: selectedCourt?.name,
+      courtLocation: selectedCourt?.location,
       isDoubles: data.isDoubles === 'true',
       durationMinutes: 120, // Default duration
       status: 'scheduled',
@@ -256,39 +259,63 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       playerStatuses,
     };
 
-    const gameSessionsRef = collection(firestore, 'game-sessions');
-    addDoc(gameSessionsRef, payload)
-      .then(() => {
-        toast({
-          title: 'Game Created!',
-          description: 'Your new game session has been scheduled.',
-        });
-        form.reset({
-          isDoubles: 'true',
-          time: '05:00 PM',
-          courtId: '',
-          date: undefined,
-          playerIds: [],
-          groupIds: [],
-        });
-        onOpenChange(false);
-      })
-      .catch((error) => {
-        const permissionError = new FirestorePermissionError({
-          path: gameSessionsRef.path,
-          operation: 'create',
-          requestResourceData: payload,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-        toast({
-          variant: 'destructive',
-          title: 'Uh oh! Something went wrong.',
-          description: 'Could not create the game session. Check permissions.',
-        });
-      })
-      .finally(() => {
-        setIsCreating(false);
+    try {
+      const response = await fetch('/api/game-sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
       });
+
+      let responseBody: any = null;
+      try {
+        responseBody = await response.json();
+      } catch {
+        responseBody = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          responseBody?.error ?? 'Could not create the game session. Please try again.';
+        throw new Error(message);
+      }
+
+      const notifiedCount = responseBody?.notifiedCount ?? 0;
+      const notifiedDescription =
+        notifiedCount > 0
+          ? `Your new game session has been scheduled and ${notifiedCount} player${
+              notifiedCount === 1 ? '' : 's'
+            } were notified via SMS.`
+          : 'Your new game session has been scheduled.';
+
+      toast({
+        title: 'Game Created!',
+        description: notifiedDescription,
+      });
+      form.reset({
+        isDoubles: 'true',
+        time: '05:00 PM',
+        courtId: '',
+        date: undefined,
+        playerIds: [],
+        groupIds: [],
+      });
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to create game session:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Uh oh! Something went wrong.',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Could not create the game session. Check the server logs for details.',
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (

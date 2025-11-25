@@ -1,0 +1,42 @@
+diff --git a/node_modules/buffer-equal-constant-time/index.js b/node_modules/buffer-equal-constant-time/index.js
+index 5462c1f..05e6677 100644
+--- a/node_modules/buffer-equal-constant-time/index.js
++++ b/node_modules/buffer-equal-constant-time/index.js
+@@ -1,7 +1,17 @@
+ /*jshint node:true */
+ 'use strict';
+-var Buffer = require('buffer').Buffer; // browserify
+-var SlowBuffer = require('buffer').SlowBuffer;
++// Ensure Buffer is available
++var bufferModule = require('buffer');
++var Buffer = bufferModule.Buffer || global.Buffer || globalThis.Buffer;
++var SlowBuffer = bufferModule.SlowBuffer;
++
++// Fallback if Buffer is still not available
++if (!Buffer && typeof globalThis !== 'undefined' && globalThis.Buffer) {
++  Buffer = globalThis.Buffer;
++}
++if (!SlowBuffer && Buffer) {
++  SlowBuffer = Buffer;
++}
+ 
+ module.exports = bufferEq;
+ 
+@@ -33,9 +43,13 @@ bufferEq.install = function() {
+   };
+ };
+ 
+-var origBufEqual = Buffer.prototype.equal;
+-var origSlowBufEqual = SlowBuffer.prototype.equal;
++var origBufEqual = Buffer && Buffer.prototype ? Buffer.prototype.equal : undefined;
++var origSlowBufEqual = SlowBuffer && SlowBuffer.prototype ? SlowBuffer.prototype.equal : undefined;
+ bufferEq.restore = function() {
+-  Buffer.prototype.equal = origBufEqual;
+-  SlowBuffer.prototype.equal = origSlowBufEqual;
++  if (Buffer && Buffer.prototype) {
++    Buffer.prototype.equal = origBufEqual;
++  }
++  if (SlowBuffer && SlowBuffer.prototype) {
++    SlowBuffer.prototype.equal = origSlowBufEqual;
++  }
+ };

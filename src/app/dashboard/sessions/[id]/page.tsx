@@ -81,18 +81,24 @@ const SessionDetailSkeleton = () => (
 );
 
 
-export default function SessionDetailPage({ params }: { params: { id: string } }) {
+export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { toast } = useToast();
   const { user: currentUser } = useUser();
   const [isCancelling, setIsCancelling] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [allCourts, setAllCourts] = useState<Court[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const firestore = useFirestore();
+
+  // Unwrap params Promise
+  useEffect(() => {
+    params.then((p) => setSessionId(p.id));
+  }, [params]);
 
   // 1. Fetch the raw game session document
   const sessionRef = useMemoFirebase(
-    () => (firestore && params.id ? doc(firestore, 'game-sessions', params.id) : null),
-    [firestore, params.id]
+    () => (firestore && sessionId ? doc(firestore, 'game-sessions', sessionId) : null),
+    [firestore, sessionId]
   );
   const { data: rawSession, isLoading: isLoadingSession } = useDoc<RawGameSession>(sessionRef);
   const [hydratedSession, setHydratedSession] = useState<GameSession | null>(null);
@@ -279,7 +285,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     }
   }
 
-  if (isLoadingSession || isHydrating) {
+  if (!sessionId || isLoadingSession || isHydrating) {
     return <SessionDetailSkeleton />;
   }
 
