@@ -80,15 +80,17 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
   const { user } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
 
+  // Fetch ALL players (shared roster)
   const playersQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'players'), where('ownerId', '==', user.uid));
+    return query(collection(firestore, 'players'));
   }, [firestore, user?.uid]);
   const { data: availablePlayers, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
 
+  // Fetch ALL groups
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'groups'), where('ownerId', '==', user.uid));
+    return query(collection(firestore, 'groups'));
   }, [firestore, user?.uid]);
   const { data: availableGroups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
 
@@ -252,7 +254,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       courtLocation: selectedCourt?.location,
       isDoubles: data.isDoubles === 'true',
       durationMinutes: 120, // Default duration
-      status: 'scheduled',
+      status: 'open',  // Must be: 'open' | 'full' | 'cancelled' | 'completed'
       playerIds,
       attendees,
       groupIds,

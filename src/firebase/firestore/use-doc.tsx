@@ -44,17 +44,28 @@ export function useDoc<T = any>(
   type StateDataType = WithId<T> | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // Start with isLoading true to prevent flash of 404
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+  // Track whether we've ever had a valid ref to know if we should be loading
+  const [hasEverHadRef, setHasEverHadRef] = useState<boolean>(false);
 
   useEffect(() => {
     if (!memoizedDocRef) {
+      // If we've never had a ref, keep loading state true (waiting for firestore to init)
+      // If we've had a ref before and now it's null, that's unusual but set loading false
+      if (!hasEverHadRef) {
+        // Still waiting for ref, keep loading true
+        return;
+      }
       setData(null);
       setIsLoading(false);
       setError(null);
       return;
     }
 
+    // Mark that we now have a valid ref
+    setHasEverHadRef(true);
     setIsLoading(true);
     setError(null);
     // Optional: setData(null); // Clear previous data instantly

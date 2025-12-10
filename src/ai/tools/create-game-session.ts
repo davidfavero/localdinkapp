@@ -53,7 +53,7 @@ export const createGameSessionTool = ai.defineTool(
           }),
           isDoubles: input.isDoubles,
           durationMinutes: input.durationMinutes || 120,
-          status: 'scheduled',
+          status: 'open',
           playerIds: input.playerIds,
           attendees: input.attendees,
           playerStatuses: input.playerStatuses,

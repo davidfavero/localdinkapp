@@ -8,12 +8,17 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ player, className }: UserAvatarProps) {
-  const name = (player.firstName && player.lastName) ? `${player.firstName} ${player.lastName}`: (player.name || 'Unknown Player');
+  // Build name from available fields
+  const firstName = player.firstName || '';
+  const lastName = player.lastName || '';
+  const fullName = `${firstName} ${lastName}`.trim();
+  const name = fullName || player.name || 'Unknown';
   
-  const fallback = name
-    .split(' ')
-    .map((n) => n[0])
-    .join('');
+  // Build initials - handle edge cases
+  const parts = name.split(' ').filter(p => p.length > 0);
+  const fallback = parts.length >= 2 
+    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    : (parts[0]?.substring(0, 2) || '??').toUpperCase();
 
   return (
     <TooltipProvider delayDuration={200}>

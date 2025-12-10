@@ -3,22 +3,38 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mic, Send, Sparkles } from 'lucide-react';
+import { Mic, Send, Sparkles, Trash2 } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
-import type { Message, Player } from '@/lib/types';
+import type { Message, Player, Group } from '@/lib/types';
 import { useUser, useFirestore } from '@/firebase/provider';
 import { collection, query, getDocs } from 'firebase/firestore';
 
+const CHAT_STORAGE_KEY = 'robin-chat-messages';
+const DEFAULT_MESSAGE: Message = {
+  sender: 'robin',
+  text: "Hi! I'm Robin, your AI scheduling assistant. I can help you schedule pickleball games, find courts, and manage your sessions. Just tell me who you want to play with, when, and where - for example: 'Schedule a game with Melissa tomorrow at 4pm at I'On Courts'. What would you like to do?",
+};
 
 export default function RobinChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      sender: 'robin',
-      text: "Hi! I'm Robin, your AI scheduling assistant. I can help you schedule pickleball games, find courts, and manage your sessions. Just tell me who you want to play with, when, and where - for example: 'Schedule a game with Melissa tomorrow at 4pm at I'On Courts'. What would you like to do?",
-    },
-  ]);
+  // Load messages from localStorage on initial render
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load chat history:', e);
+      }
+    }
+    return [DEFAULT_MESSAGE];
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -26,12 +42,23 @@ export default function RobinChatPage() {
   const { profile: currentUser, user: authUser, isUserLoading } = useUser();
   const firestore = useFirestore();
   const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
+  const [knownGroups, setKnownGroups] = useState<(Group & { id: string })[]>([]);
 
-  // Fetch known players from Firestore (users, players, and group members)
+  // Save messages to localStorage whenever they change
   useEffect(() => {
-    const fetchPlayers = async () => {
+    if (typeof window !== 'undefined' && messages.length > 0) {
+      try {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+      } catch (e) {
+        console.warn('Could not save chat history:', e);
+      }
+    }
+  }, [messages]);
+
+  // Fetch known players and groups from Firestore
+  useEffect(() => {
+    const fetchData = async () => {
       if (!firestore || !authUser?.uid) {
-        // Fallback to just current user if no firestore or auth
         if (currentUser) {
           setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
         }
@@ -41,72 +68,48 @@ export default function RobinChatPage() {
       try {
         const existingIds = new Set<string>();
         const allPlayers: Player[] = [];
+        const allGroups: (Group & { id: string })[] = [];
 
-        // Helper to add player without duplicates
         const addPlayer = (player: Player) => {
-          if (!existingIds.has(player.id)) {
+          if (player.id && !existingIds.has(player.id)) {
             allPlayers.push(player);
             existingIds.add(player.id);
           }
         };
 
-        // Try to fetch users - if it fails due to permissions, continue with empty array
+        // Fetch ALL users (no ownerId filter - users are shared)
         try {
-          const usersQuery = query(collection(firestore, 'users'));
-          const usersSnap = await getDocs(usersQuery);
+          const usersSnap = await getDocs(collection(firestore, 'users'));
           usersSnap.docs.forEach(doc => {
             addPlayer({ id: doc.id, ...doc.data() } as Player);
           });
-        } catch (usersError: any) {
-          console.warn('Could not fetch users (permissions may not be deployed):', usersError.message);
+          console.log(`[Dashboard] Loaded ${usersSnap.docs.length} users`);
+        } catch (e: any) {
+          console.warn('Could not fetch users:', e.message);
         }
 
-        // Try to fetch players (contacts) - if it fails, continue with empty array
+        // Fetch ALL players (contacts) - no owner filter to see all players
         try {
-          const playersQuery = query(collection(firestore, 'players'));
-          const playersSnap = await getDocs(playersQuery);
+          const playersSnap = await getDocs(collection(firestore, 'players'));
           playersSnap.docs.forEach(doc => {
             const data = doc.data();
-            if (data.ownerId === authUser.uid) {
-              addPlayer({ id: doc.id, ...data } as Player);
-            }
+            addPlayer({ id: doc.id, ...data } as Player);
           });
-        } catch (playersError: any) {
-          console.warn('Could not fetch players:', playersError.message);
+          console.log(`[Dashboard] Loaded ${playersSnap.docs.length} players`);
+        } catch (e: any) {
+          console.warn('Could not fetch players:', e.message);
         }
 
-        // Try to fetch groups and their members
+        // Fetch ALL groups (with their names for AI matching)
         try {
-          const groupsQuery = query(collection(firestore, 'groups'));
-          const groupsSnap = await getDocs(groupsQuery);
-          const memberIds = new Set<string>();
-          
+          const groupsSnap = await getDocs(collection(firestore, 'groups'));
           groupsSnap.docs.forEach(doc => {
             const data = doc.data();
-            if (data.ownerId === authUser.uid && data.members) {
-              data.members.forEach((memberId: string) => {
-                if (!existingIds.has(memberId)) {
-                  memberIds.add(memberId);
-                }
-              });
-            }
+            allGroups.push({ id: doc.id, ...data } as Group & { id: string });
           });
-
-          // Fetch member details (they could be in users or players)
-          for (const memberId of memberIds) {
-            // We've already loaded users, so just check players
-            try {
-              const playerDoc = await getDocs(query(collection(firestore, 'players')));
-              const foundPlayer = playerDoc.docs.find(d => d.id === memberId);
-              if (foundPlayer) {
-                addPlayer({ id: foundPlayer.id, ...foundPlayer.data() } as Player);
-              }
-            } catch (e) {
-              // Ignore individual failures
-            }
-          }
-        } catch (groupsError: any) {
-          console.warn('Could not fetch groups:', groupsError.message);
+          console.log(`[Dashboard] Loaded ${allGroups.length} groups:`, allGroups.map(g => g.name));
+        } catch (e: any) {
+          console.warn('Could not fetch groups:', e.message);
         }
 
         // Ensure current user is included
@@ -120,11 +123,11 @@ export default function RobinChatPage() {
           isCurrentUser: p.id === authUser.uid
         }));
 
-        console.log('[Dashboard] Loaded players:', playersWithCurrent.map(p => `${p.firstName} ${p.lastName}`));
+        console.log('[Dashboard] Final player list:', playersWithCurrent.map(p => `${p.firstName} ${p.lastName}`));
         setKnownPlayers(playersWithCurrent);
+        setKnownGroups(allGroups);
       } catch (error: any) {
-        console.error('Error fetching players:', error);
-        // Fallback to just current user - AI can still work with limited data
+        console.error('Error fetching data:', error);
         if (currentUser) {
           setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
         } else {
@@ -134,12 +137,19 @@ export default function RobinChatPage() {
     };
 
     if (!isUserLoading && firestore) {
-      fetchPlayers();
+      fetchData();
     }
   }, [firestore, authUser?.uid, currentUser, isUserLoading]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const clearChat = () => {
+    setMessages([DEFAULT_MESSAGE]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    }
   };
 
   useEffect(() => {
@@ -158,10 +168,11 @@ export default function RobinChatPage() {
       setIsLoading(true);
 
       try {
-        // Pass the latest state to the action with known players
+        // Pass the latest state to the action with known players and groups
         const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
         console.log('[Chat] Calling chatAction with:', currentInput.trim());
-        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null, knownPlayers);
+        console.log('[Chat] Known groups:', knownGroups.map(g => g.name));
+        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null, knownPlayers, knownGroups);
         console.log('[Chat] Got response:', response);
         
         let responseText = response.confirmationText || "I'm not sure how to respond to that.";
@@ -223,8 +234,14 @@ export default function RobinChatPage() {
 
        <div className="bg-background/80 backdrop-blur-sm border-t -mx-4 -mb-4 mt-4 p-4">
          <div className="flex items-center gap-2">
-            <Button size="icon" variant="ghost" className="text-muted-foreground">
-                <Mic />
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="text-muted-foreground"
+              onClick={clearChat}
+              title="Clear chat history"
+            >
+                <Trash2 className="h-4 w-4" />
             </Button>
             <Input
                 value={input}

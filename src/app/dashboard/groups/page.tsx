@@ -27,38 +27,32 @@ export default function GroupsAndPlayersPage() {
   
   console.log('🔍 Direct auth user:', { authUser: authUser?.uid, hasUid: !!authUser?.uid });
 
+  // Fetch ALL groups - don't filter by owner to show all accessible groups
   const groupsQuery = useMemo(() => {
     if (!firestore || !authUser?.uid) {
       console.log('⚠️ Groups query - no authUser yet');
       return null;
     }
-    console.log('✅ Creating groups query for user:', authUser.uid);
-    const q = query(collection(firestore, 'groups'), where('ownerId', '==', authUser.uid));
+    console.log('✅ Creating groups query for all groups (user:', authUser.uid, ')');
+    const q = query(collection(firestore, 'groups'));
     (q as any).__memo = true;  // Mark for useCollection
     return q;
   }, [firestore, authUser?.uid]);
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
   
-  // Fetch players from the players collection (contacts the user has added)
+  // Fetch ALL players from the players collection (not filtered by owner)
   const playersQuery = useMemo(() => {
     if (!firestore || !authUser?.uid) {
       console.log('⚠️ Players query - no authUser yet, authUser.uid:', authUser?.uid);
       return null;
     }
-    console.log('✅ Creating players query for user:', authUser.uid);
-    const q = query(collection(firestore, 'players'), where('ownerId', '==', authUser.uid));
+    console.log('✅ Creating players query for all players (user:', authUser.uid, ')');
+    const q = query(collection(firestore, 'players'));
     (q as any).__memo = true;  // Mark for useCollection
     return q;
   }, [firestore, authUser?.uid]);
   const { data: addedPlayers, isLoading: isLoadingPlayers, error: playersError } = useCollection<Player>(playersQuery);
   
-  console.log('📊 Players state:', { 
-    addedPlayers, 
-    isLoadingPlayers, 
-    playersError,
-    queryExists: !!playersQuery,
-    authUserUid: authUser?.uid
-  });
 
   const getPlayerName = (player: Player) => {
     if (player.firstName && player.lastName) {

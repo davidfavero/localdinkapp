@@ -2,6 +2,7 @@
 
 /**
  * @fileOverview A tool for finding courts by name.
+ * Updated: 2024-12-10 - Improved matching for apostrophes (I'On vs ION)
  */
 
 import { ai } from '@/ai/genkit';
@@ -36,13 +37,21 @@ export const findCourtTool = ai.defineTool(
         };
       }
 
-      // Normalize the court name for matching (lowercase, remove extra spaces, handle apostrophes)
-      const normalizedSearchName = courtName.toLowerCase().trim().replace(/\s+/g, ' ').replace(/['']/g, "'");
-      
-      // Remove common suffixes for more flexible matching
-      const searchWithoutSuffix = normalizedSearchName.replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+      // Helper to create a "clean" version for matching - removes apostrophes, special chars, and common suffixes
+      const cleanForMatching = (str: string) => {
+        return str
+          .toLowerCase()
+          .trim()
+          .replace(/['''`]/g, '')  // Remove all apostrophe variations
+          .replace(/\s+/g, ' ')    // Normalize spaces
+          .replace(/\s*(courts?|tennis|center|park|club)$/i, '') // Remove suffixes
+          .trim();
+      };
 
-      console.log(`[findCourt] Searching for: "${courtName}" (normalized: "${normalizedSearchName}", base: "${searchWithoutSuffix}")`);
+      const normalizedSearchName = courtName.toLowerCase().trim().replace(/\s+/g, ' ');
+      const cleanedSearch = cleanForMatching(courtName);
+
+      console.log(`[findCourt] Searching for: "${courtName}" (normalized: "${normalizedSearchName}", cleaned: "${cleanedSearch}")`);
 
       // First try: search courts owned by the user
       let snapshot;
@@ -60,33 +69,41 @@ export const findCourtTool = ai.defineTool(
       // Log all available courts for debugging
       console.log('[findCourt] Available courts:', snapshot.docs.map(d => d.data().name));
       
-      // Try exact match first
+      // Try exact match first (case insensitive)
       let matchedCourt = snapshot.docs.find(doc => {
         const data = doc.data();
-        const name = (data.name || '').toLowerCase().trim().replace(/['']/g, "'");
+        const name = (data.name || '').toLowerCase().trim();
         return name === normalizedSearchName;
       });
 
-      // If no exact match, try partial match (contains)
+      // Try cleaned match (removes apostrophes and suffixes: "I'On Courts" matches "ION")
       if (!matchedCourt) {
         matchedCourt = snapshot.docs.find(doc => {
           const data = doc.data();
-          const name = (data.name || '').toLowerCase().trim().replace(/['']/g, "'");
-          const nameWithoutSuffix = name.replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
-          return name.includes(normalizedSearchName) || 
-                 normalizedSearchName.includes(name) ||
-                 nameWithoutSuffix.includes(searchWithoutSuffix) ||
-                 searchWithoutSuffix.includes(nameWithoutSuffix);
+          const cleanedName = cleanForMatching(data.name || '');
+          return cleanedName === cleanedSearch;
         });
       }
 
-      // If still no match, try word-based matching (e.g., "I'On" matches "I'On Courts")
+      // If no exact match, try partial/contains match
       if (!matchedCourt) {
         matchedCourt = snapshot.docs.find(doc => {
           const data = doc.data();
-          const name = (data.name || '').toLowerCase().trim().replace(/['']/g, "'");
-          // Check if search term is at the start of the court name
-          return name.startsWith(searchWithoutSuffix) || name.startsWith(normalizedSearchName);
+          const name = (data.name || '').toLowerCase().trim();
+          const cleanedName = cleanForMatching(data.name || '');
+          return name.includes(normalizedSearchName) || 
+                 normalizedSearchName.includes(name) ||
+                 cleanedName.includes(cleanedSearch) ||
+                 cleanedSearch.includes(cleanedName);
+        });
+      }
+
+      // Try starts-with match
+      if (!matchedCourt) {
+        matchedCourt = snapshot.docs.find(doc => {
+          const data = doc.data();
+          const cleanedName = cleanForMatching(data.name || '');
+          return cleanedName.startsWith(cleanedSearch) || cleanedSearch.startsWith(cleanedName);
         });
       }
 

@@ -8,10 +8,35 @@
 
 import { ai, geminiFlash } from '@/ai/genkit';
 import { z } from 'zod';
-import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player } from '@/lib/types';
+import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player, Group } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
 import { findCourtTool } from '@/ai/tools/find-court';
 import { createGameSessionTool } from '@/ai/tools/create-game-session';
+
+// Helper to match a group by name
+function findGroupByName(searchName: string, groups: (Group & { id: string })[]): (Group & { id: string }) | undefined {
+  const normalized = searchName.toLowerCase().trim();
+  
+  // Exact match
+  const exactMatch = groups.find(g => g.name.toLowerCase().trim() === normalized);
+  if (exactMatch) return exactMatch;
+  
+  // Partial match (search term is in group name or vice versa)
+  const partialMatch = groups.find(g => {
+    const groupName = g.name.toLowerCase().trim();
+    return groupName.includes(normalized) || normalized.includes(groupName);
+  });
+  if (partialMatch) return partialMatch;
+  
+  // Word match (any significant word matches)
+  const words = normalized.split(/\s+/).filter(w => w.length > 2);
+  const wordMatch = groups.find(g => {
+    const groupWords = g.name.toLowerCase().split(/\s+/);
+    return words.some(w => groupWords.includes(w));
+  });
+  
+  return wordMatch;
+}
 
 // Helper function to check if a message is a simple confirmation
 function isConfirmation(message: string) {
@@ -82,9 +107,16 @@ function parseDateTime(dateStr: string, timeStr: string): Date | null {
 }
 
 
-export async function chat(knownPlayers: Player[], input: ChatInput): Promise<ChatOutput> {
+export async function chat(
+  knownPlayers: Player[], 
+  input: ChatInput, 
+  knownGroups: (Group & { id: string })[] = []
+): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
+    const knownGroupNames = knownGroups.map(g => g.name);
     const currentUser = knownPlayers.find(p => p.isCurrentUser);
+    
+    console.log('[chat] Available groups:', knownGroupNames);
     
     let processedInput = input.message;
     const historyToConsider = input.history.slice(-4); // Only consider last 4 messages
@@ -121,20 +153,23 @@ export async function chat(knownPlayers: Player[], input: ChatInput): Promise<Ch
         prompt: `You are Robin, a friendly AI scheduling assistant for LocalDink, a pickleball app. Your job is to help users schedule games naturally through conversation.
 
 WHAT YOU CAN DO:
-- Schedule games: Extract players, date, time, and location from natural language
+- Schedule games: Extract players, groups, date, time, and location from natural language
 - Find courts: Look up courts by name when users mention them
 - Create sessions: Once you have all details, immediately create the game session and send invitations
 - Answer questions: Have friendly conversations about scheduling, pickleball, or the app
 
 HOW TO HELP:
 1. Be decisive and action-oriented - when you have all the details, just do it
-2. Extract details naturally - users might say "tomorrow at 4pm with Melissa at I'On" or "schedule a game next Friday"
+2. Extract details naturally - users might say "tomorrow at 4pm with Melissa at I'On" or "schedule with Friday Group"
 3. Only ask ONE clarifying question if something critical is genuinely missing
 4. DO NOT ask "does this look right?" or any confirmation questions - just take action
 
 EXTRACTION RULES (be thorough):
-1. Players: Extract ALL player names. "with [name]" = that person is a player. Always include "me" if user is scheduling for themselves.
-   Examples: "with melissa" → ["melissa", "me"], "schedule with Alex and Bob" → ["Alex", "Bob", "me"]
+1. Players/Groups: Extract ALL player names OR group names. "with [name]" = that person/group. Always include "me" if user is scheduling for themselves.
+   - Individual: "with melissa" → ["melissa", "me"]
+   - Group: "with Friday Morning Group" → ["Friday Morning Group", "me"]
+   - Mixed: "schedule with Alex and the Tennis Club" → ["Alex", "Tennis Club", "me"]
+   ${knownGroupNames.length > 0 ? `\n   Available groups: ${knownGroupNames.join(', ')}` : ''}
 
 2. Date: Convert relative terms to absolute dates:
    - "tomorrow" → ${new Date(today.getTime() + 24*60*60*1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -237,31 +272,65 @@ Extract all details you can find. Be thorough and conversational.`,
       }
     }
 
-    const disambiguationResults = await Promise.all(
-      (players || []).map(async (playerName: string) => {
-        if (['me', 'i', 'myself'].includes(playerName.toLowerCase().trim()) && currentUser) {
-          return { id: currentUser.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser.phone, originalName: playerName, disambiguatedName: `${currentUser.firstName} ${currentUser.lastName}` };
-        }
-        const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
-        return { ...result, originalName: playerName, name: result.disambiguatedName };
-      })
-    );
+    // Process each name - could be a player OR a group
+    const allResults: { id?: string; name: string; phone?: string; question?: string; isGroup?: boolean; groupName?: string }[] = [];
+    const questions: string[] = [];
     
-    const questions = disambiguationResults.map(r => r.question).filter(q => q);
+    for (const playerName of (players || [])) {
+      const trimmedName = playerName.toLowerCase().trim();
+      
+      // Check if it's "me" / "I" / "myself"
+      if (['me', 'i', 'myself'].includes(trimmedName) && currentUser) {
+        allResults.push({ 
+          id: currentUser.id, 
+          name: `${currentUser.firstName} ${currentUser.lastName}`, 
+          phone: currentUser.phone 
+        });
+        continue;
+      }
+      
+      // Check if it's a group name
+      const matchedGroup = findGroupByName(playerName, knownGroups);
+      if (matchedGroup) {
+        console.log(`[chat] Found group "${matchedGroup.name}" with ${matchedGroup.members?.length || 0} members`);
+        
+        // Expand group to all its members
+        if (matchedGroup.members && matchedGroup.members.length > 0) {
+          for (const memberId of matchedGroup.members) {
+            const memberPlayer = knownPlayers.find(p => p.id === memberId);
+            if (memberPlayer) {
+              allResults.push({
+                id: memberPlayer.id,
+                name: `${memberPlayer.firstName} ${memberPlayer.lastName}`,
+                phone: memberPlayer.phone,
+                isGroup: true,
+                groupName: matchedGroup.name,
+              });
+            }
+          }
+        }
+        continue;
+      }
+      
+      // Otherwise, try to disambiguate as a player name
+      const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
+      if (result.question) {
+        questions.push(result.question);
+      } else if (result.disambiguatedName) {
+        const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === result.disambiguatedName);
+        allResults.push({ 
+          id: playerData?.id, 
+          name: result.disambiguatedName, 
+          phone: playerData?.phone 
+        });
+      }
+    }
+    
     if (questions.length > 0) {
       return { confirmationText: questions.join(' ') };
     }
 
-    const invitedPlayers = disambiguationResults.map(result => {
-        if (result.question) return null; // Skip if there's a question
-        
-        const fullName = result.disambiguatedName;
-        if (!fullName) return null;
-
-        const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === fullName);
-        return { id: playerData?.id, name: fullName, phone: playerData?.phone };
-
-    }).filter((p): p is { id?: string; name: string; phone?: string } => p !== null);
+    const invitedPlayers: { id?: string; name: string; phone?: string }[] = allResults.filter(r => r.name && !r.question);
 
     const uniqueInvitedPlayers = invitedPlayers.reduce((acc, player) => {
       if (player.name && !acc.some(p => p.name === player.name)) {
@@ -305,12 +374,20 @@ Extract all details you can find. Be thorough and conversational.`,
           };
         }
 
-        // Build attendees array
+        // Build attendees array - determine correct source for each player
+        // Players with isCurrentUser or email are from 'users' collection
+        // Others are from 'players' collection (contacts)
         const attendees = [
           { id: currentUser.id, source: 'user' as const },
           ...uniqueInvitedPlayers
             .filter(p => p.id && p.id !== currentUser.id)
-            .map(p => ({ id: p.id!, source: 'player' as const })),
+            .map(p => {
+              // Find the full player data to check if they're a user or contact
+              const fullPlayer = knownPlayers.find(kp => kp.id === p.id);
+              // If they have an email, they're likely a registered user
+              const isUser = fullPlayer?.email && fullPlayer.email.length > 0;
+              return { id: p.id!, source: isUser ? 'user' as const : 'player' as const };
+            }),
         ];
 
         // Build player statuses

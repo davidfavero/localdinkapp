@@ -47,7 +47,21 @@ export type GameSessionAttendee = {
   source: AttendeeSource;
 };
 
-export type RsvpStatus = 'CONFIRMED' | 'DECLINED' | 'PENDING';
+// Player RSVP status for a game
+export type RsvpStatus = 
+  | 'PENDING'      // Invited, awaiting response
+  | 'CONFIRMED'    // Accepted the invite
+  | 'DECLINED'     // Said no
+  | 'CANCELLED'    // Was confirmed, then backed out
+  | 'WAITLIST'     // Game full, on waitlist
+  | 'EXPIRED';     // Never responded, invite expired
+
+// Overall game session status
+export type GameSessionStatus = 
+  | 'open'         // Still accepting players
+  | 'full'         // All spots filled
+  | 'cancelled'    // Organizer cancelled
+  | 'completed';   // Game finished
 
 // This is the shape of the data retrieved from Firestore
 export type GameSession_Firestore = {
@@ -55,12 +69,28 @@ export type GameSession_Firestore = {
   courtId: string;
   organizerId: string;
   startTime: Timestamp;
+  startTimeDisplay?: string;
   isDoubles: boolean;
+  durationMinutes?: number;
+  
+  // Player management
   playerIds: string[];
   attendees?: GameSessionAttendee[];
-  groupIds?: string[];
   playerStatuses?: Record<string, RsvpStatus>;
-  // and other Firestore-specific fields
+  alternates?: string[];  // Waitlist player IDs in order
+  
+  // Game status
+  status: GameSessionStatus;
+  minPlayers?: number;  // Minimum to play (default: 2 for singles, 4 for doubles)
+  maxPlayers?: number;  // Maximum allowed
+  
+  // Group support
+  groupIds?: string[];
+  
+  // Notification tracking
+  invitesSentAt?: Timestamp;
+  lastReminderAt?: Timestamp;
+  gameFullNotifiedAt?: Timestamp;
 }
 
 // This is the fully "hydrated" shape used in the UI

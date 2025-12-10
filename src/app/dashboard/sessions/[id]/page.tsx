@@ -287,12 +287,27 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
-  if (!sessionId || isLoadingSession || isHydrating) {
+  // Show skeleton while:
+  // - sessionId is not set (params Promise hasn't resolved)
+  // - firestore is not ready (Firebase not initialized)
+  // - session is loading
+  // - session is hydrating
+  if (!sessionId || !firestore || isLoadingSession || isHydrating) {
     return <SessionDetailSkeleton />;
   }
 
-  if (!session) {
+  // Only show 404 if:
+  // - We have a sessionId (params resolved)
+  // - Firestore is ready
+  // - We're done loading
+  // - There's no raw session data (document doesn't exist)
+  if (!session && !rawSession) {
     notFound();
+  }
+  
+  // If we have rawSession but no hydrated session yet, show skeleton (shouldn't happen but safety check)
+  if (!session) {
+    return <SessionDetailSkeleton />;
   }
 
   const currentUserInGame = session.players.find(p => p.player.id === currentUser?.uid);

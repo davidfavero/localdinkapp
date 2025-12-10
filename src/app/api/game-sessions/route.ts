@@ -21,11 +21,13 @@ const CreateGameSessionSchema = z.object({
   courtLocation: z.string().min(1).optional(),
   isDoubles: z.boolean(),
   durationMinutes: z.number().int().positive(),
-  status: z.string().min(1),
+  status: z.enum(['open', 'full', 'cancelled', 'completed']).optional().default('open'),
   playerIds: z.array(z.string().min(1)),
   attendees: z.array(AttendeeSchema),
   groupIds: z.array(z.string().min(1)).optional(),
-  playerStatuses: z.record(z.enum(['CONFIRMED', 'DECLINED', 'PENDING'])),
+  playerStatuses: z.record(z.enum(['CONFIRMED', 'DECLINED', 'PENDING', 'CANCELLED', 'WAITLIST', 'EXPIRED'])),
+  minPlayers: z.number().int().positive().optional(),
+  maxPlayers: z.number().int().positive().optional(),
 });
 
 type CreateGameSessionInput = z.infer<typeof CreateGameSessionSchema>;
@@ -74,18 +76,29 @@ export async function POST(request: Request) {
 
     const sessionRef = adminDb.collection('game-sessions').doc();
     
+    // Calculate max/min players
+    const maxPlayers = data.maxPlayers ?? (data.isDoubles ? 4 : 2);
+    const minPlayers = data.minPlayers ?? maxPlayers;
+    
     try {
       await sessionRef.set({
         courtId: data.courtId,
         organizerId: data.organizerId,
         startTime: Timestamp.fromDate(startDate),
+        startTimeDisplay: data.startTimeDisplay ?? formatFallback(startDate),
         isDoubles: data.isDoubles,
         durationMinutes: data.durationMinutes,
-        status: data.status,
+        status: data.status ?? 'open',
         playerIds: data.playerIds,
         attendees: data.attendees,
         groupIds: data.groupIds ?? [],
         playerStatuses: data.playerStatuses,
+        // Game limits
+        minPlayers,
+        maxPlayers,
+        alternates: [], // Waitlist
+        // Notification tracking
+        invitesSentAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });

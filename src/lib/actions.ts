@@ -10,7 +10,7 @@ import type {
 } from "@/ai/flows/automated-cancellation-management";
 import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
-import type { ChatInput, ChatOutput, Player } from "./types";
+import type { ChatInput, ChatOutput, Player, Group } from "./types";
 
 export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
@@ -39,20 +39,23 @@ export async function handleCancellationAction(
 export async function chatAction(
     input: ChatInput, 
     currentUser: Player | null,
-    knownPlayers?: Player[]
+    knownPlayers?: Player[],
+    knownGroups?: (Group & { id: string })[]
 ): Promise<ChatOutput> {
     const { message, history } = input;
 
-    // Use provided knownPlayers if available (from client-side), otherwise try Admin DB
+    // Use provided data from client-side
     let players: Player[] = knownPlayers || [];
+    let groups: (Group & { id: string })[] = knownGroups || [];
 
-    // Always supplement with server-side data to ensure we have all players
+    // Supplement with server-side data
     const adminDb = await getAdminDb();
     if (adminDb && currentUser?.id) {
         try {
             const existingIds = new Set(players.map(p => p.id));
+            const existingGroupIds = new Set(groups.map(g => g.id));
             
-            // Fetch from users collection
+            // Fetch from users collection (ALL users)
             try {
                 const usersSnap = await adminDb.collection('users').get();
                 usersSnap.docs.forEach(doc => {
@@ -65,14 +68,13 @@ export async function chatAction(
                 console.warn('Could not fetch users:', e);
             }
 
-            // Fetch from players collection (contacts owned by current user)
+            // Fetch ALL players from players collection
             try {
-                const playersSnap = await adminDb.collection('players')
-                    .where('ownerId', '==', currentUser.id)
-                    .get();
+                const playersSnap = await adminDb.collection('players').get();
                 playersSnap.docs.forEach(doc => {
                     if (!existingIds.has(doc.id)) {
-                        players.push({ id: doc.id, ...doc.data() } as Player);
+                        const data = doc.data();
+                        players.push({ id: doc.id, ...data } as Player);
                         existingIds.add(doc.id);
                     }
                 });
@@ -80,55 +82,27 @@ export async function chatAction(
                 console.warn('Could not fetch players:', e);
             }
 
-            // Fetch from groups and their members
+            // Fetch ALL groups
             try {
-                const groupsSnap = await adminDb.collection('groups')
-                    .where('ownerId', '==', currentUser.id)
-                    .get();
-                
-                // Collect all member IDs from groups
-                const memberIds = new Set<string>();
+                const groupsSnap = await adminDb.collection('groups').get();
                 groupsSnap.docs.forEach(doc => {
-                    const groupData = doc.data();
-                    if (groupData.members && Array.isArray(groupData.members)) {
-                        groupData.members.forEach((memberId: string) => {
-                            if (!existingIds.has(memberId)) {
-                                memberIds.add(memberId);
-                            }
-                        });
+                    if (!existingGroupIds.has(doc.id)) {
+                        const data = doc.data();
+                        groups.push({ id: doc.id, ...data } as Group & { id: string });
+                        existingGroupIds.add(doc.id);
                     }
                 });
-
-                // Fetch member details from both users and players collections
-                for (const memberId of memberIds) {
-                    if (existingIds.has(memberId)) continue;
-                    
-                    // Try users first
-                    const userDoc = await adminDb.collection('users').doc(memberId).get();
-                    if (userDoc.exists) {
-                        players.push({ id: userDoc.id, ...userDoc.data() } as Player);
-                        existingIds.add(userDoc.id);
-                        continue;
-                    }
-                    
-                    // Try players collection
-                    const playerDoc = await adminDb.collection('players').doc(memberId).get();
-                    if (playerDoc.exists) {
-                        players.push({ id: playerDoc.id, ...playerDoc.data() } as Player);
-                        existingIds.add(playerDoc.id);
-                    }
-                }
             } catch (e) {
                 console.warn('Could not fetch groups:', e);
             }
 
-            console.log(`[chatAction] Loaded ${players.length} players for disambiguation`);
+            console.log(`[chatAction] Loaded ${players.length} players, ${groups.length} groups`);
         } catch (error) {
-            console.error('Error fetching players from Admin DB:', error);
+            console.error('Error fetching data from Admin DB:', error);
         }
     }
 
-    // If still no players, use just the current user (AI can still work with just current user)
+    // If still no players, use just the current user
     if (players.length === 0 && currentUser) {
         players = [{ ...currentUser, isCurrentUser: true }];
     }
@@ -139,16 +113,16 @@ export async function chatAction(
         isCurrentUser: p.id === currentUser?.id,
     }));
     
-    // Log player names for debugging
+    // Log for debugging
     console.log('[chatAction] Known players:', knownPlayersWithCurrent.map(p => `${p.firstName} ${p.lastName}`));
+    console.log('[chatAction] Known groups:', groups.map(g => g.name));
     
     try {
         const { chat } = await import("@/ai/flows/chat");
-        const response = await chat(knownPlayersWithCurrent, { message, history });
+        const response = await chat(knownPlayersWithCurrent, { message, history }, groups);
         return response;
     } catch (error: any) {
         console.error('Error in chatAction:', error);
-        // Provide more helpful error message
         const errorMessage = error?.message || 'Unknown error';
         console.error('Chat error details:', { errorMessage, stack: error?.stack });
         return { 
