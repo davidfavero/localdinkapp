@@ -8,7 +8,7 @@
  * - AutomatedRsvpWithAiOutput - The return type for the automatedRsvpWithAi function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, geminiFlash} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const AutomatedRsvpWithAiInputSchema = z.object({
@@ -34,6 +34,7 @@ export async function automatedRsvpWithAi(input: AutomatedRsvpWithAiInput): Prom
 
 const automatedRsvpPrompt = ai.definePrompt({
   name: 'automatedRsvpPrompt',
+  model: geminiFlash!,
   input: {schema: AutomatedRsvpWithAiInputSchema},
   output: {schema: AutomatedRsvpWithAiOutputSchema},
   prompt: `You are Robin, an AI scheduler assistant for pickleball games. You manage RSVPs, send confirmations, and notify alternates as needed.

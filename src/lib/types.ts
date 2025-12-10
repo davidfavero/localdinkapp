@@ -104,14 +104,14 @@ const InvitedPlayerSchema = z.object({
 export type InvitedPlayer = z.infer<typeof InvitedPlayerSchema>;
 
 export const ChatOutputSchema = z.object({
-  players: z.array(z.string()).optional().describe('The names of the players to invite.'),
-  date: z.string().optional().describe('The date of the game.'),
-  time: z.string().optional().describe('The time of the game.'),
-  location: z.string().optional().describe('The location of the game.'),
-  confirmationText: z.string().optional().describe("Robin's confirmation or conversational response."),
+  players: z.array(z.string()).nullish().describe('The names of the players to invite.'),
+  date: z.string().nullish().describe('The date of the game.'),
+  time: z.string().nullish().describe('The time of the game.'),
+  location: z.string().nullish().describe('The location of the game.'),
+  confirmationText: z.string().nullish().describe("Robin's confirmation or conversational response."),
   // Internal fields not for the LLM
-  invitedPlayers: z.array(InvitedPlayerSchema).optional(),
-  currentUser: z.any().optional(),
+  invitedPlayers: z.array(InvitedPlayerSchema).nullish(),
+  currentUser: z.any().nullish(),
 })
 export type ChatOutput = z.infer<typeof ChatOutputSchema>
 

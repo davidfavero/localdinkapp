@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mic, Send, Sparkles } from 'lucide-react';
@@ -8,21 +8,135 @@ import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player } from '@/lib/types';
-import { useUser } from '@/firebase/provider';
+import { useUser, useFirestore } from '@/firebase/provider';
+import { collection, query, getDocs } from 'firebase/firestore';
 
 
 export default function RobinChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: 'robin',
-      text: "Hi! I'm Robin, your AI scheduling assistant. How can I help you plan your next pickleball game?",
+      text: "Hi! I'm Robin, your AI scheduling assistant. I can help you schedule pickleball games, find courts, and manage your sessions. Just tell me who you want to play with, when, and where - for example: 'Schedule a game with Melissa tomorrow at 4pm at I'On Courts'. What would you like to do?",
     },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { profile: currentUser } = useUser();
+  const { profile: currentUser, user: authUser, isUserLoading } = useUser();
+  const firestore = useFirestore();
+  const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
+
+  // Fetch known players from Firestore (users, players, and group members)
+  useEffect(() => {
+    const fetchPlayers = async () => {
+      if (!firestore || !authUser?.uid) {
+        // Fallback to just current user if no firestore or auth
+        if (currentUser) {
+          setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
+        }
+        return;
+      }
+
+      try {
+        const existingIds = new Set<string>();
+        const allPlayers: Player[] = [];
+
+        // Helper to add player without duplicates
+        const addPlayer = (player: Player) => {
+          if (!existingIds.has(player.id)) {
+            allPlayers.push(player);
+            existingIds.add(player.id);
+          }
+        };
+
+        // Try to fetch users - if it fails due to permissions, continue with empty array
+        try {
+          const usersQuery = query(collection(firestore, 'users'));
+          const usersSnap = await getDocs(usersQuery);
+          usersSnap.docs.forEach(doc => {
+            addPlayer({ id: doc.id, ...doc.data() } as Player);
+          });
+        } catch (usersError: any) {
+          console.warn('Could not fetch users (permissions may not be deployed):', usersError.message);
+        }
+
+        // Try to fetch players (contacts) - if it fails, continue with empty array
+        try {
+          const playersQuery = query(collection(firestore, 'players'));
+          const playersSnap = await getDocs(playersQuery);
+          playersSnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.ownerId === authUser.uid) {
+              addPlayer({ id: doc.id, ...data } as Player);
+            }
+          });
+        } catch (playersError: any) {
+          console.warn('Could not fetch players:', playersError.message);
+        }
+
+        // Try to fetch groups and their members
+        try {
+          const groupsQuery = query(collection(firestore, 'groups'));
+          const groupsSnap = await getDocs(groupsQuery);
+          const memberIds = new Set<string>();
+          
+          groupsSnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.ownerId === authUser.uid && data.members) {
+              data.members.forEach((memberId: string) => {
+                if (!existingIds.has(memberId)) {
+                  memberIds.add(memberId);
+                }
+              });
+            }
+          });
+
+          // Fetch member details (they could be in users or players)
+          for (const memberId of memberIds) {
+            // We've already loaded users, so just check players
+            try {
+              const playerDoc = await getDocs(query(collection(firestore, 'players')));
+              const foundPlayer = playerDoc.docs.find(d => d.id === memberId);
+              if (foundPlayer) {
+                addPlayer({ id: foundPlayer.id, ...foundPlayer.data() } as Player);
+              }
+            } catch (e) {
+              // Ignore individual failures
+            }
+          }
+        } catch (groupsError: any) {
+          console.warn('Could not fetch groups:', groupsError.message);
+        }
+
+        // Ensure current user is included
+        if (currentUser) {
+          addPlayer(currentUser);
+        }
+
+        // Mark current user
+        const playersWithCurrent = allPlayers.map(p => ({
+          ...p,
+          isCurrentUser: p.id === authUser.uid
+        }));
+
+        console.log('[Dashboard] Loaded players:', playersWithCurrent.map(p => `${p.firstName} ${p.lastName}`));
+        setKnownPlayers(playersWithCurrent);
+      } catch (error: any) {
+        console.error('Error fetching players:', error);
+        // Fallback to just current user - AI can still work with limited data
+        if (currentUser) {
+          setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
+        } else {
+          setKnownPlayers([]);
+        }
+      }
+    };
+
+    if (!isUserLoading && firestore) {
+      fetchPlayers();
+    }
+  }, [firestore, authUser?.uid, currentUser, isUserLoading]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -33,6 +147,7 @@ export default function RobinChatPage() {
   }, [messages]);
 
   const handleSend = async () => {
+    console.log('[Chat] handleSend called, input:', input);
     if (input.trim()) {
       const newUserMessage: Message = { sender: 'user', text: input.trim() };
       const currentInput = input;
@@ -43,9 +158,11 @@ export default function RobinChatPage() {
       setIsLoading(true);
 
       try {
-        // Pass the latest state to the action
+        // Pass the latest state to the action with known players
         const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
-        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null);
+        console.log('[Chat] Calling chatAction with:', currentInput.trim());
+        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null, knownPlayers);
+        console.log('[Chat] Got response:', response);
         
         let responseText = response.confirmationText || "I'm not sure how to respond to that.";
 

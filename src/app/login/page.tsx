@@ -1,204 +1,198 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { setupRecaptcha, sendSMSCode, verifySMSCode, clearRecaptcha } from '@/firebase/auth';
+import { 
+  signInWithEmail, 
+  signUpWithEmail, 
+  signInWithGoogle,
+  getClientAuth
+} from '@/firebase/auth';
+import { setAuthTokenAction } from '@/lib/auth-actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { useUser } from '@/firebase';
-import type { ConfirmationResult } from 'firebase/auth';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail, Chrome } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading: loading } = useUser();
   
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  // Email/Password state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  
+  // General state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [step, setStep] = useState<'phone' | 'code'>('phone');
-  const recaptchaInitialized = useRef(false);
+  const [activeTab, setActiveTab] = useState('email');
 
-  // DEV MODE: Allow bypassing login for testing
-  const handleDevBypass = () => {
+  // DEV MODE: Sign in anonymously for testing
+  const handleDevBypass = async () => {
     if (process.env.NODE_ENV === 'development') {
-      router.push('/dashboard');
+      try {
+        const { signInAnonymously } = await import('firebase/auth');
+        const auth = getClientAuth();
+        const userCredential = await signInAnonymously(auth);
+        console.log('🔧 Dev: Signed in anonymously as', userCredential.user.uid);
+        
+        // Set auth token on server
+        const idToken = await userCredential.user.getIdToken();
+        await setAuthTokenAction(idToken);
+        
+        toast({
+          title: 'Dev Mode',
+          description: 'Signed in anonymously for testing.',
+        });
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 500);
+      } catch (error: any) {
+        console.error('Dev sign-in error:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Dev Sign-In Failed',
+          description: error.message || 'Please enable Anonymous Auth in Firebase Console.',
+        });
+      }
     }
   };
 
   useEffect(() => {
-    if (!loading && user) {
-      console.log('User detected, redirecting to dashboard...', user.uid);
-      router.push('/dashboard');
-    }
+    const syncAuthToken = async () => {
+      if (!loading && user) {
+        try {
+          // Check if we already have the cookie (avoid unnecessary redirects)
+          const hasCookie = document.cookie.includes('auth-token=');
+          
+          if (!hasCookie) {
+            // Get the ID token and sync it with the server
+            const auth = getClientAuth();
+            const idToken = await auth.currentUser?.getIdToken();
+            
+            if (idToken) {
+              // Set the auth token on the server
+              const result = await setAuthTokenAction(idToken);
+              if (!result.success) {
+                console.error('Failed to set auth token:', result.error);
+                return; // Don't redirect if token setting failed
+              }
+              
+              // Wait a moment for the cookie to be set
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
+          
+          // Redirect to dashboard
+          router.push('/dashboard');
+        } catch (error) {
+          console.error('Error syncing auth token:', error);
+          // Don't redirect on error - let user stay on login page
+        }
+      }
+    };
+    
+    syncAuthToken();
   }, [user, loading, router]);
 
-  // Handle unhandled promise rejections (specifically reCAPTCHA timeout errors)
-  useEffect(() => {
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      // Suppress reCAPTCHA timeout errors that occur after successful verification
-      if (event.reason?.message?.includes('Timeout') || event.reason?.message?.includes('timeout')) {
-        console.log('Caught and suppressed reCAPTCHA timeout error (verification already succeeded)');
-        event.preventDefault();
-      }
-    };
-    
-    window.addEventListener('unhandledrejection', handleUnhandledRejection);
-    return () => window.removeEventListener('unhandledrejection', handleUnhandledRejection);
-  }, []);
-
-  useEffect(() => {
-    // Setup reCAPTCHA only once when component mounts
-    if (typeof window === 'undefined' || recaptchaInitialized.current) {
-      return;
-    }
-    
-    const initRecaptcha = async () => {
-      try {
-        // Wait for DOM to be ready
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // Double check we haven't initialized yet
-        if (!recaptchaInitialized.current) {
-          await setupRecaptcha('recaptcha-container', true);
-          recaptchaInitialized.current = true;
-          console.log('Invisible reCAPTCHA initialized successfully');
-        }
-      } catch (error) {
-        console.error('Failed to setup reCAPTCHA:', error);
-        recaptchaInitialized.current = false;
-      }
-    };
-    
-    initRecaptcha();
-    
-    // Cleanup on unmount only
-    return () => {
-      if (recaptchaInitialized.current) {
-        clearRecaptcha();
-        recaptchaInitialized.current = false;
-      }
-    };
-  }, []);
-
-  const formatPhoneNumber = (value: string) => {
-    // Remove all non-digits
-    const digits = value.replace(/\D/g, '');
-    
-    // Format as (XXX) XXX-XXXX
-    if (digits.length <= 3) {
-      return digits;
-    } else if (digits.length <= 6) {
-      return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    } else {
-      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-    }
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhoneNumber(e.target.value);
-    setPhoneNumber(formatted);
-  };
-
-  const handleSendCode = async (e: React.FormEvent) => {
+  // Email/Password handlers
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // Ensure reCAPTCHA is initialized
-      if (!recaptchaInitialized.current) {
-        console.log('Reinitializing invisible reCAPTCHA...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await setupRecaptcha('recaptcha-container', true);
-        recaptchaInitialized.current = true;
+      let userCredential;
+      if (isSignUp) {
+        userCredential = await signUpWithEmail(email, password);
+        toast({
+          title: 'Account Created!',
+          description: 'Welcome to LocalDink!',
+        });
+      } else {
+        userCredential = await signInWithEmail(email, password);
+        toast({
+          title: 'Welcome Back!',
+          description: 'Successfully signed in.',
+        });
       }
-
-      // Convert formatted phone to E.164 format (+1XXXXXXXXXX)
-      const digits = phoneNumber.replace(/\D/g, '');
-      if (digits.length !== 10) {
-        throw new Error('Please enter a valid 10-digit phone number');
-      }
-      const e164Phone = `+1${digits}`;
-
-      console.log('Sending SMS to:', e164Phone);
-      const confirmation = await sendSMSCode(e164Phone);
-      setConfirmationResult(confirmation);
-      setStep('code');
       
-      toast({
-        title: 'Code Sent!',
-        description: 'Check your phone for the verification code.',
-      });
+      // Get the ID token and set it server-side
+      const idToken = await userCredential.user.getIdToken();
+      const result = await setAuthTokenAction(idToken);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to set authentication token');
+      }
+      
+      // Redirect to dashboard
+      router.push('/dashboard');
     } catch (error: any) {
-      console.error('SMS send error details:', {
-        code: error.code,
-        message: error.message,
-        fullError: error
-      });
+      console.error('Email auth error:', error);
+      let errorMessage = 'Please try again.';
       
-      let errorMessage = error.message || 'Please try again.';
-      
-      // Provide more specific error messages
-      if (error.code === 'auth/invalid-app-credential') {
-        errorMessage = 'Please check that localhost is in your Firebase authorized domains.';
-      } else if (error.code === 'auth/captcha-check-failed') {
-        errorMessage = 'reCAPTCHA verification failed. Please refresh and try again.';
-      } else if (error.code === 'auth/quota-exceeded') {
-        errorMessage = 'SMS quota exceeded. Please try again later.';
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email.';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Incorrect password.';
+      } else if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'An account with this email already exists.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Password should be at least 6 characters.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
       
       toast({
         variant: 'destructive',
-        title: 'Failed to Send Code',
+        title: isSignUp ? 'Sign Up Failed' : 'Sign In Failed',
         description: errorMessage,
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!confirmationResult) return;
-    
+  // Google Sign-In handler
+  const handleGoogleSignIn = async () => {
     setIsSubmitting(true);
-
     try {
-      console.log('Verifying code...');
-      const userCredential = await verifySMSCode(confirmationResult, verificationCode);
-      console.log('Verification successful! User:', userCredential.user.uid);
+      const userCredential = await signInWithGoogle();
+      
+      // Get the ID token and set it server-side
+      const idToken = await userCredential.user.getIdToken();
+      const result = await setAuthTokenAction(idToken);
+      
+      // Even if token setting fails, proceed if we have a user
+      // (The client-side auth is working, server-side is just for middleware)
+      if (!result.success && !userCredential.user) {
+        throw new Error(result.error || 'Failed to set authentication token');
+      }
       
       toast({
-        title: 'Success!',
-        description: 'Welcome to LocalDink!',
+        title: 'Welcome!',
+        description: 'Successfully signed in with Google.',
       });
       
-      // Manual redirect after short delay to allow profile creation
+      // Small delay to ensure state updates
       setTimeout(() => {
-        console.log('Redirecting to dashboard...');
         router.push('/dashboard');
-      }, 2000);
+      }, 500);
     } catch (error: any) {
-      console.error('Verification error:', error);
+      console.error('Google sign-in error:', error);
       toast({
         variant: 'destructive',
-        title: 'Invalid Code',
-        description: 'Please check the code and try again.',
+        title: 'Sign In Failed',
+        description: error.message || 'Failed to sign in with Google. Please try again.',
       });
       setIsSubmitting(false);
     }
-  };
-
-  const handleBack = () => {
-    setStep('phone');
-    setVerificationCode('');
-    setConfirmationResult(null);
   };
 
   if (loading) {
@@ -228,100 +222,108 @@ export default function LoginPage() {
 
         <Card className="shadow-xl border-accent/20">
           <CardHeader className="space-y-1 pb-6">
-            <CardTitle className="text-2xl font-headline">Sign In with SMS</CardTitle>
+            <CardTitle className="text-2xl font-headline">Sign In</CardTitle>
             <CardDescription>
-              {step === 'phone' 
-                ? 'Enter your phone number to receive a verification code'
-                : 'Enter the 6-digit code sent to your phone'}
+              Choose your preferred sign-in method
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {step === 'phone' ? (
-              <form onSubmit={handleSendCode} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="phone" className="text-base">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="(555) 555-5555"
-                    value={phoneNumber}
-                    onChange={handlePhoneChange}
-                    maxLength={14}
-                    className="text-lg h-12"
-                    required
-                    autoFocus
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    US numbers only. Standard message rates may apply.
-                  </p>
-                </div>
-                
-                <Button 
-                  type="submit" 
-                  className="w-full h-12 text-base bg-gradient-to-r from-primary to-green-700 hover:opacity-90 transition-opacity"
-                  disabled={isSubmitting || phoneNumber.replace(/\D/g, '').length !== 10}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    'Send Code'
-                  )}
-                </Button>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="email" className="flex items-center gap-2">
+                  <Mail className="h-4 w-4" />
+                  Email
+                </TabsTrigger>
+                <TabsTrigger value="google" className="flex items-center gap-2">
+                  <Chrome className="h-4 w-4" />
+                  Google
+                </TabsTrigger>
+              </TabsList>
 
-                {/* Invisible reCAPTCHA container - hidden from view */}
-                <div id="recaptcha-container" className="hidden"></div>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyCode} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="code" className="text-base">Verification Code</Label>
-                  <Input
-                    id="code"
-                    type="text"
-                    placeholder="000000"
-                    value={verificationCode}
-                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    maxLength={6}
-                    className="text-lg h-12 text-center tracking-widest"
-                    required
-                    autoFocus
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Code sent to {phoneNumber}
-                  </p>
-                </div>
-                
-                <div className="space-y-3">
+              <TabsContent value="email" className="space-y-4 mt-6">
+                <form onSubmit={handleEmailAuth} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-11"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-11"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center space-x-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={isSignUp}
+                        onChange={(e) => setIsSignUp(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-muted-foreground">Create new account</span>
+                    </label>
+                  </div>
+                  
                   <Button 
                     type="submit" 
-                    className="w-full h-12 text-base bg-gradient-to-r from-primary to-green-700 hover:opacity-90 transition-opacity"
-                    disabled={isSubmitting || verificationCode.length !== 6}
+                    className="w-full h-11 bg-gradient-to-r from-primary to-green-700 hover:opacity-90"
+                    disabled={isSubmitting}
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Verifying...
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {isSignUp ? 'Creating Account...' : 'Signing In...'}
                       </>
                     ) : (
-                      'Verify Code'
+                      isSignUp ? 'Create Account' : 'Sign In'
                     )}
                   </Button>
-                  
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={handleBack}
-                    className="w-full"
+                </form>
+              </TabsContent>
+
+              <TabsContent value="google" className="space-y-4 mt-6">
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Sign in quickly with your Google account
+                  </p>
+                  <Button 
+                    onClick={handleGoogleSignIn}
+                    className="w-full h-11 bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
                     disabled={isSubmitting}
                   >
-                    Use a different number
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Signing In...
+                      </>
+                    ) : (
+                      <>
+                        <Chrome className="mr-2 h-4 w-4" />
+                        Continue with Google
+                      </>
+                    )}
                   </Button>
                 </div>
-              </form>
-            )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 

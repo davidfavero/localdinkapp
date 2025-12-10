@@ -9,8 +9,14 @@ import {
   type User,
   RecaptchaVerifier,
   signInWithPhoneNumber,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   type ConfirmationResult,
   type Auth,
+  type UserCredential,
 } from 'firebase/auth';
 import { getClientApp } from './app';
 
@@ -43,22 +49,34 @@ export function signOutUser() {
   return signOut(getClientAuth());
 }
 
+// Email/Password Authentication
+export async function signInWithEmail(email: string, password: string): Promise<UserCredential> {
+  const auth = getClientAuth();
+  return signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function signUpWithEmail(email: string, password: string): Promise<UserCredential> {
+  const auth = getClientAuth();
+  return createUserWithEmailAndPassword(auth, email, password);
+}
+
+// Google Sign-In
+export async function signInWithGoogle(): Promise<UserCredential> {
+  const auth = getClientAuth();
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({
+    prompt: 'select_account',
+  });
+  return signInWithPopup(auth, provider);
+}
+
 // SMS Authentication
 let recaptchaVerifier: RecaptchaVerifier | null = null;
 
 /**
  * Sets up an invisible reCAPTCHA verifier for phone authentication.
- * 
- * IMPORTANT: For development, you should configure test phone numbers in Firebase Console:
- * 1. Go to Firebase Console > Authentication > Settings > Phone
- * 2. Add test phone numbers (e.g., +1 555-123-4567 with code 123456)
- * 3. Test numbers bypass reCAPTCHA entirely
- * 
- * If you see a visible reCAPTCHA challenge, check:
- * - Your domain (localhost) is authorized in Firebase Console > Authentication > Settings > Authorized domains
- * - reCAPTCHA is properly configured for your Firebase project
  */
-export function setupRecaptcha(containerId: string, invisible: boolean = false) {
+export function setupRecaptcha(containerId: string): RecaptchaVerifier {
   const auth = getClientAuth();
   
   // Clean up existing verifier
@@ -66,7 +84,7 @@ export function setupRecaptcha(containerId: string, invisible: boolean = false) 
     try {
       recaptchaVerifier.clear();
     } catch (e) {
-      console.log('Error clearing recaptcha:', e);
+      // Ignore cleanup errors
     }
     recaptchaVerifier = null;
   }
@@ -80,35 +98,27 @@ export function setupRecaptcha(containerId: string, invisible: boolean = false) 
   recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
     size: 'invisible',
     callback: () => {
-      // reCAPTCHA solved automatically
-      console.log('reCAPTCHA verified automatically');
+      console.log('reCAPTCHA verified');
     },
     'expired-callback': () => {
-      // Reset reCAPTCHA
-      console.log('reCAPTCHA expired, will retry automatically');
+      console.log('reCAPTCHA expired');
       if (recaptchaVerifier) {
         try {
           recaptchaVerifier.clear();
         } catch (e) {
-          console.log('Error clearing expired recaptcha:', e);
+          // Ignore
         }
         recaptchaVerifier = null;
       }
     },
     'error-callback': (error: any) => {
-      // Suppress timeout errors that occur after successful verification
-      if (error?.message?.includes('Timeout') || error?.message?.includes('timeout')) {
-        console.log('reCAPTCHA timeout (can be safely ignored if verification succeeded)');
-      } else {
+      if (!error?.message?.includes('Timeout') && !error?.message?.includes('timeout')) {
         console.error('reCAPTCHA error:', error);
       }
     }
   });
   
-  // Render the invisible reCAPTCHA
-  recaptchaVerifier.render().then((widgetId) => {
-    console.log('Invisible reCAPTCHA rendered with widget ID:', widgetId);
-  }).catch((error) => {
+  recaptchaVerifier.render().catch((error) => {
     console.error('Error rendering reCAPTCHA:', error);
   });
   
@@ -120,7 +130,7 @@ export function clearRecaptcha() {
     try {
       recaptchaVerifier.clear();
     } catch (e) {
-      console.log('Error clearing recaptcha:', e);
+      // Ignore
     }
     recaptchaVerifier = null;
   }
@@ -135,6 +145,25 @@ export async function sendSMSCode(phoneNumber: string): Promise<ConfirmationResu
   return signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
 }
 
-export async function verifySMSCode(confirmationResult: ConfirmationResult, code: string) {
+export async function verifySMSCode(confirmationResult: ConfirmationResult, code: string): Promise<UserCredential> {
   return confirmationResult.confirm(code);
+}
+
+/**
+ * Automatically signs in anonymously for development mode.
+ * This ensures users are authenticated even when bypassing the login page.
+ */
+export async function signInDevUser(): Promise<User> {
+  const auth = getClientAuth();
+  const currentUser = auth.currentUser;
+  
+  // If already signed in, return the current user
+  if (currentUser) {
+    return currentUser;
+  }
+  
+  // Sign in anonymously
+  const userCredential = await signInAnonymously(auth);
+  console.log('🔧 Dev: Signed in anonymously as', userCredential.user.uid);
+  return userCredential.user;
 }

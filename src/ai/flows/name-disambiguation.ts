@@ -1,74 +1,82 @@
 'use server';
 
 /**
- * @fileOverview A name disambiguation AI agent.
- *
- * - disambiguateName - A function that handles the name disambiguation process.
- * - NameDisambiguationInput - The input type for the disambiguateName function.
- * - NameDisambiguationOutput - The return type for the disambiguateName function.
+ * @fileOverview Name disambiguation using simple string matching.
+ * No AI needed - just match first names to known players.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+export type NameDisambiguationInput = {
+  playerName: string;
+  knownPlayers: string[]; // Array of full names like "Melissa Favero"
+};
 
-const NameDisambiguationInputSchema = z.object({
-  playerName: z
-    .string()
-    .describe(
-      'The name of the player, which may be a full name or just a first name.'
-    ),
-  knownPlayers: z.array(z.string()).describe('A list of known player full names.'),
-});
-export type NameDisambiguationInput = z.infer<typeof NameDisambiguationInputSchema>;
+export type NameDisambiguationOutput = {
+  disambiguatedName?: string;
+  question?: string;
+};
 
-const NameDisambiguationOutputSchema = z.object({
-  disambiguatedName: z
-    .string()
-    .optional()
-    .describe('The full name of the player, disambiguated from the list of known players.'),
-  question: z
-    .string()
-    .optional()
-    .describe("A question to the user for clarification or to add a new player. For example, if a new player should be added, the question should be of the format 'I don't know [Player Name]. To add them to your contacts, please provide their phone number.'"),
-});
-export type NameDisambiguationOutput = z.infer<typeof NameDisambiguationOutputSchema>;
-
+/**
+ * Disambiguates a player name against a list of known players.
+ * Uses simple string matching - no AI required.
+ */
 export async function disambiguateName(
   input: NameDisambiguationInput
 ): Promise<NameDisambiguationOutput> {
-  return disambiguateNameFlow(input);
-}
+  const { playerName, knownPlayers } = input;
+  const searchName = playerName.toLowerCase().trim();
+  
+  console.log(`[disambiguate] Looking for "${searchName}" in:`, knownPlayers);
 
-const prompt = ai.definePrompt({
-  name: 'nameDisambiguationPrompt',
-  input: {schema: NameDisambiguationInputSchema},
-  output: {schema: NameDisambiguationOutputSchema},
-  prompt: `You are an AI assistant helping to disambiguate player names.
+  // Try exact full name match first (case-insensitive)
+  const exactMatch = knownPlayers.find(
+    fullName => fullName.toLowerCase().trim() === searchName
+  );
+  if (exactMatch) {
+    console.log(`[disambiguate] Exact match: "${exactMatch}"`);
+    return { disambiguatedName: exactMatch };
+  }
 
-  Given a player name (which may be a first name only) and a list of known player full names, determine the most likely full name of the player.
+  // Try matching by first name only
+  const firstNameMatches = knownPlayers.filter(fullName => {
+    const firstName = fullName.split(' ')[0].toLowerCase().trim();
+    return firstName === searchName;
+  });
 
-  - If the player name is a full name and it matches one of the known players, return that full name in 'disambiguatedName'.
-  - If the player name is a first name, find the known player whose first name matches the given name. 
-    - If there is only one match, return that full name in 'disambiguatedName'.
-    - If there are multiple matches, return a question in 'question' asking the user to clarify which player they mean, like "Do you mean Robert Smith or Robert Thomas?".
-    - If there are no matches, return a question in 'question' asking for the new player's phone number to add them. The question should be of the format 'I don't know {{{playerName}}}. To add them to your contacts, please provide their phone number.'.
+  if (firstNameMatches.length === 1) {
+    // Exactly one match - use it without asking
+    console.log(`[disambiguate] Single first name match: "${firstNameMatches[0]}"`);
+    return { disambiguatedName: firstNameMatches[0] };
+  }
 
-  Player Name: {{{playerName}}}
-  Known Players: {{#each knownPlayers}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
-  `,
-});
-
-const disambiguateNameFlow = ai.defineFlow(
-  {
-    name: 'nameDisambiguationFlow',
-    inputSchema: NameDisambiguationInputSchema,
-    outputSchema: NameDisambiguationOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
+  if (firstNameMatches.length > 1) {
+    // Multiple matches - need clarification
+    console.log(`[disambiguate] Multiple matches:`, firstNameMatches);
     return {
-      disambiguatedName: output?.disambiguatedName,
-      question: output?.question,
+      question: `Do you mean ${firstNameMatches.join(' or ')}?`,
     };
   }
-);
+
+  // Try partial match (name contains search term or vice versa)
+  const partialMatches = knownPlayers.filter(fullName => {
+    const lowerName = fullName.toLowerCase();
+    return lowerName.includes(searchName) || searchName.includes(lowerName.split(' ')[0]);
+  });
+
+  if (partialMatches.length === 1) {
+    console.log(`[disambiguate] Partial match: "${partialMatches[0]}"`);
+    return { disambiguatedName: partialMatches[0] };
+  }
+
+  if (partialMatches.length > 1) {
+    console.log(`[disambiguate] Multiple partial matches:`, partialMatches);
+    return {
+      question: `Do you mean ${partialMatches.join(' or ')}?`,
+    };
+  }
+
+  // No match found - ask for phone number to add new player
+  console.log(`[disambiguate] No match found for "${playerName}"`);
+  return {
+    question: `I don't know ${playerName}. To add them to your contacts, please provide their phone number.`,
+  };
+}

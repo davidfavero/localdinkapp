@@ -8,7 +8,7 @@
  * - ProfilePreferenceExtractionOutput - The return type for the extractProfilePreferences function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, geminiFlash} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const ProfilePreferenceExtractionInputSchema = z.object({
@@ -47,6 +47,7 @@ export async function extractProfilePreferences(
 
 const prompt = ai.definePrompt({
   name: 'profilePreferenceExtractionPrompt',
+  model: geminiFlash!,
   input: {schema: ProfilePreferenceExtractionInputSchema},
   output: {schema: ProfilePreferenceExtractionOutputSchema},
   prompt: `You are an AI agent specializing in extracting user profile preferences for pickleball game scheduling.

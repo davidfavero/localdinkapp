@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { useFirestore, useUser, useMemoFirebase } from '@/firebase/provider';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { getStorage } from 'firebase/storage';
-import { extractPreferencesAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -16,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Database, AlertCircle, Camera, Upload } from 'lucide-react';
+import { Camera, Upload } from 'lucide-react';
 import { collection, query, doc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { Court, Player } from '@/lib/types';
@@ -37,14 +36,12 @@ const profileSchema = z.object({
   doublesPreference: z.boolean().default(true),
   homeCourtId: z.string().optional(),
   availability: z.string().optional(),
-  profileText: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
   const { toast } = useToast();
-  const [isExtracting, setIsExtracting] = useState(false);
   const { user, profile: currentUser } = useUser();
   const firestore = useFirestore();
   const storage = useMemo(() => {
@@ -131,10 +128,21 @@ export default function ProfilePage() {
   };
   
  const handleCropComplete = useCallback(async (croppedAreaPixels: Area) => {
-    if (!imageToCrop || !user || !storage || !firestore) {
-      toast({ variant: 'destructive', title: 'Not ready', description: 'Missing auth or Firebase instances.' });
+    if (!imageToCrop || !storage || !firestore) {
+      toast({ variant: 'destructive', title: 'Not ready', description: 'Missing Firebase instances.' });
       return;
     }
+
+    // Require authentication - user should be authenticated in dev mode
+    if (!user?.uid) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Not Authenticated', 
+        description: 'Please sign in to upload photos.' 
+      });
+      return;
+    }
+    const userId = user.uid;
 
     const dataUrl = imageToCrop;
     setIsUploading(true);
@@ -144,12 +152,12 @@ export default function ProfilePage() {
       const croppedImageBlob = await getCroppedImg(dataUrl, croppedAreaPixels);
       if (!croppedImageBlob) throw new Error('Failed to crop image.');
 
-      const avatarRef = storageRef(storage, `avatars/${user.uid}/profile.jpg`);
+      const avatarRef = storageRef(storage, `avatars/${userId}/profile.jpg`);
       const snapshot = await uploadBytes(avatarRef, croppedImageBlob);
       
       const downloadURL = await getDownloadURL(snapshot.ref);
 
-      const userRef = doc(firestore, 'users', user.uid);
+      const userRef = doc(firestore, 'users', userId);
       
       const payload = { avatarUrl: downloadURL };
 
@@ -187,16 +195,26 @@ export default function ProfilePage() {
 
 
   function onSubmit(data: ProfileFormValues) {
-    if (!firestore || !user) {
+    if (!firestore) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Cannot update profile. Not authenticated.',
+        description: 'Cannot update profile. Firebase not ready.',
       });
       return;
     }
 
-    const userRef = doc(firestore, 'users', user.uid);
+    // Require authentication - user should be authenticated in dev mode
+    if (!user?.uid) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Not Authenticated', 
+        description: 'Please sign in to update your profile.' 
+      });
+      return;
+    }
+    const userId = user.uid;
+    const userRef = doc(firestore, 'users', userId);
     const [firstName, ...lastNameParts] = data.name.split(' ');
     const lastName = lastNameParts.join(' ');
     
@@ -230,42 +248,6 @@ export default function ProfilePage() {
           description: 'Could not save your profile. Check permissions and try again.',
         });
       });
-  }
-
-  async function handleExtractPreferences() {
-    setIsExtracting(true);
-    const profileText = form.getValues('profileText');
-    if (!profileText) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Please provide some text for the AI to analyze.',
-      });
-      setIsExtracting(false);
-      return;
-    }
-
-    try {
-      const result = await extractPreferencesAction({ profileText });
-      form.setValue('doublesPreference', result.doublesPreference, { shouldValidate: true });
-      const foundCourt = courts?.find(c => c.name.toLowerCase() === result.homeCourtPreference.toLowerCase());
-      if (foundCourt) {
-        form.setValue('homeCourtId', foundCourt.id, { shouldValidate: true });
-      }
-      form.setValue('availability', result.availability, { shouldValidate: true });
-      toast({
-        title: 'Preferences Extracted!',
-        description: 'Robin has updated your preferences based on your text.',
-      });
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'AI Extraction Failed',
-        description: 'Could not extract preferences. Please try again.',
-      });
-    } finally {
-      setIsExtracting(false);
-    }
   }
 
   return (
@@ -314,38 +296,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Preference Extraction</CardTitle>
-              <CardDescription>
-                Let Robin, our AI assistant, fill out your preferences for you. Just describe your playing style and availability below.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name="profileText"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Your Profile Description</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="e.g., 'I prefer playing doubles at Mitchell Park. I'm available most weekday evenings...'"
-                        className="min-h-[100px]"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="button" onClick={handleExtractPreferences} disabled={isExtracting}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                {isExtracting ? 'Robin is thinking...' : 'Extract with AI'}
-              </Button>
-            </CardContent>
-          </Card>
-          
           <Card>
             <CardHeader>
               <CardTitle>Your Preferences</CardTitle>

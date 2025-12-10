@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils';
 import { useUser } from '@/firebase/provider';
 import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getClientAuth } from '@/firebase/auth';
+import { setAuthTokenAction } from '@/lib/auth-actions';
 
 const navItems = [
   { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
@@ -43,18 +45,34 @@ export default function DashboardLayout({
 
   const { user, profile: currentUser, isUserLoading: isLoading } = useUser();
   
-  // DEV MODE: Allow bypassing auth check
-  const isDev = process.env.NODE_ENV === 'development';
+  useEffect(() => {
+    // Sync auth token with server if user is authenticated client-side
+    const syncAuthToken = async () => {
+      if (user) {
+        try {
+          const auth = getClientAuth();
+          const idToken = await auth.currentUser?.getIdToken();
+          if (idToken) {
+            await setAuthTokenAction(idToken);
+          }
+        } catch (error) {
+          console.error('Error syncing auth token:', error);
+        }
+      }
+    };
+    
+    syncAuthToken();
+  }, [user]);
   
   useEffect(() => {
-    // If auth is done loading and there's no user, redirect to login (skip in dev mode)
-    if (!isDev && !isLoading && !user) {
+    // If auth is done loading and there's no user, redirect to login
+    if (!isLoading && !user) {
       router.push('/login');
     }
-  }, [user, isLoading, router, isDev]);
+  }, [user, isLoading, router]);
 
-  // Render a loading state or nothing while checking for auth (skip in dev mode)
-  if (!isDev && (isLoading || !user)) {
+  // Render a loading state while checking for auth
+  if (isLoading || !user) {
     return (
         <div className="flex items-center justify-center min-h-screen">
             <div className="flex flex-col items-center gap-4">

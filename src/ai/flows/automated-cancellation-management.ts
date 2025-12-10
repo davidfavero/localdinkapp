@@ -8,7 +8,7 @@
  * - HandleCancellationOutput - The return type for the handleCancellation function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, geminiFlash} from '@/ai/genkit';
 import {z} from 'genkit';
 import { sendSmsTool } from '../tools/sms';
 
@@ -39,6 +39,7 @@ export async function handleCancellation(input: HandleCancellationInput): Promis
 
 const handleCancellationPrompt = ai.definePrompt({
   name: 'handleCancellationPrompt',
+  model: geminiFlash!,
   input: {schema: HandleCancellationInputSchema},
   output: {schema: HandleCancellationOutputSchema},
   tools: [sendSmsTool],

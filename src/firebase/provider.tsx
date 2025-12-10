@@ -55,6 +55,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       apiKey: process.env.NEXT_PUBLIC_FB_API_KEY?.slice(0, 8),
       projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID,
       appId: process.env.NEXT_PUBLIC_FB_APP_ID?.slice(0, 8),
+      authDomain: process.env.NEXT_PUBLIC_FB_AUTH_DOMAIN,
     });
   }, []);
 

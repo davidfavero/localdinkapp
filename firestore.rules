@@ -35,19 +35,30 @@ service cloud.firestore {
      * @principle Enforces document ownership for writes, restricts access to a user's own data tree, and validates relational integrity between documents.
      */
     match /users/{userId} {
+      function isAuthenticated() {
+        return request.auth != null;
+      }
+      
       function isOwner(userId) {
-        return request.auth != null && request.auth.uid == userId;
+        return isAuthenticated() && request.auth.uid == userId;
       }
 
       function isExistingOwner(userId) {
         return isOwner(userId);
       }
 
-      allow get: if isOwner(userId);
-      allow list: if false; // Listing users is not allowed
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      // Allow unauthenticated access to dev-user for development
+      function isDevUser(userId) {
+        return userId == 'dev-user';
+      }
+
+      // Allow authenticated users to read any user profile (needed for AI and displaying sessions)
+      // Allow owners to write their own profile
+      allow get: if isAuthenticated() || isDevUser(userId);
+      allow list: if isAuthenticated(); // Allow authenticated users to list (needed for AI player lookup)
+      allow create: if isOwner(userId) || isDevUser(userId);
+      allow update: if isExistingOwner(userId) || isDevUser(userId);
+      allow delete: if isExistingOwner(userId) || isDevUser(userId);
     }
 
     /**

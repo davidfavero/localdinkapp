@@ -106,7 +106,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   // 2. Hydrate the session with details (court, players, organizer)
   useEffect(() => {
-    if (!rawSession || !firestore || !currentUser) {
+    if (!rawSession || !firestore) {
        if (!isLoadingSession) setIsHydrating(false);
       return;
     }
@@ -155,6 +155,8 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
           if (source === 'user' && currentUser && id === currentUser.uid) {
             playerData = { ...playerData, isCurrentUser: true };
+          } else if (source === 'user') {
+            playerData = { ...playerData, isCurrentUser: false };
           }
 
           const playerStatusRef = doc(firestore, 'game-sessions', rawSession.id, 'players', id);
@@ -190,7 +192,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           court,
           organizer: {
               ...organizer,
-              isCurrentUser: organizer.id === currentUser.uid,
+              isCurrentUser: currentUser ? organizer.id === currentUser.uid : false,
           },
           date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
           time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),

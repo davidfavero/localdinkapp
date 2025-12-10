@@ -103,3 +103,19 @@ export async function getAdminDb(): Promise<Firestore | null> {
   }
   return adminDbInstance;
 }
+
+export async function getAdminApp(): Promise<App | null> {
+  if (!adminApp) {
+    await initializeAdmin();
+  }
+  return adminApp;
+}
+
+export async function getAdminAuth() {
+  const { getAuth } = await import('firebase-admin/auth');
+  const app = await getAdminApp();
+  if (!app) {
+    throw new Error('Firebase Admin app not initialized');
+  }
+  return getAuth(app);
+}

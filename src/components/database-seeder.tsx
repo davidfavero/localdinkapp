@@ -33,12 +33,19 @@ export function DatabaseSeeder() {
              console.log('Database already contains data, skipping seed.');
         }
       } else {
-        console.error('Database seeding failed:', result.message);
-        toast({
-          variant: 'destructive',
-          title: 'Database Seeding Failed',
-          description: result.message,
-        });
+        // Silently fail if Admin SDK is not configured (expected in some environments)
+        // Only log to console, don't show error toast to user
+        if (result.message === 'Database not available') {
+          console.log('Database seeding skipped: Admin SDK not configured. This is expected if you haven\'t set up Firebase Admin credentials.');
+        } else {
+          console.error('Database seeding failed:', result.message);
+          // Only show toast for unexpected errors
+          toast({
+            variant: 'destructive',
+            title: 'Database Seeding Failed',
+            description: result.message,
+          });
+        }
       }
     };
 

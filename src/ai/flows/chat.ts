@@ -6,10 +6,12 @@
  * - chat - A function that handles conversational chat with the user.
  */
 
-import { ai } from '@/ai/genkit';
+import { ai, geminiFlash } from '@/ai/genkit';
 import { z } from 'zod';
 import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
+import { findCourtTool } from '@/ai/tools/find-court';
+import { createGameSessionTool } from '@/ai/tools/create-game-session';
 
 // Helper function to check if a message is a simple confirmation
 function isConfirmation(message: string) {
@@ -33,6 +35,52 @@ function formatPlayerNames(names: string[]): string {
     return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
 };
 
+// Helper to parse date and time into a Date object
+function parseDateTime(dateStr: string, timeStr: string): Date | null {
+  try {
+    // Parse the date string (e.g., "December 15, 2024" or "Tomorrow")
+    let date = new Date();
+    
+    // Handle relative dates
+    const lowerDate = dateStr.toLowerCase();
+    if (lowerDate.includes('tomorrow')) {
+      date.setDate(date.getDate() + 1);
+    } else if (lowerDate.includes('today')) {
+      // Already set to today
+    } else {
+      // Try to parse the date string
+      const parsed = new Date(dateStr);
+      if (!isNaN(parsed.getTime())) {
+        date = parsed;
+      }
+    }
+
+    // Parse time string (e.g., "4:00 PM", "4pm", "16:00")
+    const timeMatch = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1]);
+      const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      const period = timeMatch[3]?.toUpperCase();
+
+      if (period === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (period === 'AM' && hours === 12) {
+        hours = 0;
+      }
+
+      date.setHours(hours, minutes, 0, 0);
+    } else {
+      // Default to 5 PM if time parsing fails
+      date.setHours(17, 0, 0, 0);
+    }
+
+    return date;
+  } catch (error) {
+    console.error('Error parsing date/time:', error);
+    return null;
+  }
+}
+
 
 export async function chat(knownPlayers: Player[], input: ChatInput): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
@@ -41,6 +89,15 @@ export async function chat(knownPlayers: Player[], input: ChatInput): Promise<Ch
     let processedInput = input.message;
     const historyToConsider = input.history.slice(-4); // Only consider last 4 messages
     const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
+
+    // Preprocess common scheduling phrases to make them clearer
+    const lowerInput = processedInput.toLowerCase();
+    if (lowerInput.includes('book a time') || lowerInput.includes('book time')) {
+      processedInput = processedInput.replace(/book\s+a?\s*time/gi, 'schedule a game');
+    }
+    if (lowerInput.includes('set up') || lowerInput.includes('setup')) {
+      processedInput = processedInput.replace(/set\s+up/gi, 'schedule');
+    }
 
     if (isConfirmation(input.message) && lastRobinMessage) {
       processedInput = `confirming: ${lastRobinMessage.text}`;
@@ -54,33 +111,96 @@ export async function chat(knownPlayers: Player[], input: ChatInput): Promise<Ch
         }
     }
 
-    const { output: extractedDetails } = await ai.generate({
-      prompt: `You are Robin, an AI scheduling assistant for a pickleball app called LocalDink. Your primary job is to help users schedule games by extracting details from their messages and having a friendly, brief conversation.
+    const today = new Date();
+    const todayFormatted = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+    let extractedDetails;
+    try {
+      console.log('[AI] Starting generation for message:', processedInput.substring(0, 50));
+      const result = await ai.generate({
+        prompt: `You are Robin, a friendly AI scheduling assistant for LocalDink, a pickleball app. Your job is to help users schedule games naturally through conversation.
 
-- Your main goal is to extract the players' names, the date, the time, and the location for the game.
-- Players: ALWAYS return a list of all player full names mentioned in the 'players' field. This is critical.
-- Dates: Always convert relative terms like "tomorrow" to an absolute date (today is ${new Date().toDateString()}).
-- If a detail is missing, ask a clarifying question.
-- If the user asks to be notified about player responses (e.g., "let me know if Alex responds"), acknowledge this in your 'confirmationText' (e.g., "Got it! I'll let you know when Alex responds."). This is important for user reassurance.
-- If the user's message is not a scheduling request, just have a friendly conversation. In this case, put your full response in the 'confirmationText' field and do not return any other fields.
+WHAT YOU CAN DO:
+- Schedule games: Extract players, date, time, and location from natural language
+- Find courts: Look up courts by name when users mention them
+- Create sessions: Once you have all details, immediately create the game session and send invitations
+- Answer questions: Have friendly conversations about scheduling, pickleball, or the app
+
+HOW TO HELP:
+1. Be decisive and action-oriented - when you have all the details, just do it
+2. Extract details naturally - users might say "tomorrow at 4pm with Melissa at I'On" or "schedule a game next Friday"
+3. Only ask ONE clarifying question if something critical is genuinely missing
+4. DO NOT ask "does this look right?" or any confirmation questions - just take action
+
+EXTRACTION RULES (be thorough):
+1. Players: Extract ALL player names. "with [name]" = that person is a player. Always include "me" if user is scheduling for themselves.
+   Examples: "with melissa" → ["melissa", "me"], "schedule with Alex and Bob" → ["Alex", "Bob", "me"]
+
+2. Date: Convert relative terms to absolute dates:
+   - "tomorrow" → ${new Date(today.getTime() + 24*60*60*1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+   - "today" → ${todayFormatted}
+   - Format: "Month Day, Year" (e.g., "December 15, 2024")
+
+3. Time: Extract in 12-hour format with AM/PM:
+   - "3:30pm" → "3:30 PM", "3pm" → "3:00 PM", "15:30" → "3:30 PM"
+   - If no time specified, don't include it (you'll ask)
+
+4. Location: Extract court name or location:
+   - "at I'On" or "with I'On" → location: "I'On"
+   - "at I'On Courts" → location: "I'On Courts"
+
+5. If details are missing, ask ONE short clarifying question in 'confirmationText' only. Be concise.
+
+6. If NOT a scheduling request, have a brief friendly conversation in 'confirmationText' only.
+
+7. NEVER ask "does this look right?" or "shall I proceed?" - just extract the details and the system will take action.
+
+Today is: ${todayFormatted}
 
 Conversation History:
 ${historyToConsider.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
 
-New User Message:
-- user: ${processedInput}
-`,
-      model: 'googleai/gemini-2.5-flash',
-      output: {
-        schema: ChatOutputSchema,
-      },
-      config: {
-        temperature: 0.1,
-      },
-    });
+User Message: "${processedInput}"
+
+Extract all details you can find. Be thorough and conversational.`,
+        model: geminiFlash!,
+        tools: [findCourtTool],
+        output: {
+          schema: ChatOutputSchema,
+        },
+        config: {
+          temperature: 0.1,
+        },
+      });
+      console.log('[AI] Generation result:', result ? 'success' : 'null', result?.output ? 'has output' : 'no output');
+      extractedDetails = result?.output;
+    } catch (aiError: any) {
+      console.error('AI generation error:', aiError);
+      console.error('AI error details:', {
+        message: aiError?.message,
+        code: aiError?.code,
+        stack: aiError?.stack,
+        name: aiError?.name,
+      });
+      
+      // Check for quota exceeded error
+      const errorMessage = aiError?.message || '';
+      if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('Too Many Requests')) {
+        return {
+          confirmationText: `I've hit my API rate limit for the moment. Please wait about 30 seconds and try again. If this keeps happening, check your Google AI billing at ai.google.dev.`
+        };
+      }
+      
+      // Return a helpful error message
+      return {
+        confirmationText: `I'm having trouble connecting to the AI service right now. Please try again in a moment. If the problem persists, check that the Google AI API key is configured correctly.`
+      };
+    }
 
     if (!extractedDetails) {
-      return { confirmationText: "I'm sorry, I had trouble understanding that. Could you try again?" };
+      // Try a fallback extraction with a simpler approach
+      console.error('AI extraction returned null for message:', processedInput);
+      return { confirmationText: "I'm sorry, I had trouble understanding that. Could you try rephrasing? For example: 'Schedule a game with [player name] tomorrow at 4pm at [court name]'?" };
     }
     
     // If the user just said "yes", re-extract players from the last bot message if the AI missed it.
@@ -93,18 +213,32 @@ New User Message:
       }
     }
 
+    // If it's just a conversational response with no scheduling details, return it
     if (extractedDetails.confirmationText && !extractedDetails.players && !extractedDetails.date && !extractedDetails.time && !extractedDetails.location) {
       return { confirmationText: extractedDetails.confirmationText };
     }
 
-    const { players, date, time, location } = extractedDetails;
+    let { players, date, time, location } = extractedDetails;
 
+    // Ensure we have at least one player (the user themselves if no one else mentioned)
     if (!players || players.length === 0) {
-      return { confirmationText: "I'm sorry, I didn't catch who is playing. Could you list the players for the game?" };
+      // Check if the message contains scheduling keywords but no players
+      const schedulingKeywords = ['book', 'schedule', 'game', 'time', 'session', 'play'];
+      const hasSchedulingIntent = schedulingKeywords.some(keyword => 
+        processedInput.toLowerCase().includes(keyword)
+      );
+      
+      if (hasSchedulingIntent) {
+        // If it's clearly a scheduling request but no players mentioned, assume it's just the user
+        players = ['me'];
+        extractedDetails.players = players;
+      } else {
+        return { confirmationText: "I'm sorry, I didn't catch who is playing. Could you list the players for the game? For example: 'Schedule a game with Melissa tomorrow at 4pm'." };
+      }
     }
 
     const disambiguationResults = await Promise.all(
-      players.map(async (playerName) => {
+      (players || []).map(async (playerName: string) => {
         if (['me', 'i', 'myself'].includes(playerName.toLowerCase().trim()) && currentUser) {
           return { id: currentUser.id, name: `${currentUser.firstName} ${currentUser.lastName}`, phone: currentUser.phone, originalName: playerName, disambiguatedName: `${currentUser.firstName} ${currentUser.lastName}` };
         }
@@ -142,24 +276,115 @@ New User Message:
     const playerNames = uniqueInvitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
     const formattedPlayerNames = formatPlayerNames(playerNames);
 
+    // Find court if location is mentioned
+    let courtId: string | null = null;
+    let courtName: string | null = null;
+    if (location && currentUser) {
+      try {
+        const courtResult = await findCourtTool({ courtName: location, userId: currentUser.id });
+        if (courtResult.found && courtResult.courtId) {
+          courtId = courtResult.courtId;
+          courtName = courtResult.courtName || location;
+        }
+      } catch (error) {
+        console.error('Error finding court:', error);
+      }
+    }
+
+    // Check if we have all details to create the session (no confirmation needed)
+    const hasAllDetails = date && time && courtId && uniqueInvitedPlayers.length > 0;
+
+    // If we have all details, create the game session immediately - no confirmation needed
+    if (hasAllDetails && currentUser) {
+      try {
+        // Parse date and time into ISO string
+        const dateTime = parseDateTime(date, time);
+        if (!dateTime) {
+          return { 
+            confirmationText: "I'm sorry, I had trouble parsing the date and time. Could you try again with a clearer format?" 
+          };
+        }
+
+        // Build attendees array
+        const attendees = [
+          { id: currentUser.id, source: 'user' as const },
+          ...uniqueInvitedPlayers
+            .filter(p => p.id && p.id !== currentUser.id)
+            .map(p => ({ id: p.id!, source: 'player' as const })),
+        ];
+
+        // Build player statuses
+        const playerStatuses: Record<string, 'CONFIRMED' | 'DECLINED' | 'PENDING'> = {
+          [currentUser.id]: 'CONFIRMED',
+        };
+        uniqueInvitedPlayers
+          .filter(p => p.id && p.id !== currentUser.id)
+          .forEach(p => {
+            if (p.id) playerStatuses[p.id] = 'PENDING';
+          });
+
+        // Determine if doubles (default to true if 4+ players, false if 2 players)
+        const totalPlayers = attendees.length;
+        const isDoubles = totalPlayers >= 4;
+
+        const createResult = await createGameSessionTool({
+          courtId,
+          organizerId: currentUser.id,
+          startTime: dateTime.toISOString(),
+          isDoubles,
+          playerIds: attendees.map(a => a.id),
+          attendees,
+          playerStatuses,
+          durationMinutes: 120,
+        });
+
+        if (createResult.success) {
+          const notifiedMsg = createResult.notifiedCount && createResult.notifiedCount > 0
+            ? ` I've sent SMS invitations to ${createResult.notifiedCount} player${createResult.notifiedCount === 1 ? '' : 's'}.`
+            : '';
+          return {
+            confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}.${notifiedMsg} You can view it in your Game Sessions.`,
+          };
+        } else {
+          return {
+            confirmationText: `I'm sorry, I had trouble creating the game session. ${createResult.error || 'Please try again.'}`,
+          };
+        }
+      } catch (error: any) {
+        console.error('Error creating game session:', error);
+        return {
+          confirmationText: "I'm sorry, I encountered an error while creating the game session. Please try again.",
+        };
+      }
+    }
+
+    // If we got here, it means we couldn't create the session (missing courtId or some details)
+    // Ask only for what's genuinely missing
     let responseText = '';
-    if (date && time && location && uniqueInvitedPlayers.length > 0) {
-       responseText = `Great! I'll schedule a game for ${formattedPlayerNames} at ${location} on ${date} at ${time}. Does that look right?`;
-    } else if (uniqueInvitedPlayers.length > 0) {
+    if (uniqueInvitedPlayers.length > 0) {
       let missingInfo = [];
       if (!date) missingInfo.push('date');
       if (!time) missingInfo.push('time');
-      if (!location) missingInfo.push('location');
+      if (!location && !courtId) missingInfo.push('location');
+      else if (location && !courtId) {
+        // We have a location name but couldn't find the court
+        responseText = `I couldn't find a court called "${location}". Could you check the name or add it to your courts first?`;
+      }
       
-      responseText = `Got it! I'll schedule a game for ${formattedPlayerNames}. I just need to confirm the ${missingInfo.join(' and ')}. What's the plan?`;
+      if (!responseText && missingInfo.length > 0) {
+        responseText = `Got it - ${formattedPlayerNames}. What ${missingInfo.join(' and ')}?`;
+      } else if (!responseText) {
+        // We have players but something else went wrong
+        responseText = `I have the details but couldn't create the session. Please try again or check your courts.`;
+      }
     } else {
         // This case should now be rare due to the checks above, but it's a safe fallback.
-        responseText = "I'm sorry, I couldn't figure out who to invite. Could you list the players again?";
+        responseText = "Who's playing?";
     }
     
     // Handle the user's request to be notified
-    if (input.message.toLowerCase().includes('let me know if') && extractedDetails.players) {
-      const mentionedPlayer = extractedDetails.players.find(p => p.toLowerCase() !== 'me');
+    if (input.message.toLowerCase().includes('let me know if') && extractedDetails.players && extractedDetails.players.length > 0) {
+      const mentionedPlayer = extractedDetails.players.find((p: string) => p.toLowerCase() !== 'me');
       if(mentionedPlayer) {
         responseText = `Got it! I'll let you know as soon as ${mentionedPlayer} responds.`;
       }

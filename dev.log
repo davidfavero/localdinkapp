@@ -1,0 +1,57 @@
+
+> nextn@0.1.0 dev
+> next dev -p 9002
+
+   ▲ Next.js 15.3.3
+   - Local:        http://localhost:9002
+   - Network:      http://192.168.86.27:9002
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Compiled /instrumentation in 144ms (21 modules)
+✅ Buffer polyfill registered successfully
+ ✓ Ready in 1643ms
+ ○ Compiling /dashboard/profile ...
+ ✓ Compiled /dashboard/profile in 7.7s (3208 modules)
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+(node:98899) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /dashboard/profile 200 in 5647ms
+ ✓ Compiled /_not-found in 1145ms (3189 modules)
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 509ms
+ ✓ Compiled /favicon.ico in 234ms (2704 modules)
+ GET /favicon.ico 200 in 455ms
+Firebase Admin SDK initialized successfully
+ POST /dashboard/profile 200 in 2280ms
+ POST /dashboard/profile 200 in 288ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /dashboard/profile 200 in 403ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 30ms
+ GET /favicon.ico 200 in 19ms
+ POST /dashboard/profile 200 in 306ms
+ POST /dashboard/profile 200 in 236ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /dashboard/profile 200 in 97ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 31ms
+ GET /favicon.ico 200 in 10ms
+ POST /dashboard/profile 200 in 543ms
+ POST /dashboard/profile 200 in 232ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /dashboard/profile 200 in 117ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 29ms
+ GET /favicon.ico 200 in 9ms
+ POST /dashboard/profile 200 in 519ms
+ POST /dashboard/profile 200 in 258ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /dashboard/profile 200 in 97ms
+🔥 FirebaseProvider rendering - user: undefined isAuthLoading: true profile: false
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 20ms
+ GET /favicon.ico 200 in 13ms
+ POST /dashboard/profile 200 in 422ms
+ POST /dashboard/profile 200 in 347ms
+[?25h
