@@ -41,7 +41,20 @@ export function getClientApp(): FirebaseApp {
     return firebaseApp;
   }
 
-  const clientConfig = getClientConfig();
-  firebaseApp = getApps().length ? getApp() : initializeApp(clientConfig);
-  return firebaseApp;
+  try {
+    const clientConfig = getClientConfig();
+    firebaseApp = getApps().length ? getApp() : initializeApp(clientConfig);
+    return firebaseApp;
+  } catch (error) {
+    // Clear the cached app instance on error so we can retry
+    firebaseApp = null;
+    if (error instanceof Error) {
+      // Re-throw with more context
+      throw new Error(
+        `Failed to initialize Firebase: ${error.message}. ` +
+        `Please ensure all NEXT_PUBLIC_FB_* environment variables are set correctly in your Firebase App Hosting configuration.`
+      );
+    }
+    throw error;
+  }
 }

@@ -71,6 +71,25 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     // Delay initialization to ensure we're fully client-side
     const timeoutId = setTimeout(() => {
       try {
+        // Check environment variables before attempting initialization
+        const requiredEnvVars = {
+          apiKey: process.env.NEXT_PUBLIC_FB_API_KEY,
+          authDomain: process.env.NEXT_PUBLIC_FB_AUTH_DOMAIN,
+          projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID,
+          appId: process.env.NEXT_PUBLIC_FB_APP_ID,
+        };
+
+        const missingVars = Object.entries(requiredEnvVars)
+          .filter(([_, value]) => !value || value.trim().length < 6 || value.includes('YOUR_'))
+          .map(([key]) => `NEXT_PUBLIC_FB_${key.toUpperCase().replace(/([A-Z])/g, '_$1').slice(1)}`);
+
+        if (missingVars.length > 0) {
+          throw new Error(
+            `Missing or invalid Firebase environment variables: ${missingVars.join(', ')}. ` +
+            `Please check your Firebase App Hosting environment configuration.`
+          );
+        }
+
         const appInstance = getClientApp();
         const authInstance = getClientAuth();
         const firestoreInstance = getFirestore(appInstance);
@@ -95,6 +114,19 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         }, authInstance);
       } catch (error) {
         console.error('Failed to initialize Firebase client SDK:', error);
+        // Log detailed error information for debugging
+        if (error instanceof Error) {
+          console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            envVars: {
+              hasApiKey: !!process.env.NEXT_PUBLIC_FB_API_KEY,
+              hasAuthDomain: !!process.env.NEXT_PUBLIC_FB_AUTH_DOMAIN,
+              hasProjectId: !!process.env.NEXT_PUBLIC_FB_PROJECT_ID,
+              hasAppId: !!process.env.NEXT_PUBLIC_FB_APP_ID,
+            },
+          });
+        }
         if (!didCancel) {
           setFirebaseState({ app: null, auth: null, firestore: null });
           setIsAuthLoading(false);

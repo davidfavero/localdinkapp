@@ -50,12 +50,20 @@ export default function DashboardLayout({
     const syncAuthToken = async () => {
       if (user) {
         try {
+          // Ensure we're in the browser and Firebase is available
+          if (typeof window === 'undefined') {
+            return;
+          }
           const auth = getClientAuth();
-          const idToken = await auth.currentUser?.getIdToken();
+          if (!auth || !auth.currentUser) {
+            return;
+          }
+          const idToken = await auth.currentUser.getIdToken();
           if (idToken) {
             await setAuthTokenAction(idToken);
           }
         } catch (error) {
+          // Silently handle errors - Firebase might not be initialized yet
           console.error('Error syncing auth token:', error);
         }
       }
