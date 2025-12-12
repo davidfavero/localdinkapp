@@ -58,7 +58,42 @@ export default function RobinChatPage() {
   // Fetch known players and groups from Firestore
   useEffect(() => {
     const fetchData = async () => {
-      if (!firestore || !authUser?.uid) {
+      // Wait for auth to be fully ready - check both user and loading state
+      if (isUserLoading || !firestore || !authUser?.uid) {
+        if (currentUser && !isUserLoading) {
+          // If we have current user but auth isn't ready, just use that
+          setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
+        }
+        return;
+      }
+
+      // Ensure auth token is available before making Firestore requests
+      // This ensures Firestore SDK has the auth context
+      try {
+        const { getClientAuth } = await import('@/firebase/auth');
+        const auth = getClientAuth();
+        if (!auth.currentUser) {
+          console.warn('[Dashboard] No current user in auth, skipping data fetch');
+          if (currentUser) {
+            setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
+          }
+          return;
+        }
+
+        // Verify we can get an auth token (ensures auth is fully ready)
+        // This also ensures Firestore will have the auth token for requests
+        const token = await auth.currentUser.getIdToken().catch(() => {
+          throw new Error('Auth token not available');
+        });
+        
+        if (!token) {
+          throw new Error('Auth token is null');
+        }
+        
+        // Small delay to ensure Firestore SDK has processed the auth state
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (authError) {
+        console.warn('[Dashboard] Auth not ready, skipping data fetch:', authError);
         if (currentUser) {
           setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
         }
@@ -85,7 +120,12 @@ export default function RobinChatPage() {
           });
           console.log(`[Dashboard] Loaded ${usersSnap.docs.length} users`);
         } catch (e: any) {
-          console.warn('Could not fetch users:', e.message);
+          // Handle permission errors gracefully
+          if (e.code === 'permission-denied' || e.message?.includes('permission')) {
+            console.warn('Permission denied fetching users - auth may not be ready:', e.message);
+          } else {
+            console.warn('Could not fetch users:', e.message);
+          }
         }
 
         // Fetch ALL players (contacts) - no owner filter to see all players
@@ -97,7 +137,11 @@ export default function RobinChatPage() {
           });
           console.log(`[Dashboard] Loaded ${playersSnap.docs.length} players`);
         } catch (e: any) {
-          console.warn('Could not fetch players:', e.message);
+          if (e.code === 'permission-denied' || e.message?.includes('permission')) {
+            console.warn('Permission denied fetching players - auth may not be ready:', e.message);
+          } else {
+            console.warn('Could not fetch players:', e.message);
+          }
         }
 
         // Fetch ALL groups (with their names for AI matching)
@@ -109,7 +153,11 @@ export default function RobinChatPage() {
           });
           console.log(`[Dashboard] Loaded ${allGroups.length} groups:`, allGroups.map(g => g.name));
         } catch (e: any) {
-          console.warn('Could not fetch groups:', e.message);
+          if (e.code === 'permission-denied' || e.message?.includes('permission')) {
+            console.warn('Permission denied fetching groups - auth may not be ready:', e.message);
+          } else {
+            console.warn('Could not fetch groups:', e.message);
+          }
         }
 
         // Ensure current user is included
@@ -128,6 +176,7 @@ export default function RobinChatPage() {
         setKnownGroups(allGroups);
       } catch (error: any) {
         console.error('Error fetching data:', error);
+        // Fallback to just current user if available
         if (currentUser) {
           setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
         } else {
@@ -136,7 +185,8 @@ export default function RobinChatPage() {
       }
     };
 
-    if (!isUserLoading && firestore) {
+    // Only fetch when auth is fully loaded and ready
+    if (!isUserLoading && firestore && authUser?.uid) {
       fetchData();
     }
   }, [firestore, authUser?.uid, currentUser, isUserLoading]);
