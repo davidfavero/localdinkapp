@@ -38,7 +38,19 @@ export default function LandingPage() {
       <main className="flex-grow flex items-center">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div className="flex flex-col items-start text-left">
+            <div className="flex justify-center items-center relative order-1 md:order-2">
+               <div className="absolute inset-0 bg-accent/20 rounded-full blur-3xl"></div>
+                <div className="relative">
+                    <RobinIcon className="h-32 w-32 md:h-48 md:w-48 lg:h-64 lg:w-64 text-primary opacity-10" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                        <div className="w-40 h-40 md:w-60 md:h-60 lg:w-80 lg:h-80 rounded-full bg-gradient-to-br from-primary via-accent to-green-700 animate-spin-slow" style={{ animationDuration: '10s' }} />
+                    </div>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-sm p-4 md:p-6 lg:p-8 rounded-full">
+                        <RobinIcon className="w-24 h-24 md:w-36 md:h-36 lg:w-48 lg:h-48 text-background drop-shadow-2xl" />
+                    </div>
+                </div>
+            </div>
+            <div className="flex flex-col items-start text-left order-2 md:order-1">
               <div className="mb-4 flex items-center gap-3 rounded-full bg-accent/20 px-4 py-1">
                 <RobinIcon className="h-6 w-6 text-primary" />
                 <p className="font-semibold text-primary">Meet Robin, your AI scheduler</p>
@@ -54,18 +66,6 @@ export default function LandingPage() {
                   Schedule Your First Game <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
-            </div>
-            <div className="hidden md:flex justify-center items-center relative">
-               <div className="absolute inset-0 bg-accent/20 rounded-full blur-3xl"></div>
-                <div className="relative">
-                    <RobinIcon className="h-64 w-64 text-primary opacity-10" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                        <div className="w-80 h-80 rounded-full bg-gradient-to-br from-primary via-accent to-green-700 animate-spin-slow" style={{ animationDuration: '10s' }} />
-                    </div>
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 backdrop-blur-sm p-8 rounded-full">
-                        <RobinIcon className="w-48 h-48 text-background drop-shadow-2xl" />
-                    </div>
-                </div>
             </div>
           </div>
         </div>
