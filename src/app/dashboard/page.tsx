@@ -8,8 +8,9 @@ import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player, Group } from '@/lib/types';
-import { useUser, useFirestore } from '@/firebase/provider';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { useUser, useFirestore, useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { collection, query } from 'firebase/firestore';
+import { useCollection } from '@/firebase/firestore/use-collection';
 
 const CHAT_STORAGE_KEY = 'robin-chat-messages';
 const DEFAULT_MESSAGE: Message = {
@@ -41,8 +42,28 @@ export default function RobinChatPage() {
 
   const { profile: currentUser, user: authUser, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const { user } = useFirebase();
   const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
   const [knownGroups, setKnownGroups] = useState<(Group & { id: string })[]>([]);
+
+  // Use real-time listeners for users, players, and groups
+  const usersQuery = useMemoFirebase(
+    () => firestore && user?.uid ? query(collection(firestore, 'users')) : null,
+    [firestore, user?.uid]
+  );
+  const { data: usersData } = useCollection<Player>(usersQuery);
+
+  const playersQuery = useMemoFirebase(
+    () => firestore && user?.uid ? query(collection(firestore, 'players')) : null,
+    [firestore, user?.uid]
+  );
+  const { data: playersData } = useCollection<Player>(playersQuery);
+
+  const groupsQuery = useMemoFirebase(
+    () => firestore && user?.uid ? query(collection(firestore, 'groups')) : null,
+    [firestore, user?.uid]
+  );
+  const { data: groupsData } = useCollection<Group>(groupsQuery);
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -55,141 +76,61 @@ export default function RobinChatPage() {
     }
   }, [messages]);
 
-  // Fetch known players and groups from Firestore
+  // Combine users and players data from Firestore queries
   useEffect(() => {
-    const fetchData = async () => {
-      // Wait for auth to be fully ready - check both user and loading state
-      if (isUserLoading || !firestore || !authUser?.uid) {
-        if (currentUser && !isUserLoading) {
-          // If we have current user but auth isn't ready, just use that
-          setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
-        }
-        return;
+    if (isUserLoading || !authUser?.uid) {
+      // While loading, just use current user if available
+      if (currentUser) {
+        setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
       }
+      return;
+    }
 
-      // Ensure auth token is available before making Firestore requests
-      // This ensures Firestore SDK has the auth context
-      try {
-        const { getClientAuth } = await import('@/firebase/auth');
-        const auth = getClientAuth();
-        if (!auth.currentUser) {
-          console.warn('[Dashboard] No current user in auth, skipping data fetch');
-          if (currentUser) {
-            setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
-          }
-          return;
-        }
+    const existingIds = new Set<string>();
+    const allPlayers: Player[] = [];
 
-        // Verify we can get an auth token (ensures auth is fully ready)
-        // This also ensures Firestore will have the auth token for requests
-        const token = await auth.currentUser.getIdToken().catch(() => {
-          throw new Error('Auth token not available');
-        });
-        
-        if (!token) {
-          throw new Error('Auth token is null');
-        }
-        
-        // Small delay to ensure Firestore SDK has processed the auth state
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (authError) {
-        console.warn('[Dashboard] Auth not ready, skipping data fetch:', authError);
-        if (currentUser) {
-          setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
-        }
-        return;
-      }
-
-      try {
-        const existingIds = new Set<string>();
-        const allPlayers: Player[] = [];
-        const allGroups: (Group & { id: string })[] = [];
-
-        const addPlayer = (player: Player) => {
-          if (player.id && !existingIds.has(player.id)) {
-            allPlayers.push(player);
-            existingIds.add(player.id);
-          }
-        };
-
-        // Fetch ALL users (no ownerId filter - users are shared)
-        try {
-          const usersSnap = await getDocs(collection(firestore, 'users'));
-          usersSnap.docs.forEach(doc => {
-            addPlayer({ id: doc.id, ...doc.data() } as Player);
-          });
-          console.log(`[Dashboard] Loaded ${usersSnap.docs.length} users`);
-        } catch (e: any) {
-          // Handle permission errors gracefully
-          if (e.code === 'permission-denied' || e.message?.includes('permission')) {
-            console.warn('Permission denied fetching users - auth may not be ready:', e.message);
-          } else {
-            console.warn('Could not fetch users:', e.message);
-          }
-        }
-
-        // Fetch ALL players (contacts) - no owner filter to see all players
-        try {
-          const playersSnap = await getDocs(collection(firestore, 'players'));
-          playersSnap.docs.forEach(doc => {
-            const data = doc.data();
-            addPlayer({ id: doc.id, ...data } as Player);
-          });
-          console.log(`[Dashboard] Loaded ${playersSnap.docs.length} players`);
-        } catch (e: any) {
-          if (e.code === 'permission-denied' || e.message?.includes('permission')) {
-            console.warn('Permission denied fetching players - auth may not be ready:', e.message);
-          } else {
-            console.warn('Could not fetch players:', e.message);
-          }
-        }
-
-        // Fetch ALL groups (with their names for AI matching)
-        try {
-          const groupsSnap = await getDocs(collection(firestore, 'groups'));
-          groupsSnap.docs.forEach(doc => {
-            const data = doc.data();
-            allGroups.push({ id: doc.id, ...data } as Group & { id: string });
-          });
-          console.log(`[Dashboard] Loaded ${allGroups.length} groups:`, allGroups.map(g => g.name));
-        } catch (e: any) {
-          if (e.code === 'permission-denied' || e.message?.includes('permission')) {
-            console.warn('Permission denied fetching groups - auth may not be ready:', e.message);
-          } else {
-            console.warn('Could not fetch groups:', e.message);
-          }
-        }
-
-        // Ensure current user is included
-        if (currentUser) {
-          addPlayer(currentUser);
-        }
-
-        // Mark current user
-        const playersWithCurrent = allPlayers.map(p => ({
-          ...p,
-          isCurrentUser: p.id === authUser.uid
-        }));
-
-        console.log('[Dashboard] Final player list:', playersWithCurrent.map(p => `${p.firstName} ${p.lastName}`));
-        setKnownPlayers(playersWithCurrent);
-        setKnownGroups(allGroups);
-      } catch (error: any) {
-        console.error('Error fetching data:', error);
-        // Fallback to just current user if available
-        if (currentUser) {
-          setKnownPlayers([{ ...currentUser, isCurrentUser: true }]);
-        } else {
-          setKnownPlayers([]);
-        }
+    const addPlayer = (player: Player) => {
+      if (player.id && !existingIds.has(player.id)) {
+        allPlayers.push(player);
+        existingIds.add(player.id);
       }
     };
 
-    // Only fetch when auth is fully loaded and ready
-    if (!isUserLoading && firestore && authUser?.uid) {
-      fetchData();
+    // Add users from Firestore
+    if (usersData) {
+      usersData.forEach(user => {
+        addPlayer(user);
+      });
     }
-  }, [firestore, authUser?.uid, currentUser, isUserLoading]);
+
+    // Add players from Firestore
+    if (playersData) {
+      playersData.forEach(player => {
+        addPlayer(player);
+      });
+    }
+
+    // Ensure current user is included
+    if (currentUser) {
+      addPlayer(currentUser);
+    }
+
+    // Mark current user
+    const playersWithCurrent = allPlayers.map(p => ({
+      ...p,
+      isCurrentUser: p.id === authUser.uid
+    }));
+
+    setKnownPlayers(playersWithCurrent);
+  }, [usersData, playersData, currentUser, authUser?.uid, isUserLoading]);
+
+  // Set groups data
+  useEffect(() => {
+    if (groupsData) {
+      // groupsData already includes id from useCollection
+      setKnownGroups(groupsData as (Group & { id: string })[]);
+    }
+  }, [groupsData]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

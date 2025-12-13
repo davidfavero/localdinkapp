@@ -35,7 +35,12 @@ export const createGameSessionTool = ai.defineTool(
   },
   async (input) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'}/api/game-sessions`, {
+      // For server-side code, use APP_URL (not NEXT_PUBLIC_APP_URL)
+      // In production, set this to https://www.localdink.com in Firebase App Hosting
+      const baseUrl = process.env.APP_URL || 
+                     process.env.NEXT_PUBLIC_APP_URL || 
+                     'http://localhost:9002';
+      const response = await fetch(`${baseUrl}/api/game-sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

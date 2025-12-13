@@ -1,9 +1,26 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { ArrowRight } from 'lucide-react';
 
 export default function LandingPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // Check if we should skip the landing page (for app store or direct app access)
+  useEffect(() => {
+    const skipLanding = searchParams.get('app') === 'true' || 
+                       process.env.NEXT_PUBLIC_SKIP_LANDING === 'true';
+    
+    if (skipLanding) {
+      router.replace('/login');
+    }
+  }, [searchParams, router]);
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <header className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -26,7 +43,7 @@ export default function LandingPage() {
                 <RobinIcon className="h-6 w-6 text-primary" />
                 <p className="font-semibold text-primary">Meet Robin, your AI scheduler</p>
               </div>
-              <h2 className="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 font-headline bg-gradient-to-r from-primary to-green-700 bg-clip-text text-transparent">
+              <h2 className="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 font-headline bg-gradient-to-r from-primary to-green-700 bg-clip-text text-transparent leading-normal pb-2">
                 Never miss a game.
               </h2>
               <p className="text-lg md:text-xl text-muted-foreground max-w-lg mb-8">
