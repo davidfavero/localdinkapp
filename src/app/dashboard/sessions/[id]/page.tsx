@@ -3,7 +3,7 @@
 import { useParams, notFound } from 'next/navigation';
 import { useDoc, useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { errorEmitter } from '@/firebase/error-emitter';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import type { GameSession_Firestore as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
 import { handleCancellationAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -252,10 +252,11 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         });
 
         // Now, update the player's status in Firestore
+        // Use setDoc with merge to create if it doesn't exist, or update if it does
         const playerStatusRef = doc(firestore, 'game-sessions', session.id, 'players', currentUser.uid);
         const payload = { status: 'DECLINED' };
         
-        updateDoc(playerStatusRef, payload)
+        setDoc(playerStatusRef, payload, { merge: true })
           .then(() => {
               toast({
                 title: 'Cancellation Processed',
@@ -263,9 +264,10 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               });
           })
           .catch((error) => {
+              console.error('Error updating player status:', error);
               const permissionError = new FirestorePermissionError({
                 path: playerStatusRef.path,
-                operation: 'update',
+                operation: 'set',
                 requestResourceData: payload,
               });
               errorEmitter.emit('permission-error', permissionError);

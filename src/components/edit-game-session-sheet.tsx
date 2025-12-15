@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +14,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useFirestore, useUser } from '@/firebase';
-import { doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, Timestamp, collection, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, CalendarIcon } from 'lucide-react';
 import type { Court } from '@/lib/types';
@@ -66,6 +67,7 @@ export function EditGameSessionSheet({
   sessionData,
   courts,
 }: EditGameSessionSheetProps) {
+  const router = useRouter();
   const firestore = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
@@ -163,6 +165,15 @@ export function EditGameSessionSheet({
     setIsDeleting(true);
 
     try {
+      // Delete the players subcollection first
+      const playersCollectionRef = collection(firestore, 'game-sessions', sessionId, 'players');
+      const playersSnapshot = await getDocs(playersCollectionRef);
+      const deletePlayerPromises = playersSnapshot.docs.map(playerDoc => 
+        deleteDoc(doc(firestore, 'game-sessions', sessionId, 'players', playerDoc.id))
+      );
+      await Promise.all(deletePlayerPromises);
+
+      // Delete the main session document
       const sessionRef = doc(firestore, 'game-sessions', sessionId);
       await deleteDoc(sessionRef);
 
@@ -173,6 +184,9 @@ export function EditGameSessionSheet({
 
       setShowDeleteDialog(false);
       onOpenChange(false);
+      
+      // Redirect to sessions list page after successful deletion
+      router.push('/dashboard/sessions');
     } catch (error: any) {
       console.error('Error deleting session:', error);
       toast({

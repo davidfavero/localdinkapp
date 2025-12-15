@@ -75,7 +75,8 @@ service cloud.firestore {
       
       // Subcollection for player statuses
       match /players/{playerId} {
-        allow get, list, create, update, delete: if true;  // TEMPORARY: Allow all access
+        // Allow all access for now (users can update their own status)
+        allow get, list, create, update, delete: if true;
       }
     }
     

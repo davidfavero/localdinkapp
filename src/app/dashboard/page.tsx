@@ -223,7 +223,7 @@ export default function RobinChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-       <div className="bg-background/80 backdrop-blur-sm border-t -mx-4 -mb-4 mt-4 p-4">
+       <div className="bg-background/80 backdrop-blur-sm border-t -mx-4 -mb-4 mt-4 p-4 pb-24">
          <div className="flex items-center gap-2">
             <Button 
               size="icon" 
