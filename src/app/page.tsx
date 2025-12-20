@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { ArrowRight } from 'lucide-react';
 
-export default function LandingPage() {
+// Separate component that uses useSearchParams
+function LandingRedirectHandler() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // Check if we should skip the landing page (for app store or direct app access)
   useEffect(() => {
     const skipLanding = searchParams.get('app') === 'true' || 
                        process.env.NEXT_PUBLIC_SKIP_LANDING === 'true';
@@ -20,9 +20,17 @@ export default function LandingPage() {
       router.replace('/login');
     }
   }, [searchParams, router]);
+  
+  return null;
+}
 
+export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
+      {/* Wrap the redirect handler in Suspense for Next.js 15 compatibility */}
+      <Suspense fallback={null}>
+        <LandingRedirectHandler />
+      </Suspense>
       <header className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <RobinIcon className="h-8 w-8 text-primary" />
