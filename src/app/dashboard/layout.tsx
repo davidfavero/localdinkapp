@@ -79,13 +79,28 @@ export default function DashboardLayout({
     }
   }, [user, isLoading, router]);
 
-  // Render a loading state while checking for auth
-  if (isLoading || !user) {
+  // CRITICAL: Render a loading state while checking for auth
+  // This prevents children from rendering and making unauthorized Firestore queries
+  // We need both conditions: auth must be done loading AND user must exist
+  if (isLoading) {
     return (
         <div className="flex items-center justify-center min-h-screen">
             <div className="flex flex-col items-center gap-4">
                 <RobinIcon className="h-16 w-16 text-primary animate-pulse" />
                 <p className="text-muted-foreground">Loading LocalDink...</p>
+            </div>
+        </div>
+    );
+  }
+  
+  // If auth is done loading but there's no user, show a brief loading state
+  // while the redirect to /login happens
+  if (!user) {
+    return (
+        <div className="flex items-center justify-center min-h-screen">
+            <div className="flex flex-col items-center gap-4">
+                <RobinIcon className="h-16 w-16 text-primary animate-pulse" />
+                <p className="text-muted-foreground">Redirecting to login...</p>
             </div>
         </div>
     );

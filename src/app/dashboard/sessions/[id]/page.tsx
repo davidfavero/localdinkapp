@@ -217,8 +217,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   }, [rawSession, firestore, currentUser, isLoadingSession, toast]);
 
   // Fetch all courts for the edit sheet
+  // Wait for both firestore and user to be ready before making queries
   useEffect(() => {
-    if (!firestore) return;
+    if (!firestore || !currentUser) return;
     (async () => {
       try {
         const courtsSnap = await getDocs(collection(firestore, 'courts'));
@@ -228,7 +229,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         console.error('Error fetching courts:', e);
       }
     })();
-  }, [firestore]);
+  }, [firestore, currentUser]);
 
   const session = hydratedSession;
 

@@ -243,9 +243,11 @@ export default function GameSessionsPage() {
   }, [firestore, rawSessions, isLoadingSessions, user?.uid]);
 
   // Fetch all courts for both new and edit sheets
+  // Note: Courts have public read access, but we still wait for user auth
+  // to ensure the page doesn't make any queries before auth is resolved
   const [allCourts, setAllCourts] = useState<Court[]>([]);
   useEffect(() => {
-    if (!firestore) return;
+    if (!firestore || !user) return;
     (async () => {
       try {
         const courtsSnap = await getDocs(collection(firestore, 'courts'));
@@ -255,7 +257,7 @@ export default function GameSessionsPage() {
         console.error('Error fetching courts:', e);
       }
     })();
-  }, [firestore]);
+  }, [firestore, user]);
 
   const handleSessionClick = (session: GameSession) => {
     const rawSession = rawSessions?.find((s: any) => s.id === session.id);

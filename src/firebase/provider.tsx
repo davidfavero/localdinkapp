@@ -242,20 +242,41 @@ export const useFirebaseApp = () => {
     return app;
 }
 
+/**
+ * A memoization hook for Firebase queries that ensures queries are only created
+ * when Firebase is fully initialized AND the user is authenticated.
+ * 
+ * This prevents permission errors from occurring when unauthenticated users
+ * navigate to protected pages before being redirected to login.
+ * 
+ * @param factory - Function that creates the query/reference
+ * @param deps - Additional dependencies for the memo
+ * @param options - Optional configuration (requireAuth defaults to true)
+ */
 export const useMemoFirebase = <T,>(
   factory: () => T,
-  deps: React.DependencyList
+  deps: React.DependencyList,
+  options?: { requireAuth?: boolean }
 ): T | null => {
-  const { firestore, auth } = useFirebase();
+  const { firestore, auth, user } = useFirebase();
+  const requireAuth = options?.requireAuth ?? true; // Default to requiring auth
+  
   return useMemo(() => {
+    // Always require firestore and auth instances
     if (!firestore || !auth) {
       return null;
     }
+    
+    // If requireAuth is true (default), also require an authenticated user
+    if (requireAuth && !user) {
+      return null;
+    }
+    
     const result = factory();
     if (typeof result === 'object' && result !== null) {
       (result as any).__memo = true;
     }
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firestore, auth, ...deps]);
+  }, [firestore, auth, user, requireAuth, ...deps]);
 };
