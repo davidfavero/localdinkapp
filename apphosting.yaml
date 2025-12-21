@@ -2,6 +2,31 @@
 # https://firebase.google.com/docs/app-hosting/configure
 
 runConfig:
-  # Increase this value if you'd like to automatically spin up
-  # more instances in response to increased traffic.
   maxInstances: 1
+
+env:
+  # Firebase Client SDK Configuration (public - safe to commit)
+  - variable: NEXT_PUBLIC_FB_API_KEY
+    value: "AIzaSyA__g8yL8EwHsNPW7-E6VON9GsVU6g796o"
+  - variable: NEXT_PUBLIC_FB_AUTH_DOMAIN
+    value: "localdinkapp.firebaseapp.com"
+  - variable: NEXT_PUBLIC_FB_PROJECT_ID
+    value: "localdinkapp"
+  - variable: NEXT_PUBLIC_FB_STORAGE_BUCKET
+    value: "localdinkapp.firebasestorage.app"
+  - variable: NEXT_PUBLIC_FB_MESSAGING_SENDER_ID
+    value: "997100834225"
+  - variable: NEXT_PUBLIC_FB_APP_ID
+    value: "1:997100834225:web:3d8a92b36d9261ab230190"
+  
+  # Secrets (stored in Firebase Secret Manager)
+  - variable: GOOGLE_GENAI_API_KEY
+    secret: GOOGLE_GENAI_API_KEY
+  - variable: TWILIO_ACCOUNT_SID
+    secret: TWILIO_ACCOUNT_SID
+  - variable: TWILIO_AUTH_TOKEN
+    secret: TWILIO_AUTH_TOKEN
+  - variable: TWILIO_PHONE_NUMBER
+    secret: TWILIO_PHONE_NUMBER
+  - variable: FIREBASE_SERVICE_ACCOUNT
+    secret: FIREBASE_SERVICE_ACCOUNT
