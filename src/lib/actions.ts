@@ -10,7 +10,7 @@ import type {
 } from "@/ai/flows/automated-cancellation-management";
 import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
-import type { ChatInput, ChatOutput, Player, Group } from "./types";
+import type { ChatInput, ChatOutput, Player, Group, Court } from "./types";
 
 export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
@@ -40,13 +40,15 @@ export async function chatAction(
     input: ChatInput, 
     currentUser: Player | null,
     knownPlayers?: Player[],
-    knownGroups?: (Group & { id: string })[]
+    knownGroups?: (Group & { id: string })[],
+    knownCourts?: Court[]
 ): Promise<ChatOutput> {
     const { message, history } = input;
 
     // Use provided data from client-side
     let players: Player[] = knownPlayers || [];
     let groups: (Group & { id: string })[] = knownGroups || [];
+    let courts: Court[] = knownCourts || [];
 
     // Supplement with server-side data
     const adminDb = await getAdminDb();
@@ -116,10 +118,11 @@ export async function chatAction(
     // Log for debugging
     console.log('[chatAction] Known players:', knownPlayersWithCurrent.map(p => `${p.firstName} ${p.lastName}`));
     console.log('[chatAction] Known groups:', groups.map(g => g.name));
+    console.log('[chatAction] Known courts:', courts.map(c => c.name));
     
     try {
         const { chat } = await import("@/ai/flows/chat");
-        const response = await chat(knownPlayersWithCurrent, { message, history }, groups);
+        const response = await chat(knownPlayersWithCurrent, { message, history }, groups, courts);
         return response;
     } catch (error: any) {
         console.error('Error in chatAction:', error);

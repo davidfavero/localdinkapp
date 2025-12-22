@@ -8,9 +8,8 @@
 
 import { ai, geminiFlash } from '@/ai/genkit';
 import { z } from 'zod';
-import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player, Group } from '@/lib/types';
+import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player, Group, Court } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
-import { findCourtTool } from '@/ai/tools/find-court';
 import { createGameSessionTool } from '@/ai/tools/create-game-session';
 
 // Helper to match a group by name
@@ -36,6 +35,67 @@ function findGroupByName(searchName: string, groups: (Group & { id: string })[])
   });
   
   return wordMatch;
+}
+
+// Helper to match a court by name (case-insensitive, flexible matching)
+function findCourtByName(searchName: string, courts: Court[]): Court | undefined {
+  // Helper to create a "clean" version for matching - removes apostrophes, special chars, and common suffixes
+  const cleanForMatching = (str: string) => {
+    return str
+      .toLowerCase()
+      .trim()
+      .replace(/['''`]/g, '')  // Remove all apostrophe variations
+      .replace(/\s+/g, ' ')    // Normalize spaces
+      .replace(/\s*(courts?|tennis|center|park|club)$/i, '') // Remove suffixes
+      .trim();
+  };
+
+  const normalized = searchName.toLowerCase().trim();
+  const cleaned = cleanForMatching(searchName);
+
+  console.log(`[findCourt] Searching for: "${searchName}" (normalized: "${normalized}", cleaned: "${cleaned}")`);
+  console.log('[findCourt] Available courts:', courts.map(c => c.name));
+
+  // Try exact match first (case insensitive)
+  let match = courts.find(c => c.name.toLowerCase().trim() === normalized);
+  if (match) {
+    console.log(`[findCourt] Found exact match: "${match.name}"`);
+    return match;
+  }
+
+  // Try cleaned match (removes apostrophes and suffixes: "I'On Courts" matches "ION")
+  match = courts.find(c => cleanForMatching(c.name) === cleaned);
+  if (match) {
+    console.log(`[findCourt] Found cleaned match: "${match.name}"`);
+    return match;
+  }
+
+  // If no exact match, try partial/contains match
+  match = courts.find(c => {
+    const courtName = c.name.toLowerCase().trim();
+    const cleanedCourtName = cleanForMatching(c.name);
+    return courtName.includes(normalized) || 
+           normalized.includes(courtName) ||
+           cleanedCourtName.includes(cleaned) ||
+           cleaned.includes(cleanedCourtName);
+  });
+  if (match) {
+    console.log(`[findCourt] Found partial match: "${match.name}"`);
+    return match;
+  }
+
+  // Try starts-with match
+  match = courts.find(c => {
+    const cleanedCourtName = cleanForMatching(c.name);
+    return cleanedCourtName.startsWith(cleaned) || cleaned.startsWith(cleanedCourtName);
+  });
+  if (match) {
+    console.log(`[findCourt] Found starts-with match: "${match.name}"`);
+    return match;
+  }
+
+  console.log(`[findCourt] No court found matching "${searchName}"`);
+  return undefined;
 }
 
 // Helper function to check if a message is a simple confirmation
@@ -110,13 +170,16 @@ function parseDateTime(dateStr: string, timeStr: string): Date | null {
 export async function chat(
   knownPlayers: Player[], 
   input: ChatInput, 
-  knownGroups: (Group & { id: string })[] = []
+  knownGroups: (Group & { id: string })[] = [],
+  knownCourts: Court[] = []
 ): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
     const knownGroupNames = knownGroups.map(g => g.name);
+    const knownCourtNames = knownCourts.map(c => c.name);
     const currentUser = knownPlayers.find(p => p.isCurrentUser);
     
     console.log('[chat] Available groups:', knownGroupNames);
+    console.log('[chat] Available courts:', knownCourtNames);
     
     let processedInput = input.message;
     const historyToConsider = input.history.slice(-4); // Only consider last 4 messages
@@ -183,6 +246,7 @@ EXTRACTION RULES (be thorough):
 4. Location: Extract court name or location:
    - "at I'On" or "with I'On" → location: "I'On"
    - "at I'On Courts" → location: "I'On Courts"
+   ${knownCourtNames.length > 0 ? `\n   Available courts: ${knownCourtNames.join(', ')}` : ''}
 
 5. If details are missing, ask ONE short clarifying question in 'confirmationText' only. Be concise.
 
@@ -199,7 +263,6 @@ User Message: "${processedInput}"
 
 Extract all details you can find. Be thorough and conversational.`,
         model: geminiFlash!,
-        tools: [findCourtTool],
         output: {
           schema: ChatOutputSchema,
         },
@@ -345,18 +408,17 @@ Extract all details you can find. Be thorough and conversational.`,
     const playerNames = uniqueInvitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
     const formattedPlayerNames = formatPlayerNames(playerNames);
 
-    // Find court if location is mentioned
+    // Find court if location is mentioned - use client-provided courts for reliable matching
     let courtId: string | null = null;
     let courtName: string | null = null;
     if (location && currentUser) {
-      try {
-        const courtResult = await findCourtTool({ courtName: location, userId: currentUser.id });
-        if (courtResult.found && courtResult.courtId) {
-          courtId = courtResult.courtId;
-          courtName = courtResult.courtName || location;
-        }
-      } catch (error) {
-        console.error('Error finding court:', error);
+      const matchedCourt = findCourtByName(location, knownCourts);
+      if (matchedCourt) {
+        courtId = matchedCourt.id;
+        courtName = matchedCourt.name;
+        console.log(`[chat] Matched court: "${location}" -> "${courtName}" (id: ${courtId})`);
+      } else {
+        console.log(`[chat] No court found for: "${location}"`);
       }
     }
 

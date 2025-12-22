@@ -7,7 +7,7 @@ import { Mic, Send, Sparkles, Trash2 } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
 import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
-import type { Message, Player, Group } from '@/lib/types';
+import type { Message, Player, Group, Court } from '@/lib/types';
 import { useUser, useFirestore, useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { collection, query } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -45,6 +45,7 @@ export default function RobinChatPage() {
   const { user } = useFirebase();
   const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
   const [knownGroups, setKnownGroups] = useState<(Group & { id: string })[]>([]);
+  const [knownCourts, setKnownCourts] = useState<Court[]>([]);
 
   // Use real-time listeners for users, players, and groups
   const usersQuery = useMemoFirebase(
@@ -64,6 +65,12 @@ export default function RobinChatPage() {
     [firestore, user?.uid]
   );
   const { data: groupsData } = useCollection<Group>(groupsQuery);
+
+  const courtsQuery = useMemoFirebase(
+    () => firestore && user?.uid ? query(collection(firestore, 'courts')) : null,
+    [firestore, user?.uid]
+  );
+  const { data: courtsData } = useCollection<Court>(courtsQuery);
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -132,6 +139,13 @@ export default function RobinChatPage() {
     }
   }, [groupsData]);
 
+  // Set courts data
+  useEffect(() => {
+    if (courtsData) {
+      setKnownCourts(courtsData);
+    }
+  }, [courtsData]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -159,11 +173,12 @@ export default function RobinChatPage() {
       setIsLoading(true);
 
       try {
-        // Pass the latest state to the action with known players and groups
+        // Pass the latest state to the action with known players, groups, and courts
         const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
         console.log('[Chat] Calling chatAction with:', currentInput.trim());
         console.log('[Chat] Known groups:', knownGroups.map(g => g.name));
-        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null, knownPlayers, knownGroups);
+        console.log('[Chat] Known courts:', knownCourts.map(c => c.name));
+        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null, knownPlayers, knownGroups, knownCourts);
         console.log('[Chat] Got response:', response);
         
         let responseText = response.confirmationText || "I'm not sure how to respond to that.";
