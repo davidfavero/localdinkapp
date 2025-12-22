@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { getAdminDb } from '@/firebase/admin';
+import { getAdminDb, getLastInitError } from '@/firebase/admin';
 import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
 
 export const runtime = 'nodejs';
@@ -67,9 +67,13 @@ export async function POST(request: Request) {
 
     const adminDb = await getAdminDb();
     if (!adminDb) {
-      console.error('Firebase Admin DB is not available');
+      const initError = getLastInitError();
+      console.error('Firebase Admin DB is not available. Init error:', initError?.message);
       return NextResponse.json(
-        { error: 'Server configuration error: Firebase Admin is not available.' },
+        { 
+          error: 'Server configuration error: Firebase Admin is not available.',
+          details: initError?.message || 'Unknown initialization error'
+        },
         { status: 500 }
       );
     }
