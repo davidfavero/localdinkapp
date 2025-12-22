@@ -196,7 +196,9 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const userContextValue: UserContextValue = {
     user,
     profile: profile && user ? { ...profile, id: user.uid } : null,
-    isUserLoading: isAuthLoading || isProfileLoading || isCreatingProfile,
+    // Only include isProfileLoading when we actually have a user (and thus a profile to load)
+    // Otherwise useDoc stays in loading state forever waiting for a ref that will never come
+    isUserLoading: isAuthLoading || (user ? (isProfileLoading || isCreatingProfile) : false),
   };
   
   console.log('🔥 FirebaseProvider rendering - user:', user?.uid, 'isAuthLoading:', isAuthLoading, 'profile:', !!profile);
