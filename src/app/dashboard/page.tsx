@@ -9,7 +9,7 @@ import { chatAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player, Group, Court } from '@/lib/types';
 import { useUser, useFirestore, useFirebase, useMemoFirebase } from '@/firebase/provider';
-import { collection, query } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 
 const CHAT_STORAGE_KEY = 'robin-chat-messages';
@@ -47,27 +47,30 @@ export default function RobinChatPage() {
   const [knownGroups, setKnownGroups] = useState<(Group & { id: string })[]>([]);
   const [knownCourts, setKnownCourts] = useState<Court[]>([]);
 
-  // Use real-time listeners for users, players, and groups
+  // Use real-time listeners for users, players, groups, and courts - filtered by owner
   const usersQuery = useMemoFirebase(
     () => firestore && user?.uid ? query(collection(firestore, 'users')) : null,
     [firestore, user?.uid]
   );
   const { data: usersData } = useCollection<Player>(usersQuery);
 
+  // Players owned by current user
   const playersQuery = useMemoFirebase(
-    () => firestore && user?.uid ? query(collection(firestore, 'players')) : null,
+    () => firestore && user?.uid ? query(collection(firestore, 'players'), where('ownerId', '==', user.uid)) : null,
     [firestore, user?.uid]
   );
   const { data: playersData } = useCollection<Player>(playersQuery);
 
+  // Groups owned by current user
   const groupsQuery = useMemoFirebase(
-    () => firestore && user?.uid ? query(collection(firestore, 'groups')) : null,
+    () => firestore && user?.uid ? query(collection(firestore, 'groups'), where('ownerId', '==', user.uid)) : null,
     [firestore, user?.uid]
   );
   const { data: groupsData } = useCollection<Group>(groupsQuery);
 
+  // Courts owned by current user
   const courtsQuery = useMemoFirebase(
-    () => firestore && user?.uid ? query(collection(firestore, 'courts')) : null,
+    () => firestore && user?.uid ? query(collection(firestore, 'courts'), where('ownerId', '==', user.uid)) : null,
     [firestore, user?.uid]
   );
   const { data: courtsData } = useCollection<Court>(courtsQuery);

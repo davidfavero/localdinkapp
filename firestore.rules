@@ -143,22 +143,32 @@ service cloud.firestore {
     /**
      * @description Controls access to player contact documents.
      * @path /players/{playerId}
-     * @allow (get, list) - Any authenticated user can read players.
-     * @allow (create) - Any authenticated user can create a player contact.
-     * @allow (update, delete) - Any authenticated user can update/delete players (shared roster).
-     * @principle Allows all authenticated users to manage the shared player roster.
+     * @allow (get, list) - Any authenticated user can read players (needed for AI and sessions).
+     * @allow (create) - Any authenticated user can create a player contact with their ownerId.
+     * @allow (update, delete) - Only the owner can update/delete their player contacts.
+     * @principle Enforces user ownership for player contacts.
      */
     match /players/{playerId} {
         function isSignedIn() {
             return request.auth != null;
         }
 
-        // Allow any authenticated user to manage players (shared roster)
+        function isOwner() {
+            return isSignedIn() && resource.data.ownerId == request.auth.uid;
+        }
+
+        function willBeOwner() {
+            return isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+        }
+
+        // Allow authenticated users to read any player (needed for shared sessions/AI)
         allow get: if isSignedIn();
         allow list: if isSignedIn();
-        allow create: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
+        // Only allow creating if the ownerId matches the user
+        allow create: if willBeOwner();
+        // Only the owner can update/delete
+        allow update: if isOwner();
+        allow delete: if isOwner();
     }
   }
 }

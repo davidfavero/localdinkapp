@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Camera, Upload } from 'lucide-react';
-import { collection, query, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, doc, updateDoc, where } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { Court, Player } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -60,7 +60,10 @@ export default function ProfilePage() {
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const courtsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'courts')) : null, [firestore]);
+  const courtsQuery = useMemoFirebase(
+    () => firestore && user?.uid ? query(collection(firestore, 'courts'), where('ownerId', '==', user.uid)) : null, 
+    [firestore, user?.uid]
+  );
   const { data: courts, isLoading: isLoadingCourts } = useCollection<Court>(courtsQuery);
   
   const form = useForm<ProfileFormValues>({
