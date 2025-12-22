@@ -194,6 +194,12 @@ export async function chat(
       processedInput = processedInput.replace(/set\s+up/gi, 'schedule');
     }
 
+    // Build context from all previous user messages for continuity
+    const previousUserMessages = historyToConsider.filter(h => h.sender === 'user').map(h => h.text);
+    const fullContext = previousUserMessages.length > 0 
+      ? `Previous context: ${previousUserMessages.join(' | ')}. Current message: ${input.message}`
+      : input.message;
+
     if (isConfirmation(input.message) && lastRobinMessage) {
       processedInput = `confirming: ${lastRobinMessage.text}`;
     } else if (isPhoneNumber(input.message) && lastRobinMessage && lastRobinMessage.text.includes('phone number')) {
@@ -204,6 +210,9 @@ export async function chat(
             // Re-run the initial request with the new phone number appended.
              processedInput = `${lastUserMessage.text} (and the phone number for the new person is ${input.message})`;
         }
+    } else if (previousUserMessages.length > 0 && input.message.length < 50) {
+      // If short follow-up message, include full context from previous messages
+      processedInput = fullContext;
     }
 
     const today = new Date();
@@ -227,26 +236,29 @@ HOW TO HELP:
 3. Only ask ONE clarifying question if something critical is genuinely missing
 4. DO NOT ask "does this look right?" or any confirmation questions - just take action
 
-EXTRACTION RULES (be thorough):
+EXTRACTION RULES (be thorough - extract EVERYTHING mentioned):
 1. Players/Groups: Extract ALL player names OR group names. "with [name]" = that person/group. Always include "me" if user is scheduling for themselves.
+   - Individual: "with David Favero" → ["David Favero", "me"]
    - Individual: "with melissa" → ["melissa", "me"]
    - Group: "with Friday Morning Group" → ["Friday Morning Group", "me"]
    - Mixed: "schedule with Alex and the Tennis Club" → ["Alex", "Tennis Club", "me"]
    ${knownGroupNames.length > 0 ? `\n   Available groups: ${knownGroupNames.join(', ')}` : ''}
 
-2. Date: Convert relative terms to absolute dates:
+2. Date: Convert relative terms to absolute dates (ALWAYS extract if mentioned):
    - "tomorrow" → ${new Date(today.getTime() + 24*60*60*1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
    - "today" → ${todayFormatted}
    - Format: "Month Day, Year" (e.g., "December 15, 2024")
 
-3. Time: Extract in 12-hour format with AM/PM:
-   - "3:30pm" → "3:30 PM", "3pm" → "3:00 PM", "15:30" → "3:30 PM"
+3. Time: Extract in 12-hour format with AM/PM (ALWAYS extract if mentioned):
+   - "2pm" → "2:00 PM", "3:30pm" → "3:30 PM", "3pm" → "3:00 PM", "15:30" → "3:30 PM"
    - If no time specified, don't include it (you'll ask)
 
-4. Location: Extract court name or location:
-   - "at I'On" or "with I'On" → location: "I'On"
-   - "at I'On Courts" → location: "I'On Courts"
+4. Location: Extract court name or location (handle apostrophe variations):
+   - "at I'On club" or "at Ion club" or "at I'On" → location: "I'On" (match to available courts)
+   - Court names may have apostrophes: I'On, O'Brien's, etc. - normalize them
    ${knownCourtNames.length > 0 ? `\n   Available courts: ${knownCourtNames.join(', ')}` : ''}
+
+IMPORTANT: A single message like "schedule a game tomorrow at 2pm at I'On club with David Favero" contains ALL four pieces of info. Extract them ALL in one pass!
 
 5. If details are missing, ask ONE short clarifying question in 'confirmationText' only. Be concise.
 

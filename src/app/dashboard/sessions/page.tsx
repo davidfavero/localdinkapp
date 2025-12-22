@@ -57,15 +57,16 @@ export default function GameSessionsPage() {
   const [pageSize] = useState(24);
   const [error, setError] = useState<string | null>(null);
 
-  // Primary query: show all sessions (TODO: filter by user once index is deployed)
+  // Filter sessions by organizer (user's own sessions)
   const baseQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     console.log('[Sessions Query] Fetching for user:', user.uid);
     
-    // TEMPORARY: Simplified query to test permissions (NO WHERE/ORDERBY)
+    // Show sessions where user is the organizer
     return query(
       collection(firestore, 'game-sessions'),
-      limit(5)
+      where('organizerId', '==', user.uid),
+      limit(pageSize)
     );
   }, [firestore, user, pageSize]);
 
