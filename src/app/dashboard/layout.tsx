@@ -3,15 +3,22 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { UsersRound, MapPin, MessageCircle } from 'lucide-react';
+import { UsersRound, MapPin, MessageCircle, LogOut, User } from 'lucide-react';
 import { PickleballOutlineIcon } from '@/components/icons/pickleball-outline-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
 import { useUser } from '@/firebase/provider';
 import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getClientAuth } from '@/firebase/auth';
-import { setAuthTokenAction } from '@/lib/auth-actions';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { getClientAuth, signOutUser } from '@/firebase/auth';
+import { setAuthTokenAction, clearAuthToken } from '@/lib/auth-actions';
 
 const navItems = [
   { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
@@ -111,16 +118,43 @@ export default function DashboardLayout({
       <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
           <h1 className="text-xl font-bold text-foreground font-headline">{pageTitle}</h1>
           <div className="flex items-center gap-4">
-              <Link href="/dashboard/profile" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
-                {isLoading ? (
-                  <Skeleton className="h-full w-full" />
-                ) : currentUser ? (
-                  <UserAvatar player={currentUser} className="h-full w-full text-lg" />
-                ) : (
-                  // Fallback if user is not found
-                  <UsersRound className="h-5 w-5 text-muted-foreground" />
-                )}
-              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all">
+                    {isLoading ? (
+                      <Skeleton className="h-full w-full" />
+                    ) : currentUser ? (
+                      <UserAvatar player={currentUser} className="h-full w-full text-lg" />
+                    ) : (
+                      <UsersRound className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard/profile" className="flex items-center gap-2 cursor-pointer">
+                      <User className="h-4 w-4" />
+                      Your Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={async () => {
+                      try {
+                        signOutUser();
+                        await clearAuthToken();
+                        router.push('/login');
+                      } catch (error) {
+                        console.error('Error signing out:', error);
+                      }
+                    }}
+                    className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
           </div>
        </header>
 
