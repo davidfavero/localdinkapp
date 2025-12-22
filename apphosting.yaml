@@ -19,6 +19,10 @@ env:
   - variable: NEXT_PUBLIC_FB_APP_ID
     value: "1:997100834225:web:3d8a92b36d9261ab230190"
   
+  # App URL for server-side API calls
+  - variable: APP_URL
+    value: "https://localdink.com"
+  
   # Secrets (stored in Firebase Secret Manager)
   - variable: GOOGLE_GENAI_API_KEY
     secret: GOOGLE_GENAI_API_KEY
