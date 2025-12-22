@@ -13,17 +13,22 @@ import { collection, query, where } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 
 const CHAT_STORAGE_KEY = 'robin-chat-messages';
+const CHAT_USER_KEY = 'robin-chat-user-id';
 const DEFAULT_MESSAGE: Message = {
   sender: 'robin',
   text: "Hi! I'm Robin, your AI scheduling assistant. I can help you schedule pickleball games, find courts, and manage your sessions. Just tell me who you want to play with, when, and where - for example: 'Schedule a game with Melissa tomorrow at 4pm at I'On Courts'. What would you like to do?",
 };
 
 export default function RobinChatPage() {
-  // Load messages from localStorage on initial render
+  const { profile: currentUser, user: authUser, isUserLoading } = useUser();
+  
+  // Load messages from localStorage on initial render, but only if same user
   const [messages, setMessages] = useState<Message[]>(() => {
     if (typeof window !== 'undefined') {
       try {
+        const savedUserId = localStorage.getItem(CHAT_USER_KEY);
         const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+        // Only restore messages if we don't know the user yet (will be validated in useEffect)
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -39,8 +44,6 @@ export default function RobinChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const { profile: currentUser, user: authUser, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { user } = useFirebase();
   const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
@@ -75,16 +78,34 @@ export default function RobinChatPage() {
   );
   const { data: courtsData } = useCollection<Court>(courtsQuery);
 
+  // Clear chat when user changes (reset Robin for new user)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && authUser?.uid) {
+      const savedUserId = localStorage.getItem(CHAT_USER_KEY);
+      if (savedUserId && savedUserId !== authUser.uid) {
+        // Different user logged in - clear the chat
+        console.log('[Chat] User changed, clearing chat history');
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+        localStorage.setItem(CHAT_USER_KEY, authUser.uid);
+        setMessages([DEFAULT_MESSAGE]);
+      } else if (!savedUserId) {
+        // First time for this user - save their ID
+        localStorage.setItem(CHAT_USER_KEY, authUser.uid);
+      }
+    }
+  }, [authUser?.uid]);
+
   // Save messages to localStorage whenever they change
   useEffect(() => {
-    if (typeof window !== 'undefined' && messages.length > 0) {
+    if (typeof window !== 'undefined' && messages.length > 0 && authUser?.uid) {
       try {
         localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+        localStorage.setItem(CHAT_USER_KEY, authUser.uid);
       } catch (e) {
         console.warn('Could not save chat history:', e);
       }
     }
-  }, [messages]);
+  }, [messages, authUser?.uid]);
 
   // Combine users and players data from Firestore queries
   useEffect(() => {
