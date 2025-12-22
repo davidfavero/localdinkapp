@@ -14,6 +14,8 @@ export type Player = {
   doublesPreference?: boolean;
   homeCourtId?: string;
   availability?: string;
+  ownerId?: string; // User who created this player contact
+  linkedUserId?: string; // Links to a registered user account (if email/phone matches)
 };
 
 export type Court = {

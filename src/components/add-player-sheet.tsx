@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useFirestore, useUser } from '@/firebase/provider';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { Button } from '@/components/ui/button';
@@ -53,7 +53,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
 
   const { isSubmitting } = form.formState;
 
-  const onSubmit = (data: PlayerFormValues) => {
+  const onSubmit = async (data: PlayerFormValues) => {
     if (!firestore || !user) {
       toast({
         variant: 'destructive',
@@ -63,44 +63,70 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
       return;
     }
     
-    const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
-    const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
-    const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
-    
-    const payload = {
-        ...data,
-        ownerId: user.uid, // Add ownerId to establish ownership
-        avatarUrl: randomAvatar?.imageUrl || '',
-    };
+    try {
+      // Check if this email matches an existing registered user
+      let linkedUserId: string | undefined;
+      let linkedUserData: { avatarUrl?: string; firstName?: string; lastName?: string } | undefined;
+      
+      if (data.email) {
+        const usersQuery = query(
+          collection(firestore, 'users'),
+          where('email', '==', data.email.toLowerCase().trim())
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        if (!usersSnapshot.empty) {
+          const linkedUser = usersSnapshot.docs[0];
+          linkedUserId = linkedUser.id;
+          linkedUserData = linkedUser.data() as typeof linkedUserData;
+          console.log('Found linked user:', linkedUserId);
+        }
+      }
+      
+      // Use linked user's data if available, otherwise use provided data
+      const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
+      const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
+      const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
+      
+      const payload = {
+        firstName: linkedUserData?.firstName || data.firstName,
+        lastName: linkedUserData?.lastName || data.lastName,
+        email: data.email.toLowerCase().trim(),
+        phone: data.phone || '',
+        ownerId: user.uid,
+        avatarUrl: linkedUserData?.avatarUrl || randomAvatar?.imageUrl || '',
+        // Link to actual user account if found
+        ...(linkedUserId && { linkedUserId }),
+      };
 
-    const playersRef = collection(firestore, 'players');
-    console.log('Adding player to collection:', playersRef.path, 'Payload:', payload);
-    addDoc(playersRef, payload)
-      .then((docRef) => {
-        console.log('Player added successfully with ID:', docRef.id);
-        toast({
-          title: 'Player Added!',
-          description: `${data.firstName} ${data.lastName} has been added to your players.`,
-        });
-        form.reset();
-        onOpenChange(false);
-      })
-      .catch((error) => {
-        console.error('Error adding player - Full error:', error);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
-        const permissionError = new FirestorePermissionError({
-          path: playersRef.path,
-          operation: 'create',
-          requestResourceData: payload,
-        });
-        errorEmitter.emit('permission-error', permissionError);
-        toast({
-          variant: 'destructive',
-          title: 'Uh oh! Something went wrong.',
-          description: `Could not add the player: ${error.message}`,
-        });
+      const playersRef = collection(firestore, 'players');
+      console.log('Adding player to collection:', playersRef.path, 'Payload:', payload);
+      const docRef = await addDoc(playersRef, payload);
+      
+      console.log('Player added successfully with ID:', docRef.id);
+      toast({
+        title: linkedUserId ? 'Player Linked!' : 'Player Added!',
+        description: linkedUserId 
+          ? `${payload.firstName} ${payload.lastName} is a registered user and has been linked to your contacts.`
+          : `${data.firstName} ${data.lastName} has been added to your players.`,
       });
+      form.reset();
+      onOpenChange(false);
+    } catch (error: any) {
+      console.error('Error adding player - Full error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      const permissionError = new FirestorePermissionError({
+        path: 'players',
+        operation: 'create',
+      });
+      errorEmitter.emit('permission-error', permissionError);
+      toast({
+        variant: 'destructive',
+        title: 'Uh oh! Something went wrong.',
+        description: `Could not add the player: ${error.message}`,
+      });
+    }
   };
 
   return (

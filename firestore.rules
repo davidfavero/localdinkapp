@@ -145,8 +145,9 @@ service cloud.firestore {
      * @path /players/{playerId}
      * @allow (get, list) - Any authenticated user can read players (needed for AI and sessions).
      * @allow (create) - Any authenticated user can create a player contact with their ownerId.
-     * @allow (update, delete) - Only the owner can update/delete their player contacts.
-     * @principle Enforces user ownership for player contacts.
+     * @allow (update) - Owner can update, OR user can link themselves (set linkedUserId to their uid).
+     * @allow (delete) - Only the owner can delete their player contacts.
+     * @principle Enforces user ownership with special case for user linking.
      */
     match /players/{playerId} {
         function isSignedIn() {
@@ -161,13 +162,25 @@ service cloud.firestore {
             return isSignedIn() && request.resource.data.ownerId == request.auth.uid;
         }
 
+        // Allow a user to link themselves to a player contact (only if email matches)
+        function isLinkingSelf() {
+            return isSignedIn() 
+                && resource.data.email == request.auth.token.email
+                && request.resource.data.linkedUserId == request.auth.uid
+                // Only allow changing linkedUserId and avatarUrl when linking
+                && request.resource.data.ownerId == resource.data.ownerId
+                && request.resource.data.email == resource.data.email
+                && request.resource.data.firstName == resource.data.firstName
+                && request.resource.data.lastName == resource.data.lastName;
+        }
+
         // Allow authenticated users to read any player (needed for shared sessions/AI)
         allow get: if isSignedIn();
         allow list: if isSignedIn();
         // Only allow creating if the ownerId matches the user
         allow create: if willBeOwner();
-        // Only the owner can update/delete
-        allow update: if isOwner();
+        // Owner can update, or user can link themselves
+        allow update: if isOwner() || isLinkingSelf();
         allow delete: if isOwner();
     }
   }

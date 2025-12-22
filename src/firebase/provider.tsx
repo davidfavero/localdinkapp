@@ -12,7 +12,7 @@ import {
 import type { User } from 'firebase/auth';
 import { onAuth, getClientAuth } from './auth';
 import { getClientApp } from './app';
-import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
@@ -159,7 +159,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     error: profileError,
   } = useDoc<Player>(userDocRef);
 
-  // Create profile if it doesn't exist
+  // Create profile if it doesn't exist, and link any existing player contacts
   useEffect(() => {
     if (user && !profile && !isProfileLoading && !isCreatingProfile && !profileError) {
       const createProfile = async () => {
@@ -168,14 +168,47 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         setIsCreatingProfile(true);
         try {
           const [firstName, ...lastName] = (user.displayName || 'New User').split(' ');
+          const userEmail = user.email?.toLowerCase().trim() || '';
+          
           const newUserProfile: Omit<Player, 'id'> & { ownerId: string } = {
             firstName,
             lastName: lastName.join(' '),
-            email: user.email || '',
+            email: userEmail,
             avatarUrl: user.photoURL || '',
             ownerId: user.uid,
           };
           await setDoc(userDocRef, newUserProfile);
+          
+          // Link any existing player contacts that have this email
+          if (userEmail) {
+            try {
+              const playersQuery = query(
+                collection(firestore, 'players'),
+                where('email', '==', userEmail)
+              );
+              const playersSnapshot = await getDocs(playersQuery);
+              
+              // Update each matching player contact to link to this user
+              const batch = writeBatch(firestore);
+              playersSnapshot.docs.forEach(playerDoc => {
+                if (!playerDoc.data().linkedUserId) {
+                  batch.update(playerDoc.ref, {
+                    linkedUserId: user.uid,
+                    // Update avatar if they didn't have one
+                    ...(user.photoURL && !playerDoc.data().avatarUrl && { avatarUrl: user.photoURL }),
+                  });
+                }
+              });
+              
+              if (!playersSnapshot.empty) {
+                await batch.commit();
+                console.log(`Linked ${playersSnapshot.size} player contact(s) to new user ${user.uid}`);
+              }
+            } catch (linkError) {
+              // Don't fail profile creation if linking fails
+              console.warn('Could not link player contacts:', linkError);
+            }
+          }
         } catch (error) {
           console.error('Error creating user profile:', error);
         } finally {
