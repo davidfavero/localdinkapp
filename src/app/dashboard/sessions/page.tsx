@@ -60,7 +60,7 @@ export default function GameSessionsPage() {
   // Filter sessions by organizer (user's own sessions)
   const baseQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    console.log('[Sessions Query] Fetching for user:', user.uid);
+    console.log('[Sessions Query] Fetching organized sessions for user:', user.uid);
     
     // Show sessions where user is the organizer
     return query(
@@ -70,11 +70,27 @@ export default function GameSessionsPage() {
     );
   }, [firestore, user, pageSize]);
 
+  // Query for sessions where user is invited (in playerIds but not organizer)
+  const invitesQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    console.log('[Sessions Query] Fetching invites for user:', user.uid);
+    
+    // Show sessions where user is in playerIds array
+    return query(
+      collection(firestore, 'game-sessions'),
+      where('playerIds', 'array-contains', user.uid),
+      limit(pageSize)
+    );
+  }, [firestore, user, pageSize]);
+
   // Subscribe to collection (first page). If you want true infinite scroll, capture the last visible doc and requery.
   const { data: rawSessions, isLoading: isLoadingSessions } = useCollection(baseQuery);
+  const { data: rawInvites, isLoading: isLoadingInvites } = useCollection(invitesQuery);
 
   const [hydratedSessions, setHydratedSessions] = useState<GameSession[]>([]);
+  const [hydratedInvites, setHydratedInvites] = useState<GameSession[]>([]);
   const [isHydrating, setIsHydrating] = useState(true);
+  const [isHydratingInvites, setIsHydratingInvites] = useState(true);
 
   // ---------- Batch hydration util ----------
   async function batchHydrate(
@@ -168,6 +184,7 @@ export default function GameSessionsPage() {
         let player: Player;
 
         if (baseRecord) {
+          // Preserve all fields from the base record, including linkedUserId
           player = { ...baseRecord, id };
         } else {
           player = {
@@ -179,7 +196,13 @@ export default function GameSessionsPage() {
           } as Player;
         }
 
-        if (source === 'user' && id === currentUserId) {
+        // Mark as current user if this is the logged-in user
+        if (id === currentUserId) {
+          player = { ...player, isCurrentUser: true };
+        }
+        
+        // For player contacts, check if they're linked to the current user
+        if (source === 'player' && baseRecord?.linkedUserId === currentUserId) {
           player = { ...player, isCurrentUser: true };
         }
 
@@ -242,6 +265,29 @@ export default function GameSessionsPage() {
       }
     })();
   }, [firestore, rawSessions, isLoadingSessions, user?.uid]);
+
+  // Hydrate invites (sessions where user is invited but not the organizer)
+  useEffect(() => {
+    if (!firestore) return;
+    if (!rawInvites) {
+      if (!isLoadingInvites) setIsHydratingInvites(false);
+      return;
+    }
+
+    setIsHydratingInvites(true);
+    (async () => {
+      try {
+        // Filter out sessions where user is the organizer (those appear in "My Sessions")
+        const invitesOnly = (rawInvites as any[]).filter(s => s.organizerId !== user?.uid);
+        const hydrated = await batchHydrate(firestore, invitesOnly, user?.uid ?? null);
+        setHydratedInvites(hydrated);
+      } catch (e: any) {
+        console.error('Error hydrating invites:', e);
+      } finally {
+        setIsHydratingInvites(false);
+      }
+    })();
+  }, [firestore, rawInvites, isLoadingInvites, user?.uid]);
 
   // Fetch all courts for both new and edit sheets
   // Note: Courts have public read access, but we still wait for user auth
@@ -333,6 +379,33 @@ export default function GameSessionsPage() {
               <GameSessionCard session={session} />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* My Invites Section */}
+      {!isLoadingInvites && !isHydratingInvites && hydratedInvites.length > 0 && (
+        <>
+          <div className="flex justify-between items-center mt-8">
+            <h2 className="text-xl font-semibold">My Invites</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {hydratedInvites.map((session) => (
+              <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
+                <GameSessionCard session={session} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {(isLoadingInvites || isHydratingInvites) && hydratedSessions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">My Invites</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <LoadingSessionCard key={`invite-loading-${i}`} />
+            ))}
+          </div>
         </div>
       )}
     </div>

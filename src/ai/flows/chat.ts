@@ -121,30 +121,44 @@ function formatPlayerNames(names: string[]): string {
 };
 
 // Helper to parse date and time into a Date object
+// Returns an ISO string that represents the intended LOCAL time (assumes US Eastern timezone)
 function parseDateTime(dateStr: string, timeStr: string): Date | null {
   try {
-    // Parse the date string (e.g., "December 15, 2024" or "Tomorrow")
-    let date = new Date();
+    // Get current date in Eastern timezone for reference
+    const nowEastern = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+    const easternNow = new Date(nowEastern);
+    
+    let year = easternNow.getFullYear();
+    let month = easternNow.getMonth();
+    let day = easternNow.getDate();
     
     // Handle relative dates
     const lowerDate = dateStr.toLowerCase();
     if (lowerDate.includes('tomorrow')) {
-      date.setDate(date.getDate() + 1);
-    } else if (lowerDate.includes('today')) {
-      // Already set to today
-    } else {
+      day += 1;
+      // Handle month/year rollover
+      const tempDate = new Date(year, month, day);
+      year = tempDate.getFullYear();
+      month = tempDate.getMonth();
+      day = tempDate.getDate();
+    } else if (!lowerDate.includes('today')) {
       // Try to parse the date string
       const parsed = new Date(dateStr);
       if (!isNaN(parsed.getTime())) {
-        date = parsed;
+        year = parsed.getFullYear();
+        month = parsed.getMonth();
+        day = parsed.getDate();
       }
     }
 
     // Parse time string (e.g., "4:00 PM", "4pm", "16:00")
+    let hours = 17; // Default to 5 PM
+    let minutes = 0;
+    
     const timeMatch = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?/i);
     if (timeMatch) {
-      let hours = parseInt(timeMatch[1]);
-      const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      hours = parseInt(timeMatch[1]);
+      minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
       const period = timeMatch[3]?.toUpperCase();
 
       if (period === 'PM' && hours !== 12) {
@@ -152,14 +166,33 @@ function parseDateTime(dateStr: string, timeStr: string): Date | null {
       } else if (period === 'AM' && hours === 12) {
         hours = 0;
       }
-
-      date.setHours(hours, minutes, 0, 0);
-    } else {
-      // Default to 5 PM if time parsing fails
-      date.setHours(17, 0, 0, 0);
     }
 
-    return date;
+    // Create date in Eastern timezone by constructing the ISO string manually
+    // This ensures 4pm Eastern is stored as 4pm Eastern, not converted from UTC
+    const monthStr = String(month + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const hoursStr = String(hours).padStart(2, '0');
+    const minutesStr = String(minutes).padStart(2, '0');
+    
+    // Calculate Eastern timezone offset (EST is -5, EDT is -4)
+    // We'll use a date in the target month to determine if DST is in effect
+    const targetDate = new Date(year, month, day);
+    const jan = new Date(year, 0, 1);
+    const jul = new Date(year, 6, 1);
+    const stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+    const isDST = targetDate.getTimezoneOffset() < stdOffset;
+    
+    // For Eastern: EST = -05:00, EDT = -04:00
+    // But since we want the stored time to represent the local time, we use the offset
+    const offsetHours = isDST ? 4 : 5;
+    
+    // Create ISO string with Eastern timezone offset
+    const isoString = `${year}-${monthStr}-${dayStr}T${hoursStr}:${minutesStr}:00.000-0${offsetHours}:00`;
+    
+    console.log(`[parseDateTime] Parsed "${dateStr}" + "${timeStr}" => ${isoString}`);
+    
+    return new Date(isoString);
   } catch (error) {
     console.error('Error parsing date/time:', error);
     return null;
