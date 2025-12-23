@@ -3,14 +3,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mic, Send, Sparkles, Trash2 } from 'lucide-react';
+import { Send, Sparkles, Trash2, Check, X, Calendar, MapPin } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
-import { chatAction } from '@/lib/actions';
+import { chatAction, updateRsvpStatusAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player, Group, Court } from '@/lib/types';
 import { useUser, useFirestore, useFirebase, useMemoFirebase } from '@/firebase/provider';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
+import { Card } from '@/components/ui/card';
 
 const CHAT_STORAGE_KEY = 'robin-chat-messages';
 const CHAT_USER_KEY = 'robin-chat-user-id';
@@ -77,6 +78,122 @@ export default function RobinChatPage() {
     [firestore, user?.uid]
   );
   const { data: courtsData } = useCollection<Court>(courtsQuery);
+
+  // Query for sessions where user is invited (for pending invites)
+  const invitesQuery = useMemoFirebase(
+    () => firestore && user?.uid ? query(collection(firestore, 'game-sessions'), where('playerIds', 'array-contains', user.uid)) : null,
+    [firestore, user?.uid]
+  );
+  const { data: invitedSessionsRaw } = useCollection<any>(invitesQuery);
+  
+  // State for hydrated pending invites
+  const [pendingInvites, setPendingInvites] = useState<{
+    id: string;
+    courtName: string;
+    organizerName: string;
+    date: string;
+    time: string;
+    type: string;
+  }[]>([]);
+  const [isRespondingToInvite, setIsRespondingToInvite] = useState<string | null>(null);
+  
+  // Hydrate pending invites with court and organizer info
+  useEffect(() => {
+    if (!invitedSessionsRaw || !firestore || !user?.uid) {
+      setPendingInvites([]);
+      return;
+    }
+    
+    const hydrateInvites = async () => {
+      const pending = invitedSessionsRaw.filter(session => {
+        if (session.organizerId === user.uid) return false;
+        const status = session.playerStatuses?.[user.uid];
+        return status === 'PENDING';
+      });
+      
+      if (pending.length === 0) {
+        setPendingInvites([]);
+        return;
+      }
+      
+      // Fetch court and organizer info
+      const courtIds = [...new Set(pending.map(s => s.courtId).filter(Boolean))];
+      const organizerIds = [...new Set(pending.map(s => s.organizerId).filter(Boolean))];
+      
+      const courtsMap = new Map<string, string>();
+      const organizersMap = new Map<string, string>();
+      
+      // Fetch courts
+      for (const courtId of courtIds) {
+        try {
+          const courtSnap = await getDocs(query(collection(firestore, 'courts'), where('__name__', '==', courtId)));
+          if (!courtSnap.empty) {
+            const courtData = courtSnap.docs[0].data();
+            courtsMap.set(courtId, courtData.name || 'Unknown Court');
+          }
+        } catch (e) {
+          console.warn('Could not fetch court:', e);
+        }
+      }
+      
+      // Fetch organizers
+      for (const odid of organizerIds) {
+        try {
+          const orgSnap = await getDocs(query(collection(firestore, 'users'), where('__name__', '==', odid)));
+          if (!orgSnap.empty) {
+            const orgData = orgSnap.docs[0].data();
+            organizersMap.set(odid, `${orgData.firstName || ''} ${orgData.lastName || ''}`.trim() || 'Someone');
+          }
+        } catch (e) {
+          console.warn('Could not fetch organizer:', e);
+        }
+      }
+      
+      const hydrated = pending.map(session => {
+        const sessionDate = session.startTime?.toDate ? session.startTime.toDate() : new Date(session.startTime ?? Date.now());
+        return {
+          id: session.id,
+          courtName: courtsMap.get(session.courtId) || 'Unknown Court',
+          organizerName: organizersMap.get(session.organizerId) || 'Someone',
+          date: sessionDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+          time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          type: session.isDoubles ? 'Doubles' : 'Singles',
+        };
+      });
+      
+      setPendingInvites(hydrated);
+    };
+    
+    hydrateInvites();
+  }, [invitedSessionsRaw, firestore, user?.uid]);
+  
+  // Handle accept/decline invite
+  const handleInviteResponse = async (sessionId: string, accept: boolean) => {
+    if (!user?.uid) return;
+    
+    setIsRespondingToInvite(sessionId);
+    try {
+      const result = await updateRsvpStatusAction(sessionId, user.uid, accept ? 'CONFIRMED' : 'DECLINED');
+      
+      // Add Robin's response to the chat
+      const invite = pendingInvites.find(i => i.id === sessionId);
+      const responseText = result.success 
+        ? (accept 
+            ? `Great! I've confirmed your spot for the ${invite?.type} game at ${invite?.courtName} on ${invite?.date} at ${invite?.time}. See you there! 🎾`
+            : `No problem! I've declined the invite for the game at ${invite?.courtName}. Let me know if you want to schedule something else!`)
+        : `Sorry, I had trouble updating your response: ${result.message}`;
+      
+      setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
+      
+      // Remove the invite from the list
+      setPendingInvites(prev => prev.filter(i => i.id !== sessionId));
+    } catch (error) {
+      console.error('Error responding to invite:', error);
+      setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I had trouble updating your response. Please try again." }]);
+    } finally {
+      setIsRespondingToInvite(null);
+    }
+  };
 
   // Clear chat when user changes (reset Robin for new user)
   useEffect(() => {
@@ -249,6 +366,60 @@ export default function RobinChatPage() {
              )}
           </div>
         ))}
+        
+        {/* Pending Invites Section - Show after initial message */}
+        {pendingInvites.length > 0 && messages.length <= 2 && (
+          <div className="flex items-start gap-2 justify-start">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent flex-shrink-0">
+              <RobinIcon className="h-6 w-6" />
+            </div>
+            <div className="max-w-sm md:max-w-lg">
+              <div className="rounded-2xl p-3 bg-muted text-foreground rounded-bl-none mb-2">
+                <p className="font-medium">🎾 You have {pendingInvites.length} pending game invite{pendingInvites.length > 1 ? 's' : ''}!</p>
+              </div>
+              <div className="space-y-2">
+                {pendingInvites.map(invite => (
+                  <Card key={invite.id} className="p-3 bg-background border-primary/20">
+                    <div className="flex flex-col gap-2">
+                      <div className="font-medium text-sm">{invite.organizerName} invited you to play</div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {invite.courtName}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {invite.date} at {invite.time}
+                        </span>
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        <Button
+                          size="sm"
+                          className="flex-1 h-8"
+                          onClick={() => handleInviteResponse(invite.id, true)}
+                          disabled={isRespondingToInvite === invite.id}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          I'm In!
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-8"
+                          onClick={() => handleInviteResponse(invite.id, false)}
+                          disabled={isRespondingToInvite === invite.id}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Can't Make It
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
          {isLoading && (
           <div className="flex items-end gap-2 justify-start">
             <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent">

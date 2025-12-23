@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { UsersRound, MapPin, MessageCircle, LogOut, User } from 'lucide-react';
 import { PickleballOutlineIcon } from '@/components/icons/pickleball-outline-icon';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { cn } from '@/lib/utils';
-import { useUser } from '@/firebase/provider';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { getClientAuth, signOutUser } from '@/firebase/auth';
 import { setAuthTokenAction, clearAuthToken } from '@/lib/auth-actions';
+import { collection, query, where } from 'firebase/firestore';
+import { useCollection } from '@/firebase/firestore/use-collection';
 
 const navItems = [
   { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
@@ -51,6 +53,29 @@ export default function DashboardLayout({
   const pageTitle = getPageTitle(pathname);
 
   const { user, profile: currentUser, isUserLoading: isLoading } = useUser();
+  const firestore = useFirestore();
+  
+  // Query for pending invites (sessions where user is invited with PENDING status)
+  const invitesQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+      collection(firestore, 'game-sessions'),
+      where('playerIds', 'array-contains', user.uid)
+    );
+  }, [firestore, user]);
+  
+  const { data: invitedSessions } = useCollection<any>(invitesQuery);
+  
+  // Count pending invites where user hasn't responded yet (PENDING status)
+  const pendingInviteCount = useMemo(() => {
+    if (!invitedSessions || !user) return 0;
+    return invitedSessions.filter(session => {
+      // Only count if user is NOT the organizer and status is PENDING
+      if (session.organizerId === user.uid) return false;
+      const status = session.playerStatuses?.[user.uid];
+      return status === 'PENDING';
+    }).length;
+  }, [invitedSessions, user]);
   
   useEffect(() => {
     // Sync auth token with server if user is authenticated client-side
@@ -209,6 +234,9 @@ export default function DashboardLayout({
                 'My\nCourts': 'order-5',
             }[label] || '';
 
+            // Check if this is the Game Sessions nav item and has pending invites
+            const showBadge = label === 'Game\nSessions' && pendingInviteCount > 0;
+            
             return (
               <Link
                 key={href}
@@ -219,7 +247,14 @@ export default function DashboardLayout({
                   orderClass
                 )}
               >
-                <CurrentIcon className="h-6 w-6 mb-1" />
+                <div className="relative">
+                  <CurrentIcon className="h-6 w-6 mb-1" />
+                  {showBadge && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                      {pendingInviteCount > 9 ? '9+' : pendingInviteCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs leading-tight whitespace-pre-line text-center">
                     {line1}<br />{line2}
                 </span>

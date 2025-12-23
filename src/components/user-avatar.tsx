@@ -23,10 +23,12 @@ export function UserAvatar({ player, className, showVerifiedBadge }: UserAvatarP
     ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
     : (parts[0]?.substring(0, 2) || '??').toUpperCase();
 
-  // Show verified badge if player is linked to a registered user
+  // Show verified badge if player is linked to a registered user (but NOT on current user's own avatar)
+  // The verified badge indicates "this contact is linked to a real LocalDink user"
+  // It's meant to show OTHER players' verified status, not your own
   const isVerified = showVerifiedBadge !== undefined 
     ? showVerifiedBadge 
-    : !!player.linkedUserId || !!player.isCurrentUser;
+    : !!player.linkedUserId && !player.isCurrentUser;
 
   return (
     <TooltipProvider delayDuration={200}>

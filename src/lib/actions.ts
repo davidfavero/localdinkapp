@@ -134,6 +134,44 @@ export async function chatAction(
     }
 }
 
+export async function updateRsvpStatusAction(
+    sessionId: string,
+    playerId: string,
+    status: 'CONFIRMED' | 'DECLINED'
+): Promise<{ success: boolean; message: string }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available' };
+        }
+
+        const sessionRef = adminDb.collection('game-sessions').doc(sessionId);
+        const sessionDoc = await sessionRef.get();
+        
+        if (!sessionDoc.exists) {
+            return { success: false, message: 'Game session not found' };
+        }
+
+        const sessionData = sessionDoc.data();
+        const currentStatuses = sessionData?.playerStatuses || {};
+        
+        // Update the player's status
+        await sessionRef.update({
+            [`playerStatuses.${playerId}`]: status,
+        });
+
+        return { 
+            success: true, 
+            message: status === 'CONFIRMED' 
+                ? "You're in! See you at the game." 
+                : "No problem, I've declined the invite for you."
+        };
+    } catch (error: any) {
+        console.error('Error updating RSVP status:', error);
+        return { success: false, message: error.message || 'Failed to update RSVP' };
+    }
+}
+
 export async function seedDatabaseAction(): Promise<{ success: boolean, message: string, usersAdded: number, courtsAdded: number }> {
     try {
         const adminDb = await getAdminDb();
