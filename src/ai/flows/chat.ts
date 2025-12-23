@@ -3,6 +3,9 @@
 /**
  * @fileOverview A conversational AI flow for the LocalDink assistant, Robin.
  *
+ * Robin's Core Function: Schedule pickleball games by extracting players, dates, times, and courts
+ * from natural language and creating game sessions.
+ *
  * - chat - A function that handles conversational chat with the user.
  */
 
@@ -11,6 +14,208 @@ import { z } from 'zod';
 import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player, Group, Court } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
 import { createGameSessionTool } from '@/ai/tools/create-game-session';
+
+// ============================================================================
+// REGEX-BASED EXTRACTION HELPERS (Fallback when AI misses details)
+// ============================================================================
+
+/**
+ * Extract date from natural language (e.g., "December 25", "tomorrow", "this Thursday")
+ */
+function extractDateFromText(text: string): string | null {
+  const lower = text.toLowerCase();
+  const today = new Date();
+  
+  // "today"
+  if (/\btoday\b/.test(lower)) {
+    return formatDate(today);
+  }
+  
+  // "tomorrow"
+  if (/\btomorrow\b/.test(lower)) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return formatDate(tomorrow);
+  }
+  
+  // Day of week: "this Thursday", "on Friday", "Thursday"
+  const dayMatch = lower.match(/\b(this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i);
+  if (dayMatch) {
+    const dayName = dayMatch[2].toLowerCase();
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const targetDay = days.indexOf(dayName);
+    const currentDay = today.getDay();
+    let daysUntil = (targetDay - currentDay + 7) % 7;
+    if (daysUntil === 0) daysUntil = 7; // Next week if same day
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntil);
+    return formatDate(targetDate);
+  }
+  
+  // Explicit date: "December 25", "Dec 25", "December 25th", "12/25", "25th of December"
+  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const monthAbbrevs = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  
+  // "December 25" or "Dec 25" or "December 25th"
+  const monthDayMatch = lower.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[.,]?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+  if (monthDayMatch) {
+    const monthStr = monthDayMatch[1].toLowerCase();
+    const day = parseInt(monthDayMatch[2]);
+    let monthIndex = monthNames.indexOf(monthStr);
+    if (monthIndex === -1) monthIndex = monthAbbrevs.indexOf(monthStr);
+    if (monthIndex !== -1 && day >= 1 && day <= 31) {
+      const year = today.getMonth() > monthIndex ? today.getFullYear() + 1 : today.getFullYear();
+      return formatDate(new Date(year, monthIndex, day));
+    }
+  }
+  
+  // "25th of December" pattern
+  const dayOfMonthMatch = lower.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i);
+  if (dayOfMonthMatch) {
+    const day = parseInt(dayOfMonthMatch[1]);
+    const monthStr = dayOfMonthMatch[2].toLowerCase();
+    let monthIndex = monthNames.indexOf(monthStr);
+    if (monthIndex === -1) monthIndex = monthAbbrevs.indexOf(monthStr);
+    if (monthIndex !== -1 && day >= 1 && day <= 31) {
+      const year = today.getMonth() > monthIndex ? today.getFullYear() + 1 : today.getFullYear();
+      return formatDate(new Date(year, monthIndex, day));
+    }
+  }
+  
+  // MM/DD or MM/DD/YYYY format
+  const slashDateMatch = lower.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if (slashDateMatch) {
+    const month = parseInt(slashDateMatch[1]) - 1;
+    const day = parseInt(slashDateMatch[2]);
+    let year = slashDateMatch[3] ? parseInt(slashDateMatch[3]) : today.getFullYear();
+    if (year < 100) year += 2000;
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      return formatDate(new Date(year, month, day));
+    }
+  }
+  
+  return null;
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Extract time from natural language (e.g., "11am", "3:30 PM", "at 2")
+ */
+function extractTimeFromText(text: string): string | null {
+  const lower = text.toLowerCase();
+  
+  // "11am", "11 am", "11:00am", "11:00 AM", "3:30pm"
+  const timeMatch = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)\b/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1]);
+    const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const period = timeMatch[3].replace(/\./g, '').toUpperCase();
+    return `${hours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  }
+  
+  // "at 2", "at 3" - assume PM for typical game times
+  const atTimeMatch = lower.match(/\bat\s+(\d{1,2})(?!\d|:|\s*(am|pm))/i);
+  if (atTimeMatch) {
+    const hours = parseInt(atTimeMatch[1]);
+    // Assume PM for hours 1-9, AM for 10-12
+    const period = hours >= 1 && hours <= 9 ? 'PM' : (hours >= 10 && hours <= 11 ? 'AM' : 'PM');
+    return `${hours}:00 ${period}`;
+  }
+  
+  // "noon" / "midday"
+  if (/\b(noon|midday)\b/.test(lower)) {
+    return '12:00 PM';
+  }
+  
+  return null;
+}
+
+/**
+ * Extract court/location from text using fuzzy matching against known courts
+ */
+function extractLocationFromText(text: string, knownCourts: Court[]): { location: string; matchedCourt: Court | null } | null {
+  const lower = text.toLowerCase();
+  
+  // Try to match known courts first
+  for (const court of knownCourts) {
+    const courtNameLower = court.name.toLowerCase();
+    const courtNameClean = courtNameLower.replace(/['''`]/g, '').replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+    
+    // Check if court name appears in text
+    if (lower.includes(courtNameLower) || lower.includes(courtNameClean)) {
+      return { location: court.name, matchedCourt: court };
+    }
+    
+    // Check for partial matches (e.g., "ion" for "I'On Courts")
+    const words = courtNameClean.split(/\s+/);
+    for (const word of words) {
+      if (word.length >= 3 && lower.includes(word)) {
+        return { location: court.name, matchedCourt: court };
+      }
+    }
+  }
+  
+  // Look for "at [location]" pattern
+  const atLocationMatch = lower.match(/\bat\s+(?:the\s+)?([a-z][a-z0-9'\s]+?)(?:\s+(?:courts?|on|at|with|tomorrow|today|this|next|\d)|\s*[.,!?]|$)/i);
+  if (atLocationMatch) {
+    const locationCandidate = atLocationMatch[1].trim();
+    // Make sure it's not a time or date
+    if (!/(am|pm|\d{1,2}:\d{2}|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(locationCandidate)) {
+      // Try to match against known courts
+      for (const court of knownCourts) {
+        const courtClean = court.name.toLowerCase().replace(/['''`]/g, '').replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+        const candidateClean = locationCandidate.replace(/['''`]/g, '').replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+        if (courtClean.includes(candidateClean) || candidateClean.includes(courtClean)) {
+          return { location: court.name, matchedCourt: court };
+        }
+      }
+      return { location: locationCandidate, matchedCourt: null };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract player names from text
+ */
+function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] {
+  const players: string[] = [];
+  const lower = text.toLowerCase();
+  
+  // Always add "me" if it's a scheduling request
+  const schedulingKeywords = ['schedule', 'book', 'setup', 'set up', 'create', 'game', 'play', 'session'];
+  const isScheduling = schedulingKeywords.some(k => lower.includes(k));
+  if (isScheduling) {
+    players.push('me');
+  }
+  
+  // Check for "with [name]" or "and [name]" patterns  
+  // Also match full names in the text
+  for (const player of knownPlayers) {
+    if (player.isCurrentUser) continue; // Skip current user, we handle "me" separately
+    
+    const fullName = `${player.firstName} ${player.lastName}`.toLowerCase();
+    const firstName = player.firstName.toLowerCase();
+    
+    // Check for full name
+    if (lower.includes(fullName)) {
+      players.push(`${player.firstName} ${player.lastName}`);
+      continue;
+    }
+    
+    // Check for first name in context of "with" or "and"
+    const withPattern = new RegExp(`\\b(with|and)\\s+${firstName}\\b`, 'i');
+    if (withPattern.test(lower)) {
+      players.push(`${player.firstName} ${player.lastName}`);
+    }
+  }
+  
+  return [...new Set(players)]; // Remove duplicates
+}
 
 // Helper to match a group by name
 function findGroupByName(searchName: string, groups: (Group & { id: string })[]): (Group & { id: string }) | undefined {
@@ -246,10 +451,37 @@ export async function chat(
     console.log('[chat] Available groups:', knownGroupNames);
     console.log('[chat] Available courts:', knownCourtNames);
     
-    let processedInput = input.message;
     const historyToConsider = input.history.slice(-6); // Consider last 6 messages for better context
     const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
 
+    // ========================================================================
+    // STEP 1: Gather ALL text from conversation (current + history) for extraction
+    // ========================================================================
+    const allUserMessages = historyToConsider.filter(h => h.sender === 'user').map(h => h.text);
+    allUserMessages.push(input.message);
+    const combinedText = allUserMessages.join(' '); // All user text combined for regex extraction
+    
+    console.log('[chat] Combined user text for extraction:', combinedText);
+
+    // ========================================================================
+    // STEP 2: Run REGEX extraction FIRST (reliable, deterministic)
+    // ========================================================================
+    const regexDate = extractDateFromText(combinedText);
+    const regexTime = extractTimeFromText(combinedText);
+    const regexLocation = extractLocationFromText(combinedText, knownCourts);
+    const regexPlayers = extractPlayersFromText(combinedText, knownPlayers);
+    
+    console.log('[chat] Regex extraction results:', {
+      date: regexDate,
+      time: regexTime,
+      location: regexLocation?.location || null,
+      matchedCourt: regexLocation?.matchedCourt?.name || null,
+      players: regexPlayers,
+    });
+
+    // Build the message to send to the AI
+    let processedInput = input.message;
+    
     // Preprocess common scheduling phrases to make them clearer
     const lowerInput = processedInput.toLowerCase();
     if (lowerInput.includes('book a time') || lowerInput.includes('book time')) {
@@ -258,14 +490,6 @@ export async function chat(
     if (lowerInput.includes('set up') || lowerInput.includes('setup')) {
       processedInput = processedInput.replace(/set\s+up/gi, 'schedule');
     }
-
-    // Build context from all previous user messages for continuity
-    const previousUserMessages = historyToConsider.filter(h => h.sender === 'user').map(h => h.text);
-    
-    // ALWAYS include previous context - the AI needs this to understand follow-ups
-    const fullContext = previousUserMessages.length > 0 
-      ? `Previous messages from user: [${previousUserMessages.join('] [')}]\nCurrent message: ${input.message}`
-      : input.message;
 
     if (isConfirmation(input.message) && lastRobinMessage) {
       processedInput = `[User is confirming] Previous Robin message: "${lastRobinMessage.text}". User says: "${input.message}"`;
@@ -277,124 +501,92 @@ export async function chat(
             // Re-run the initial request with the new phone number appended.
              processedInput = `${lastUserMessage.text} (and the phone number for the new person is ${input.message})`;
         }
-    } else {
-      // ALWAYS include full context so AI can merge details from previous messages
-      processedInput = fullContext;
     }
 
     const today = new Date();
     const todayFormatted = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     
-    let extractedDetails;
+    // Calculate day of week dates for better relative date parsing
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayDayIndex = today.getDay();
+    const dayDates: Record<string, string> = {};
+    for (let i = 0; i < 7; i++) {
+      const futureDate = new Date(today);
+      const daysUntil = (i - todayDayIndex + 7) % 7 || 7; // Next occurrence (or 7 if today)
+      futureDate.setDate(today.getDate() + daysUntil);
+      dayDates[daysOfWeek[i].toLowerCase()] = futureDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+    // Tomorrow
+    const tomorrowDate = new Date(today);
+    tomorrowDate.setDate(today.getDate() + 1);
+    const tomorrowFormatted = tomorrowDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    // ========================================================================
+    // STEP 3: Call AI for additional extraction and natural language response
+    // ========================================================================
+    let extractedDetails: ChatOutput | null = null;
     try {
       console.log('[AI] Starting generation for message:', processedInput.substring(0, 100));
       
-      // Calculate day of week dates for better relative date parsing
-      const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const todayDayIndex = today.getDay();
-      const dayDates: Record<string, string> = {};
-      for (let i = 0; i < 7; i++) {
-        const futureDate = new Date(today);
-        const daysUntil = (i - todayDayIndex + 7) % 7 || 7; // Next occurrence (or 7 if today)
-        futureDate.setDate(today.getDate() + daysUntil);
-        dayDates[daysOfWeek[i].toLowerCase()] = futureDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      }
-      // Tomorrow
-      const tomorrowDate = new Date(today);
-      tomorrowDate.setDate(today.getDate() + 1);
-      const tomorrowFormatted = tomorrowDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      
       const result = await ai.generate({
-        prompt: `You are Robin, a friendly AI scheduling assistant for LocalDink, a pickleball app.
+        prompt: `You are Robin, a pickleball scheduling assistant. Your ONLY job is to extract scheduling details from user messages.
 
-**YOUR #1 RULE: EXTRACT EVERY DETAIL FROM THE USER'S MESSAGE IN ONE PASS.**
+## CRITICAL: EXTRACT EVERYTHING IN ONE PASS
 
-When a user says "book a game Thursday at 3pm with David Favero at the ion courts", you MUST extract:
-- players: ["David Favero", "me"]
-- date: "${dayDates['thursday']}"
-- time: "3:00 PM"
-- location: "ion courts" (or best match from available courts)
+When user says: "setup a game on December 25 at 11am with David Favero at ION courts"
+You MUST return:
+- players: ["David Favero", "me"]  
+- date: "December 25, 2025"
+- time: "11:00 AM"
+- location: "ION"
 
-DO NOT respond with just "Got it - You. What location?" when location was already mentioned!
-DO NOT lose context from previous messages!
-DO NOT ask for information the user already provided!
+NEVER ask for information the user already provided!
 
-**TODAY'S DATE INFO:**
-- Today is: ${todayFormatted} (${daysOfWeek[todayDayIndex]})
-- Tomorrow: ${tomorrowFormatted}
-- This Thursday: ${dayDates['thursday']}
-- This Friday: ${dayDates['friday']}
-- This Saturday: ${dayDates['saturday']}
-- This Sunday: ${dayDates['sunday']}
+## TODAY'S DATE
+Today is ${todayFormatted}. Tomorrow is ${tomorrowFormatted}.
 
-**AVAILABLE DATA:**
-${knownPlayerNames.length > 0 ? `- Players you know: ${knownPlayerNames.join(', ')}` : '- No players loaded yet'}
+## AVAILABLE DATA
+- Known players: ${knownPlayerNames.join(', ') || 'none'}
+- Known courts: ${knownCourtNames.join(', ') || 'none'}
 ${knownGroupNames.length > 0 ? `- Groups: ${knownGroupNames.join(', ')}` : ''}
-${knownCourtNames.length > 0 ? `- Courts: ${knownCourtNames.join(', ')}` : '- No courts loaded yet'}
 
-**EXTRACTION RULES:**
-
-1. **PLAYERS** - Extract ALL names mentioned. Always add "me" if user is scheduling.
-   - "with David Favero" → ["David Favero", "me"]
-   - "with melissa and john" → ["melissa", "john", "me"]
-   - "for me" or "I want to play" → ["me"]
-
-2. **DATE** - Convert to "Month Day, Year" format:
-   - "tomorrow" → "${tomorrowFormatted}"
-   - "thursday" or "this thursday" → "${dayDates['thursday']}"
-   - "friday" → "${dayDates['friday']}"
-   - Always include the year!
-
-3. **TIME** - Convert to "H:MM AM/PM" format:
-   - "3pm" → "3:00 PM"
-   - "3:30" → "3:30 PM" (assume PM for times like 3:30)
-   - "at 2" → "2:00 PM" (assume PM for afternoon times)
-
-4. **LOCATION** - Extract court/venue name (normalize variations):
-   - "ion courts" or "i'on courts" or "ion" → "ION" or "I'On" (match available courts)
-   - "at the park" → "park"
-   - Be flexible with apostrophes and spelling!
-
-**MERGING CONTEXT:**
-If previous messages contain details not in the current message, MERGE them:
-- Previous: "schedule with David at 3pm" (has player, time)
-- Current: "ion courts" (has location)
-- Result: Extract ALL: players=["David", "me"], time="3:00 PM", location="ion courts"
-
-**WHEN TO ASK QUESTIONS:**
-Only ask if something is TRULY missing after checking ALL messages:
-- If no date mentioned anywhere → ask for date
-- If no time mentioned anywhere → ask for time
-- If no location mentioned anywhere → ask for location
-- If no players mentioned → ask who's playing
-
-NEVER ask for something that was already mentioned!
-
-**CONVERSATION HISTORY:**
+## CONVERSATION HISTORY
 ${historyToConsider.map((h: ChatHistory) => `${h.sender.toUpperCase()}: ${h.text}`).join('\n')}
 
-**CURRENT REQUEST:**
+## CURRENT MESSAGE
 ${processedInput}
 
-Extract ALL details from the messages above. Be thorough!`,
+## EXTRACTION REQUIREMENTS
+
+**Players**: Always include "me" (the current user) when scheduling. Extract all other names mentioned.
+
+**Date**: Convert to "Month Day, Year" format.
+- "tomorrow" → "${tomorrowFormatted}"
+- "December 25" or "Dec 25" → "December 25, ${today.getFullYear()}"
+- "Thursday" → "${dayDates['thursday']}"
+
+**Time**: Convert to "H:MM AM/PM" format.
+- "11am" → "11:00 AM"
+- "3pm" or "at 3" → "3:00 PM"
+
+**Location**: Match to known courts if possible. Look for court names like "${knownCourtNames.slice(0, 3).join('", "')}"
+
+## OUTPUT
+Extract ALL details from ALL messages in the conversation. Check both history AND current message.
+If you have all details, set confirmationText to summarize what you're scheduling.
+Only ask a question if something is genuinely missing from ALL messages.`,
         model: geminiFlash!,
         output: {
           schema: ChatOutputSchema,
         },
         config: {
-          temperature: 0.1,
+          temperature: 0.05, // Very low temperature for deterministic extraction
         },
       });
       console.log('[AI] Generation result:', result ? 'success' : 'null', result?.output ? 'has output' : 'no output');
-      extractedDetails = result?.output;
+      extractedDetails = result?.output || null;
     } catch (aiError: any) {
       console.error('AI generation error:', aiError);
-      console.error('AI error details:', {
-        message: aiError?.message,
-        code: aiError?.code,
-        stack: aiError?.stack,
-        name: aiError?.name,
-      });
       
       // Check for quota exceeded error
       const errorMessage = aiError?.message || '';
@@ -404,17 +596,71 @@ Extract ALL details from the messages above. Be thorough!`,
         };
       }
       
-      // Return a helpful error message
-      return {
-        confirmationText: `I'm having trouble connecting to the AI service right now. Please try again in a moment. If the problem persists, check that the Google AI API key is configured correctly.`
+      // Use regex extraction as fallback when AI fails
+      console.log('[chat] AI failed, using regex fallback');
+      extractedDetails = {
+        players: regexPlayers.length > 0 ? regexPlayers : null,
+        date: regexDate,
+        time: regexTime,
+        location: regexLocation?.location || null,
+        confirmationText: null,
       };
     }
 
+    // ========================================================================
+    // STEP 4: MERGE regex and AI results (regex takes precedence for reliability)
+    // ========================================================================
     if (!extractedDetails) {
-      // Try a fallback extraction with a simpler approach
-      console.error('AI extraction returned null for message:', processedInput);
-      return { confirmationText: "I'm sorry, I had trouble understanding that. Could you try rephrasing? For example: 'Schedule a game with [player name] tomorrow at 4pm at [court name]'?" };
+      extractedDetails = {
+        players: null,
+        date: null,
+        time: null,
+        location: null,
+        confirmationText: null,
+      };
     }
+    
+    // CRITICAL: Use regex results to fill in ANY gaps from AI extraction
+    // This ensures we never lose information that was clearly stated
+    if (regexDate && !extractedDetails.date) {
+      console.log('[chat] Using regex date:', regexDate);
+      extractedDetails.date = regexDate;
+    }
+    if (regexTime && !extractedDetails.time) {
+      console.log('[chat] Using regex time:', regexTime);
+      extractedDetails.time = regexTime;
+    }
+    if (regexLocation && !extractedDetails.location) {
+      console.log('[chat] Using regex location:', regexLocation.location);
+      extractedDetails.location = regexLocation.location;
+    }
+    if (regexPlayers.length > 0 && (!extractedDetails.players || extractedDetails.players.length === 0)) {
+      console.log('[chat] Using regex players:', regexPlayers);
+      extractedDetails.players = regexPlayers;
+    }
+    
+    // Also check if regex found better/more complete data even if AI found something
+    if (regexDate && extractedDetails.date && regexDate !== extractedDetails.date) {
+      // Prefer the more specific date (the one with a year if both don't have one)
+      console.log(`[chat] Date conflict: regex="${regexDate}" vs AI="${extractedDetails.date}", using regex`);
+      extractedDetails.date = regexDate;
+    }
+    if (regexTime && extractedDetails.time && regexTime !== extractedDetails.time) {
+      console.log(`[chat] Time conflict: regex="${regexTime}" vs AI="${extractedDetails.time}", using regex`);
+      extractedDetails.time = regexTime;
+    }
+    // For location, prefer matched court from regex
+    if (regexLocation?.matchedCourt && extractedDetails.location) {
+      console.log(`[chat] Using regex matched court: "${regexLocation.matchedCourt.name}"`);
+      extractedDetails.location = regexLocation.matchedCourt.name;
+    }
+    
+    console.log('[chat] Merged extraction results:', {
+      players: extractedDetails.players,
+      date: extractedDetails.date,
+      time: extractedDetails.time,
+      location: extractedDetails.location,
+    });
     
     // If the user just said "yes", re-extract players from the last bot message if the AI missed it.
     if (isConfirmation(input.message)) {
@@ -613,27 +859,64 @@ Extract ALL details from the messages above. Be thorough!`,
     }
 
     // If we got here, it means we couldn't create the session (missing courtId or some details)
-    // Ask only for what's genuinely missing
+    // Build a response that acknowledges what we DO have and asks ONLY for what's missing
+    
+    // ========================================================================
+    // STEP 7: Generate smart response - acknowledge known info, ask only for missing
+    // ========================================================================
     let responseText = '';
+    
+    // Collect what we have vs what we need
+    const haveDetails: string[] = [];
+    const needDetails: string[] = [];
+    
     if (uniqueInvitedPlayers.length > 0) {
-      let missingInfo = [];
-      if (!date) missingInfo.push('date');
-      if (!time) missingInfo.push('time');
-      if (!location && !courtId) missingInfo.push('location');
-      else if (location && !courtId) {
-        // We have a location name but couldn't find the court
-        responseText = `I couldn't find a court called "${location}". Could you check the name or add it to your courts first?`;
-      }
-      
-      if (!responseText && missingInfo.length > 0) {
-        responseText = `Got it - ${formattedPlayerNames}. What ${missingInfo.join(' and ')}?`;
-      } else if (!responseText) {
-        // We have players but something else went wrong
-        responseText = `I have the details but couldn't create the session. Please try again or check your courts.`;
-      }
+      haveDetails.push(`playing with ${formattedPlayerNames}`);
     } else {
-        // This case should now be rare due to the checks above, but it's a safe fallback.
-        responseText = "Who's playing?";
+      needDetails.push('who will be playing');
+    }
+    
+    if (date) {
+      haveDetails.push(`on ${date}`);
+    } else {
+      needDetails.push('what date');
+    }
+    
+    if (time) {
+      haveDetails.push(`at ${time}`);
+    } else {
+      needDetails.push('what time');
+    }
+    
+    if (courtId && courtName) {
+      haveDetails.push(`at ${courtName}`);
+    } else if (location && !courtId) {
+      // We have a location name but couldn't find the court in user's courts
+      responseText = `I found all the details - ${formattedPlayerNames} on ${date || 'a date'} at ${time || 'a time'}. However, I couldn't find a court called "${location}" in your saved courts. Would you like to add it first, or use a different court?`;
+    } else {
+      needDetails.push('which court');
+    }
+    
+    // Build response based on what's missing
+    if (!responseText) {
+      if (needDetails.length === 0) {
+        // This shouldn't happen if hasAllDetails was properly checked, but handle it
+        responseText = `I have all the details but something went wrong. Let me try again - ${haveDetails.join(', ')}.`;
+      } else if (needDetails.length === 1) {
+        // Only one thing missing - acknowledge what we have
+        if (haveDetails.length > 0) {
+          responseText = `Got it - ${haveDetails.join(', ')}. ${needDetails[0].charAt(0).toUpperCase() + needDetails[0].slice(1)}?`;
+        } else {
+          responseText = `${needDetails[0].charAt(0).toUpperCase() + needDetails[0].slice(1)}?`;
+        }
+      } else {
+        // Multiple things missing
+        if (haveDetails.length > 0) {
+          responseText = `Got it - ${haveDetails.join(', ')}. I still need ${needDetails.slice(0, -1).join(', ')} and ${needDetails[needDetails.length - 1]}.`;
+        } else {
+          responseText = `I'd be happy to help schedule a game! Can you tell me ${needDetails.slice(0, -1).join(', ')} and ${needDetails[needDetails.length - 1]}?`;
+        }
+      }
     }
     
     // Handle the user's request to be notified
@@ -643,6 +926,10 @@ Extract ALL details from the messages above. Be thorough!`,
         responseText = `Got it! I'll let you know as soon as ${mentionedPlayer} responds.`;
       }
     }
+
+    console.log('[chat] Final response:', responseText);
+    console.log('[chat] Have:', haveDetails);
+    console.log('[chat] Need:', needDetails);
 
     return { ...extractedDetails, confirmationText: responseText };
   }
