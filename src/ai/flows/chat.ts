@@ -39,45 +39,64 @@ function findGroupByName(searchName: string, groups: (Group & { id: string })[])
 
 // Helper to match a court by name (case-insensitive, flexible matching)
 function findCourtByName(searchName: string, courts: Court[]): Court | undefined {
+  if (!searchName || !courts.length) return undefined;
+  
   // Helper to create a "clean" version for matching - removes apostrophes, special chars, and common suffixes
   const cleanForMatching = (str: string) => {
     return str
       .toLowerCase()
       .trim()
       .replace(/['''`]/g, '')  // Remove all apostrophe variations
-      .replace(/\s+/g, ' ')    // Normalize spaces
-      .replace(/\s*(courts?|tennis|center|park|club)$/i, '') // Remove suffixes
+      .replace(/\s+/g, '')     // Remove ALL spaces for matching
+      .replace(/(courts?|tennis|center|park|club|the)$/gi, '') // Remove suffixes
+      .replace(/^(the)/gi, '') // Remove prefix "the"
+      .trim();
+  };
+  
+  // Also create a version that keeps spaces but normalizes them
+  const normalizeSpaces = (str: string) => {
+    return str
+      .toLowerCase()
+      .trim()
+      .replace(/['''`]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*(courts?|tennis|center|park|club)$/gi, '')
       .trim();
   };
 
-  const normalized = searchName.toLowerCase().trim();
-  const cleaned = cleanForMatching(searchName);
+  const searchNormalized = searchName.toLowerCase().trim();
+  const searchCleaned = cleanForMatching(searchName);
+  const searchSpaced = normalizeSpaces(searchName);
 
-  console.log(`[findCourt] Searching for: "${searchName}" (normalized: "${normalized}", cleaned: "${cleaned}")`);
-  console.log('[findCourt] Available courts:', courts.map(c => c.name));
+  console.log(`[findCourt] Searching for: "${searchName}"`);
+  console.log(`[findCourt]   normalized: "${searchNormalized}", cleaned: "${searchCleaned}", spaced: "${searchSpaced}"`);
+  console.log('[findCourt] Available courts:', courts.map(c => `"${c.name}" (cleaned: "${cleanForMatching(c.name)}")`));
 
   // Try exact match first (case insensitive)
-  let match = courts.find(c => c.name.toLowerCase().trim() === normalized);
+  let match = courts.find(c => c.name.toLowerCase().trim() === searchNormalized);
   if (match) {
     console.log(`[findCourt] Found exact match: "${match.name}"`);
     return match;
   }
 
-  // Try cleaned match (removes apostrophes and suffixes: "I'On Courts" matches "ION")
-  match = courts.find(c => cleanForMatching(c.name) === cleaned);
+  // Try cleaned match (removes apostrophes, spaces, and suffixes: "I'On Courts" matches "ion courts" matches "ION")
+  match = courts.find(c => cleanForMatching(c.name) === searchCleaned);
   if (match) {
     console.log(`[findCourt] Found cleaned match: "${match.name}"`);
+    return match;
+  }
+  
+  // Try spaced match (keeps structure but normalizes)
+  match = courts.find(c => normalizeSpaces(c.name) === searchSpaced);
+  if (match) {
+    console.log(`[findCourt] Found spaced match: "${match.name}"`);
     return match;
   }
 
   // If no exact match, try partial/contains match
   match = courts.find(c => {
-    const courtName = c.name.toLowerCase().trim();
-    const cleanedCourtName = cleanForMatching(c.name);
-    return courtName.includes(normalized) || 
-           normalized.includes(courtName) ||
-           cleanedCourtName.includes(cleaned) ||
-           cleaned.includes(cleanedCourtName);
+    const courtCleaned = cleanForMatching(c.name);
+    return courtCleaned.includes(searchCleaned) || searchCleaned.includes(courtCleaned);
   });
   if (match) {
     console.log(`[findCourt] Found partial match: "${match.name}"`);
@@ -86,12 +105,25 @@ function findCourtByName(searchName: string, courts: Court[]): Court | undefined
 
   // Try starts-with match
   match = courts.find(c => {
-    const cleanedCourtName = cleanForMatching(c.name);
-    return cleanedCourtName.startsWith(cleaned) || cleaned.startsWith(cleanedCourtName);
+    const courtCleaned = cleanForMatching(c.name);
+    return courtCleaned.startsWith(searchCleaned) || searchCleaned.startsWith(courtCleaned);
   });
   if (match) {
     console.log(`[findCourt] Found starts-with match: "${match.name}"`);
     return match;
+  }
+  
+  // Last resort: check if any word in the search matches any word in court names
+  const searchWords = searchCleaned.split(/\s+/).filter(w => w.length > 2);
+  if (searchWords.length > 0) {
+    match = courts.find(c => {
+      const courtCleaned = cleanForMatching(c.name);
+      return searchWords.some(word => courtCleaned.includes(word) || word.includes(courtCleaned));
+    });
+    if (match) {
+      console.log(`[findCourt] Found word match: "${match.name}"`);
+      return match;
+    }
   }
 
   console.log(`[findCourt] No court found matching "${searchName}"`);
@@ -215,7 +247,7 @@ export async function chat(
     console.log('[chat] Available courts:', knownCourtNames);
     
     let processedInput = input.message;
-    const historyToConsider = input.history.slice(-4); // Only consider last 4 messages
+    const historyToConsider = input.history.slice(-6); // Consider last 6 messages for better context
     const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
 
     // Preprocess common scheduling phrases to make them clearer
@@ -229,12 +261,14 @@ export async function chat(
 
     // Build context from all previous user messages for continuity
     const previousUserMessages = historyToConsider.filter(h => h.sender === 'user').map(h => h.text);
+    
+    // ALWAYS include previous context - the AI needs this to understand follow-ups
     const fullContext = previousUserMessages.length > 0 
-      ? `Previous context: ${previousUserMessages.join(' | ')}. Current message: ${input.message}`
+      ? `Previous messages from user: [${previousUserMessages.join('] [')}]\nCurrent message: ${input.message}`
       : input.message;
 
     if (isConfirmation(input.message) && lastRobinMessage) {
-      processedInput = `confirming: ${lastRobinMessage.text}`;
+      processedInput = `[User is confirming] Previous Robin message: "${lastRobinMessage.text}". User says: "${input.message}"`;
     } else if (isPhoneNumber(input.message) && lastRobinMessage && lastRobinMessage.text.includes('phone number')) {
         // Find the user's last message BEFORE the current one (which is the phone number).
         // This should be the original request.
@@ -243,8 +277,8 @@ export async function chat(
             // Re-run the initial request with the new phone number appended.
              processedInput = `${lastUserMessage.text} (and the phone number for the new person is ${input.message})`;
         }
-    } else if (previousUserMessages.length > 0 && input.message.length < 50) {
-      // If short follow-up message, include full context from previous messages
+    } else {
+      // ALWAYS include full context so AI can merge details from previous messages
       processedInput = fullContext;
     }
 
@@ -253,60 +287,96 @@ export async function chat(
     
     let extractedDetails;
     try {
-      console.log('[AI] Starting generation for message:', processedInput.substring(0, 50));
+      console.log('[AI] Starting generation for message:', processedInput.substring(0, 100));
+      
+      // Calculate day of week dates for better relative date parsing
+      const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const todayDayIndex = today.getDay();
+      const dayDates: Record<string, string> = {};
+      for (let i = 0; i < 7; i++) {
+        const futureDate = new Date(today);
+        const daysUntil = (i - todayDayIndex + 7) % 7 || 7; // Next occurrence (or 7 if today)
+        futureDate.setDate(today.getDate() + daysUntil);
+        dayDates[daysOfWeek[i].toLowerCase()] = futureDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }
+      // Tomorrow
+      const tomorrowDate = new Date(today);
+      tomorrowDate.setDate(today.getDate() + 1);
+      const tomorrowFormatted = tomorrowDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      
       const result = await ai.generate({
-        prompt: `You are Robin, a friendly AI scheduling assistant for LocalDink, a pickleball app. Your job is to help users schedule games naturally through conversation.
+        prompt: `You are Robin, a friendly AI scheduling assistant for LocalDink, a pickleball app.
 
-WHAT YOU CAN DO:
-- Schedule games: Extract players, groups, date, time, and location from natural language
-- Find courts: Look up courts by name when users mention them
-- Create sessions: Once you have all details, immediately create the game session and send invitations
-- Answer questions: Have friendly conversations about scheduling, pickleball, or the app
+**YOUR #1 RULE: EXTRACT EVERY DETAIL FROM THE USER'S MESSAGE IN ONE PASS.**
 
-HOW TO HELP:
-1. Be decisive and action-oriented - when you have all the details, just do it
-2. Extract details naturally - users might say "tomorrow at 4pm with Melissa at I'On" or "schedule with Friday Group"
-3. Only ask ONE clarifying question if something critical is genuinely missing
-4. DO NOT ask "does this look right?" or any confirmation questions - just take action
+When a user says "book a game Thursday at 3pm with David Favero at the ion courts", you MUST extract:
+- players: ["David Favero", "me"]
+- date: "${dayDates['thursday']}"
+- time: "3:00 PM"
+- location: "ion courts" (or best match from available courts)
 
-EXTRACTION RULES (be thorough - extract EVERYTHING mentioned):
-1. Players/Groups: Extract ALL player names OR group names. "with [name]" = that person/group. Always include "me" if user is scheduling for themselves.
-   - Individual: "with David Favero" → ["David Favero", "me"]
-   - Individual: "with melissa" → ["melissa", "me"]
-   - Group: "with Friday Morning Group" → ["Friday Morning Group", "me"]
-   - Mixed: "schedule with Alex and the Tennis Club" → ["Alex", "Tennis Club", "me"]
-   ${knownGroupNames.length > 0 ? `\n   Available groups: ${knownGroupNames.join(', ')}` : ''}
+DO NOT respond with just "Got it - You. What location?" when location was already mentioned!
+DO NOT lose context from previous messages!
+DO NOT ask for information the user already provided!
 
-2. Date: Convert relative terms to absolute dates (ALWAYS extract if mentioned):
-   - "tomorrow" → ${new Date(today.getTime() + 24*60*60*1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-   - "today" → ${todayFormatted}
-   - Format: "Month Day, Year" (e.g., "December 15, 2024")
+**TODAY'S DATE INFO:**
+- Today is: ${todayFormatted} (${daysOfWeek[todayDayIndex]})
+- Tomorrow: ${tomorrowFormatted}
+- This Thursday: ${dayDates['thursday']}
+- This Friday: ${dayDates['friday']}
+- This Saturday: ${dayDates['saturday']}
+- This Sunday: ${dayDates['sunday']}
 
-3. Time: Extract in 12-hour format with AM/PM (ALWAYS extract if mentioned):
-   - "2pm" → "2:00 PM", "3:30pm" → "3:30 PM", "3pm" → "3:00 PM", "15:30" → "3:30 PM"
-   - If no time specified, don't include it (you'll ask)
+**AVAILABLE DATA:**
+${knownPlayerNames.length > 0 ? `- Players you know: ${knownPlayerNames.join(', ')}` : '- No players loaded yet'}
+${knownGroupNames.length > 0 ? `- Groups: ${knownGroupNames.join(', ')}` : ''}
+${knownCourtNames.length > 0 ? `- Courts: ${knownCourtNames.join(', ')}` : '- No courts loaded yet'}
 
-4. Location: Extract court name or location (handle apostrophe variations):
-   - "at I'On club" or "at Ion club" or "at I'On" → location: "I'On" (match to available courts)
-   - Court names may have apostrophes: I'On, O'Brien's, etc. - normalize them
-   ${knownCourtNames.length > 0 ? `\n   Available courts: ${knownCourtNames.join(', ')}` : ''}
+**EXTRACTION RULES:**
 
-IMPORTANT: A single message like "schedule a game tomorrow at 2pm at I'On club with David Favero" contains ALL four pieces of info. Extract them ALL in one pass!
+1. **PLAYERS** - Extract ALL names mentioned. Always add "me" if user is scheduling.
+   - "with David Favero" → ["David Favero", "me"]
+   - "with melissa and john" → ["melissa", "john", "me"]
+   - "for me" or "I want to play" → ["me"]
 
-5. If details are missing, ask ONE short clarifying question in 'confirmationText' only. Be concise.
+2. **DATE** - Convert to "Month Day, Year" format:
+   - "tomorrow" → "${tomorrowFormatted}"
+   - "thursday" or "this thursday" → "${dayDates['thursday']}"
+   - "friday" → "${dayDates['friday']}"
+   - Always include the year!
 
-6. If NOT a scheduling request, have a brief friendly conversation in 'confirmationText' only.
+3. **TIME** - Convert to "H:MM AM/PM" format:
+   - "3pm" → "3:00 PM"
+   - "3:30" → "3:30 PM" (assume PM for times like 3:30)
+   - "at 2" → "2:00 PM" (assume PM for afternoon times)
 
-7. NEVER ask "does this look right?" or "shall I proceed?" - just extract the details and the system will take action.
+4. **LOCATION** - Extract court/venue name (normalize variations):
+   - "ion courts" or "i'on courts" or "ion" → "ION" or "I'On" (match available courts)
+   - "at the park" → "park"
+   - Be flexible with apostrophes and spelling!
 
-Today is: ${todayFormatted}
+**MERGING CONTEXT:**
+If previous messages contain details not in the current message, MERGE them:
+- Previous: "schedule with David at 3pm" (has player, time)
+- Current: "ion courts" (has location)
+- Result: Extract ALL: players=["David", "me"], time="3:00 PM", location="ion courts"
 
-Conversation History:
-${historyToConsider.map((h: ChatHistory) => `- ${h.sender}: ${h.text}`).join('\n')}
+**WHEN TO ASK QUESTIONS:**
+Only ask if something is TRULY missing after checking ALL messages:
+- If no date mentioned anywhere → ask for date
+- If no time mentioned anywhere → ask for time
+- If no location mentioned anywhere → ask for location
+- If no players mentioned → ask who's playing
 
-User Message: "${processedInput}"
+NEVER ask for something that was already mentioned!
 
-Extract all details you can find. Be thorough and conversational.`,
+**CONVERSATION HISTORY:**
+${historyToConsider.map((h: ChatHistory) => `${h.sender.toUpperCase()}: ${h.text}`).join('\n')}
+
+**CURRENT REQUEST:**
+${processedInput}
+
+Extract ALL details from the messages above. Be thorough!`,
         model: geminiFlash!,
         output: {
           schema: ChatOutputSchema,
