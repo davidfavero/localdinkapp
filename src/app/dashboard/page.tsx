@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Sparkles, Trash2, Check, X, Calendar, MapPin } from 'lucide-react';
+import { Send, Sparkles, Trash2, Check, X, Calendar, MapPin, Plus, UserPlus } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
-import { chatAction, updateRsvpStatusAction } from '@/lib/actions';
+import { chatAction, updateRsvpStatusAction, addCourtAction, addPlayerAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player, Group, Court } from '@/lib/types';
 import { useUser, useFirestore, useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -194,6 +194,73 @@ export default function RobinChatPage() {
       setIsRespondingToInvite(null);
     }
   };
+  
+  // State for unknown courts/players that can be added
+  const [pendingUnknownCourt, setPendingUnknownCourt] = useState<{ name: string; suggestedLocation?: string } | null>(null);
+  const [pendingUnknownPlayers, setPendingUnknownPlayers] = useState<{ name: string; suggestedEmail?: string; suggestedPhone?: string }[]>([]);
+  const [isAddingCourt, setIsAddingCourt] = useState(false);
+  const [isAddingPlayer, setIsAddingPlayer] = useState<string | null>(null);
+  const [newPlayerPhone, setNewPlayerPhone] = useState('');
+  const [newPlayerEmail, setNewPlayerEmail] = useState('');
+  
+  // Handle adding a new court
+  const handleAddCourt = async () => {
+    if (!pendingUnknownCourt || !authUser?.uid) return;
+    
+    setIsAddingCourt(true);
+    try {
+      const result = await addCourtAction({
+        name: pendingUnknownCourt.name,
+        location: pendingUnknownCourt.suggestedLocation || '',
+      }, authUser.uid);
+      
+      const responseText = result.success 
+        ? `Perfect! I've added "${pendingUnknownCourt.name}" to your courts. Now I can schedule your game there! 🏸`
+        : `Sorry, I had trouble adding the court: ${result.message}`;
+      
+      setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
+      setPendingUnknownCourt(null);
+    } catch (error) {
+      console.error('Error adding court:', error);
+      setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I had trouble adding the court. Please try again." }]);
+    } finally {
+      setIsAddingCourt(false);
+    }
+  };
+  
+  // Handle adding a new player
+  const handleAddPlayer = async (playerName: string) => {
+    if (!authUser?.uid) return;
+    
+    // Parse first and last name
+    const nameParts = playerName.trim().split(' ');
+    const firstName = nameParts[0] || playerName;
+    const lastName = nameParts.slice(1).join(' ') || '';
+    
+    setIsAddingPlayer(playerName);
+    try {
+      const result = await addPlayerAction({
+        firstName,
+        lastName,
+        email: newPlayerEmail || undefined,
+        phone: newPlayerPhone || undefined,
+      }, authUser.uid);
+      
+      const responseText = result.success 
+        ? `Added ${firstName} ${lastName} to your contacts! ${newPlayerPhone ? 'They\'ll receive SMS invites.' : 'Add their phone number later to send them invites.'}`
+        : `Sorry, I had trouble adding the player: ${result.message}`;
+      
+      setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
+      setPendingUnknownPlayers(prev => prev.filter(p => p.name !== playerName));
+      setNewPlayerPhone('');
+      setNewPlayerEmail('');
+    } catch (error) {
+      console.error('Error adding player:', error);
+      setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I had trouble adding the player. Please try again." }]);
+    } finally {
+      setIsAddingPlayer(null);
+    }
+  };
 
   // Clear chat when user changes (reset Robin for new user)
   useEffect(() => {
@@ -312,6 +379,10 @@ export default function RobinChatPage() {
       setMessages(prevMessages => [...prevMessages, newUserMessage]);
       setInput('');
       setIsLoading(true);
+      
+      // Clear any previous pending unknowns
+      setPendingUnknownCourt(null);
+      setPendingUnknownPlayers([]);
 
       try {
         // Pass the latest state to the action with known players, groups, and courts
@@ -327,6 +398,16 @@ export default function RobinChatPage() {
         const newRobinMessage: Message = { sender: 'robin', text: responseText };
 
         setMessages(prevMessages => [...prevMessages, newRobinMessage]);
+        
+        // Check for unknown court/players that can be added
+        if (response.unknownCourt) {
+          console.log('[Chat] Unknown court detected:', response.unknownCourt);
+          setPendingUnknownCourt(response.unknownCourt);
+        }
+        if (response.unknownPlayers && response.unknownPlayers.length > 0) {
+          console.log('[Chat] Unknown players detected:', response.unknownPlayers);
+          setPendingUnknownPlayers(response.unknownPlayers);
+        }
         
       } catch (error) {
         console.error("Error in chat action:", error);
@@ -430,6 +511,97 @@ export default function RobinChatPage() {
             </div>
           </div>
         )}
+        
+        {/* Add Court Button - Shows when Robin detects an unknown court */}
+        {pendingUnknownCourt && !isLoading && (
+          <div className="flex items-start gap-2 justify-start">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent flex-shrink-0">
+              <RobinIcon className="h-6 w-6" />
+            </div>
+            <Card className="p-3 bg-background border-primary/30 max-w-sm">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Add "{pendingUnknownCourt.name}" to your courts?
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8"
+                    onClick={handleAddCourt}
+                    disabled={isAddingCourt}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {isAddingCourt ? 'Adding...' : 'Add Court'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => setPendingUnknownCourt(null)}
+                    disabled={isAddingCourt}
+                  >
+                    Skip
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+        
+        {/* Add Player Buttons - Shows when Robin detects unknown players */}
+        {pendingUnknownPlayers.length > 0 && !isLoading && (
+          <div className="flex items-start gap-2 justify-start">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent flex-shrink-0">
+              <RobinIcon className="h-6 w-6" />
+            </div>
+            <div className="space-y-2 max-w-sm">
+              {pendingUnknownPlayers.map((player) => (
+                <Card key={player.name} className="p-3 bg-background border-primary/30">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <UserPlus className="h-4 w-4 text-primary" />
+                      Add "{player.name}" to your contacts?
+                    </div>
+                    <Input
+                      placeholder="Phone (optional)"
+                      value={isAddingPlayer === player.name ? newPlayerPhone : ''}
+                      onChange={(e) => setNewPlayerPhone(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                    <Input
+                      placeholder="Email (optional)"
+                      value={isAddingPlayer === player.name ? newPlayerEmail : ''}
+                      onChange={(e) => setNewPlayerEmail(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8"
+                        onClick={() => handleAddPlayer(player.name)}
+                        disabled={isAddingPlayer === player.name}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        {isAddingPlayer === player.name ? 'Adding...' : 'Add Player'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => setPendingUnknownPlayers(prev => prev.filter(p => p.name !== player.name))}
+                        disabled={isAddingPlayer === player.name}
+                      >
+                        Skip
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 

@@ -144,6 +144,16 @@ export const ChatOutputSchema = z.object({
   // Internal fields not for the LLM
   invitedPlayers: z.array(InvitedPlayerSchema).nullish(),
   currentUser: z.any().nullish(),
+  // Flags for unknown entities that can be added
+  unknownCourt: z.object({
+    name: z.string(),
+    suggestedLocation: z.string().optional(),
+  }).nullish().describe('Court mentioned but not found in database'),
+  unknownPlayers: z.array(z.object({
+    name: z.string(),
+    suggestedEmail: z.string().optional(),
+    suggestedPhone: z.string().optional(),
+  })).nullish().describe('Players mentioned but not found in database'),
 })
 export type ChatOutput = z.infer<typeof ChatOutputSchema>
 

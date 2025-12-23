@@ -21,6 +21,7 @@ import { getClientAuth, signOutUser } from '@/firebase/auth';
 import { setAuthTokenAction, clearAuthToken } from '@/lib/auth-actions';
 import { collection, query, where } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
+import { NewUserWizard } from '@/components/new-user-wizard';
 
 const navItems = [
   { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
@@ -76,6 +77,40 @@ export default function DashboardLayout({
       return status === 'PENDING';
     }).length;
   }, [invitedSessions, user]);
+  
+  // New user detection - show wizard if profile is incomplete
+  const [showNewUserWizard, setShowNewUserWizard] = useState(false);
+  const [hasCheckedNewUser, setHasCheckedNewUser] = useState(false);
+  
+  useEffect(() => {
+    // Only check once after profile loads
+    if (hasCheckedNewUser || isLoading || !currentUser) return;
+    
+    // Check if this is a new/incomplete user:
+    // - Missing firstName (just has Google's displayName split)
+    // - Has default/empty phone
+    // - Check localStorage to see if they've already dismissed the wizard
+    const wizardDismissedKey = `localdink-wizard-dismissed-${user?.uid}`;
+    const wizardDismissed = typeof window !== 'undefined' && localStorage.getItem(wizardDismissedKey);
+    
+    if (!wizardDismissed) {
+      // Consider showing wizard if profile seems incomplete
+      const isIncomplete = !currentUser.phone;
+      if (isIncomplete) {
+        setShowNewUserWizard(true);
+      }
+    }
+    
+    setHasCheckedNewUser(true);
+  }, [currentUser, isLoading, hasCheckedNewUser, user?.uid]);
+  
+  const handleWizardComplete = () => {
+    setShowNewUserWizard(false);
+    // Mark wizard as completed in localStorage
+    if (user?.uid && typeof window !== 'undefined') {
+      localStorage.setItem(`localdink-wizard-dismissed-${user.uid}`, 'true');
+    }
+  };
   
   useEffect(() => {
     // Sync auth token with server if user is authenticated client-side
@@ -140,6 +175,9 @@ export default function DashboardLayout({
 
   return (
     <div className="flex flex-col min-h-screen w-full">
+      {/* New User Onboarding Wizard */}
+      <NewUserWizard open={showNewUserWizard} onComplete={handleWizardComplete} />
+      
       <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
           <h1 className="text-xl font-bold text-foreground font-headline">{pageTitle}</h1>
           <div className="flex items-center gap-4">

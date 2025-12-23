@@ -134,6 +134,102 @@ export async function chatAction(
     }
 }
 
+export async function addCourtAction(
+    courtData: {
+        name: string;
+        location: string;
+        address?: string;
+        city?: string;
+        state?: string;
+    },
+    userId: string
+): Promise<{ success: boolean; courtId?: string; message: string }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available' };
+        }
+
+        const newCourt = {
+            name: courtData.name,
+            location: courtData.location || courtData.city || '',
+            address: courtData.address || '',
+            city: courtData.city || '',
+            state: courtData.state || '',
+            ownerId: userId,
+            createdAt: new Date().toISOString(),
+        };
+
+        const courtRef = await adminDb.collection('courts').add(newCourt);
+        
+        return { 
+            success: true, 
+            courtId: courtRef.id,
+            message: `Added "${courtData.name}" to your courts!`
+        };
+    } catch (error: any) {
+        console.error('Error adding court:', error);
+        return { success: false, message: error.message || 'Failed to add court' };
+    }
+}
+
+export async function addPlayerAction(
+    playerData: {
+        firstName: string;
+        lastName: string;
+        email?: string;
+        phone?: string;
+    },
+    userId: string
+): Promise<{ success: boolean; playerId?: string; message: string }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available' };
+        }
+
+        const newPlayer = {
+            firstName: playerData.firstName,
+            lastName: playerData.lastName || '',
+            email: playerData.email?.toLowerCase().trim() || '',
+            phone: playerData.phone || '',
+            avatarUrl: '',
+            ownerId: userId,
+            createdAt: new Date().toISOString(),
+        };
+
+        // Check if a user with this email already exists (for linking)
+        let linkedUserId: string | undefined;
+        if (newPlayer.email) {
+            try {
+                const existingUser = await adminDb.collection('users')
+                    .where('email', '==', newPlayer.email)
+                    .limit(1)
+                    .get();
+                if (!existingUser.empty) {
+                    linkedUserId = existingUser.docs[0].id;
+                }
+            } catch (e) {
+                console.warn('Could not check for existing user:', e);
+            }
+        }
+
+        const playerRef = await adminDb.collection('players').add({
+            ...newPlayer,
+            ...(linkedUserId && { linkedUserId }),
+        });
+        
+        return { 
+            success: true, 
+            playerId: playerRef.id,
+            message: `Added ${playerData.firstName} ${playerData.lastName || ''} to your contacts!`
+        };
+    } catch (error: any) {
+        console.error('Error adding player:', error);
+        return { success: false, message: error.message || 'Failed to add player' };
+    }
+}
+
 export async function updateRsvpStatusAction(
     sessionId: string,
     playerId: string,

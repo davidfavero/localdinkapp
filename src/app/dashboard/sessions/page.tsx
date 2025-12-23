@@ -266,7 +266,10 @@ export default function GameSessionsPage() {
     })();
   }, [firestore, rawSessions, isLoadingSessions, user?.uid]);
 
-  // Hydrate invites (sessions where user is invited but not the organizer)
+  // Hydrate invites - separate into CONFIRMED (show in My Games) and PENDING (show in Invites)
+  const [confirmedInvites, setConfirmedInvites] = useState<GameSession[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<GameSession[]>([]);
+  
   useEffect(() => {
     if (!firestore) return;
     if (!rawInvites) {
@@ -279,8 +282,18 @@ export default function GameSessionsPage() {
       try {
         // Filter out sessions where user is the organizer (those appear in "My Sessions")
         const invitesOnly = (rawInvites as any[]).filter(s => s.organizerId !== user?.uid);
-        const hydrated = await batchHydrate(firestore, invitesOnly, user?.uid ?? null);
-        setHydratedInvites(hydrated);
+        
+        // Separate into confirmed and pending based on user's status
+        const confirmed = invitesOnly.filter(s => s.playerStatuses?.[user?.uid!] === 'CONFIRMED');
+        const pending = invitesOnly.filter(s => s.playerStatuses?.[user?.uid!] === 'PENDING');
+        
+        const hydratedConfirmed = await batchHydrate(firestore, confirmed, user?.uid ?? null);
+        const hydratedPending = await batchHydrate(firestore, pending, user?.uid ?? null);
+        
+        setConfirmedInvites(hydratedConfirmed);
+        setPendingInvites(hydratedPending);
+        // Keep hydratedInvites for backward compatibility (all non-organizer invites)
+        setHydratedInvites([...hydratedConfirmed, ...hydratedPending]);
       } catch (e: any) {
         console.error('Error hydrating invites:', e);
       } finally {
@@ -307,7 +320,9 @@ export default function GameSessionsPage() {
   }, [firestore, user]);
 
   const handleSessionClick = (session: GameSession) => {
-    const rawSession = rawSessions?.find((s: any) => s.id === session.id);
+    // Look for session in both organized sessions and invites
+    const rawSession = rawSessions?.find((s: any) => s.id === session.id) 
+      || rawInvites?.find((s: any) => s.id === session.id);
     if (rawSession) {
       setSelectedSessionId(session.id);
       setSelectedSessionData({
@@ -319,8 +334,18 @@ export default function GameSessionsPage() {
     }
   };
 
-  // No need to filter - query already fetches only user's sessions
-  const userSessions = hydratedSessions;
+  // Combine organized sessions with confirmed invites for "My Games"
+  const myGames = useMemo(() => {
+    const combined = [...hydratedSessions, ...confirmedInvites];
+    // Sort by date (most recent first)
+    return combined.sort((a, b) => {
+      const dateA = new Date(`${a.date} ${a.time}`);
+      const dateB = new Date(`${b.date} ${b.time}`);
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [hydratedSessions, confirmedInvites]);
+  
+  const userSessions = myGames;
 
   return (
     <div className="space-y-6">
@@ -382,14 +407,15 @@ export default function GameSessionsPage() {
         </div>
       )}
 
-      {/* My Invites Section */}
-      {!isLoadingInvites && !isHydratingInvites && hydratedInvites.length > 0 && (
+      {/* Pending Invites Section - Only shows invites awaiting response */}
+      {!isLoadingInvites && !isHydratingInvites && pendingInvites.length > 0 && (
         <>
           <div className="flex justify-between items-center mt-8">
-            <h2 className="text-xl font-semibold">My Invites</h2>
+            <h2 className="text-xl font-semibold">Pending Invites</h2>
+            <span className="text-sm text-muted-foreground">{pendingInvites.length} awaiting response</span>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {hydratedInvites.map((session) => (
+            {pendingInvites.map((session) => (
               <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
                 <GameSessionCard session={session} />
               </div>
@@ -400,7 +426,7 @@ export default function GameSessionsPage() {
 
       {(isLoadingInvites || isHydratingInvites) && hydratedSessions.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">My Invites</h2>
+          <h2 className="text-xl font-semibold mb-4">Pending Invites</h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 2 }).map((_, i) => (
               <LoadingSessionCard key={`invite-loading-${i}`} />

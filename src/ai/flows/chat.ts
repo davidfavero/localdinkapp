@@ -699,6 +699,7 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     // Process each name - could be a player OR a group
     const allResults: { id?: string; name: string; phone?: string; question?: string; isGroup?: boolean; groupName?: string }[] = [];
     const questions: string[] = [];
+    const unknownPlayersList: { name: string; suggestedEmail?: string; suggestedPhone?: string }[] = [];
     
     for (const playerName of (players || [])) {
       const trimmedName = playerName.toLowerCase().trim();
@@ -739,6 +740,11 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       // Otherwise, try to disambiguate as a player name
       const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
       if (result.question) {
+        // Check if this is an "unknown player" question
+        if (result.question.includes("don't know") || result.question.includes("To add them")) {
+          // Track this as an unknown player
+          unknownPlayersList.push({ name: playerName });
+        }
         questions.push(result.question);
       } else if (result.disambiguatedName) {
         const playerData = knownPlayers.find(p => `${p.firstName} ${p.lastName}` === result.disambiguatedName);
@@ -750,8 +756,13 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       }
     }
     
+    // Store unknown players for the UI to offer adding them
+    if (unknownPlayersList.length > 0) {
+      extractedDetails.unknownPlayers = unknownPlayersList;
+    }
+    
     if (questions.length > 0) {
-      return { confirmationText: questions.join(' ') };
+      return { ...extractedDetails, confirmationText: questions.join(' ') };
     }
 
     const invitedPlayers: { id?: string; name: string; phone?: string }[] = allResults.filter(r => r.name && !r.question);
@@ -892,7 +903,12 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       haveDetails.push(`at ${courtName}`);
     } else if (location && !courtId) {
       // We have a location name but couldn't find the court in user's courts
-      responseText = `I found all the details - ${formattedPlayerNames} on ${date || 'a date'} at ${time || 'a time'}. However, I couldn't find a court called "${location}" in your saved courts. Would you like to add it first, or use a different court?`;
+      // Flag this as an unknown court so the UI can offer to add it
+      extractedDetails.unknownCourt = {
+        name: location,
+        suggestedLocation: '', // Could be extracted from context if available
+      };
+      responseText = `I found all the details - ${formattedPlayerNames} on ${date || 'a date'} at ${time || 'a time'}. However, I couldn't find a court called "${location}" in your saved courts. Would you like me to add it?`;
     } else {
       needDetails.push('which court');
     }
