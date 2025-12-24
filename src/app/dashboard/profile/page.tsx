@@ -76,11 +76,10 @@ export default function ProfilePage() {
     defaultValues: {
       name: '',
       phone: '',
-      dinkRating: '4.25', // Placeholder
+      dinkRating: '4.25',
       doublesPreference: true,
-      homeCourtId: '', // This will be populated from user profile later
-      availability: 'Weekdays after 5 PM, flexible on weekends.', // placeholder
-      profileText: `I love playing competitive doubles. My home court is Sunnyvale Park but I can play anywhere in the South Bay. I'm usually free on weekdays after 5 PM and most times on weekends.`
+      homeCourtId: '',
+      availability: 'Weekdays after 5 PM, flexible on weekends.',
     },
   });
   

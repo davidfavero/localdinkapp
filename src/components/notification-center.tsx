@@ -61,7 +61,9 @@ function NotificationItem({
   
   const timeAgo = useMemo(() => {
     if (!notification.createdAt) return '';
-    const date = notification.createdAt.toDate?.() || new Date(notification.createdAt);
+    // Handle both Firestore Timestamp and regular Date
+    const timestamp = notification.createdAt as any;
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return formatDistanceToNow(date, { addSuffix: true });
   }, [notification.createdAt]);
 
