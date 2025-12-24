@@ -176,6 +176,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
             email: userEmail,
             avatarUrl: user.photoURL || '',
             ownerId: user.uid,
+            // Include phone number if user signed in with phone auth
+            ...(user.phoneNumber && { phone: user.phoneNumber }),
           };
           await setDoc(userDocRef, newUserProfile);
           
