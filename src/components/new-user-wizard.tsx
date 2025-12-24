@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RobinIcon } from '@/components/icons/robin-icon';
+import { PickleballBallIcon } from '@/components/icons/pickleball-ball-icon';
 import { Check, ChevronRight, MapPin, Users, Calendar, Sparkles } from 'lucide-react';
 import { useUser, useFirestore } from '@/firebase/provider';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -134,7 +135,9 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
               <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary flex items-center justify-center">
                 <RobinIcon className="h-10 w-10 text-accent" />
               </div>
-              <DialogTitle className="text-2xl">Welcome to LocalDink! 🎾</DialogTitle>
+              <DialogTitle className="text-2xl flex items-center justify-center gap-2">
+                Welcome to LocalDink! <PickleballBallIcon className="h-6 w-6 text-[#c4d64f] inline-block" />
+              </DialogTitle>
               <DialogDescription className="text-base mt-2">
                 I'm Robin, your AI scheduling assistant. Let me help you get set up so you can start playing pickleball with friends!
               </DialogDescription>
