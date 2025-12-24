@@ -41,6 +41,8 @@ export function useUser(user: User | null) {
             lastName: lastName.join(' '),
             email: user.email || '',
             avatarUrl: user.photoURL || '',
+            // Include phone number if user signed in with phone auth
+            ...(user.phoneNumber && { phone: user.phoneNumber }),
           };
           await setDoc(userDocRef, newUserProfile);
         } catch (error) {

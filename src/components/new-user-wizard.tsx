@@ -136,7 +136,7 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
                 <RobinIcon className="h-10 w-10 text-accent" />
               </div>
               <DialogTitle className="text-2xl flex items-center justify-center gap-2">
-                Welcome to LocalDink! <PickleballBallIcon className="h-6 w-6 text-[#c4d64f] inline-block" />
+                Welcome to LocalDink! <PickleballBallIcon className="h-6 w-6 inline-block" ballColor="#c4d64f" holeColor="#333" />
               </DialogTitle>
               <DialogDescription className="text-base mt-2">
                 I'm Robin, your AI scheduling assistant. Let me help you get set up so you can start playing pickleball with friends!
@@ -201,15 +201,24 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
                   />
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium">Phone (optional)</label>
-                <Input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="For game reminders"
-                  type="tel"
-                />
-              </div>
+              {/* Only show phone field if not already set from phone auth */}
+              {!profile?.phone && (
+                <div>
+                  <label className="text-sm font-medium">Phone (optional)</label>
+                  <Input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="For game reminders"
+                    type="tel"
+                  />
+                </div>
+              )}
+              {profile?.phone && (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  Phone number saved from sign-in
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep('welcome')}>
