@@ -1,6 +1,49 @@
 import { z } from 'zod';
 import type { Timestamp } from 'firebase/firestore';
 
+// Notification channel preferences
+export type NotificationChannels = {
+  inApp: boolean;    // Notification center + toasts (default: true)
+  push: boolean;     // Browser/device push (default: false until enabled)
+  sms: boolean;      // SMS messages (default: false until phone verified)
+};
+
+// Notification type preferences
+export type NotificationTypes = {
+  gameInvites: boolean;     // Direct invitations (default: true)
+  gameReminders: boolean;   // Upcoming game reminders (default: true)
+  rsvpUpdates: boolean;     // When players respond (default: true)
+  gameChanges: boolean;     // Time/location changes (default: true)
+  spotAvailable: boolean;   // Waitlist promotions (default: true)
+};
+
+export type NotificationPreferences = {
+  channels: NotificationChannels;
+  types: NotificationTypes;
+  quietHours?: {
+    enabled: boolean;
+    start: string;  // "22:00"
+    end: string;    // "08:00"
+    timezone: string;
+  };
+};
+
+// Default notification preferences for new users
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  channels: {
+    inApp: true,
+    push: false,
+    sms: false,
+  },
+  types: {
+    gameInvites: true,
+    gameReminders: true,
+    rsvpUpdates: true,
+    gameChanges: true,
+    spotAvailable: true,
+  },
+};
+
 export type Player = {
   id: string;
   name?: string; // Keep for fallback, but prefer firstName/lastName
@@ -16,6 +59,7 @@ export type Player = {
   availability?: string;
   ownerId?: string; // User who created this player contact
   linkedUserId?: string; // Links to a registered user account (if email/phone matches)
+  notificationPreferences?: NotificationPreferences; // User's notification settings
 };
 
 export type Court = {
@@ -157,4 +201,45 @@ export const ChatOutputSchema = z.object({
 })
 export type ChatOutput = z.infer<typeof ChatOutputSchema>
 
-    
+// ============================================
+// NOTIFICATION TYPES
+// ============================================
+
+export type NotificationType = 
+  | 'GAME_INVITE'           // Someone invited you to a game
+  | 'GAME_INVITE_ACCEPTED'  // Someone accepted your invite
+  | 'GAME_INVITE_DECLINED'  // Someone declined your invite
+  | 'GAME_REMINDER'         // Reminder for upcoming game
+  | 'GAME_CHANGED'          // Game details changed
+  | 'GAME_CANCELLED'        // Game was cancelled
+  | 'SPOT_AVAILABLE'        // You've been promoted from waitlist
+  | 'RSVP_EXPIRED';         // Your invite expired
+
+export type NotificationAction = 'accept' | 'decline' | 'view' | 'dismiss';
+
+export type Notification = {
+  id: string;
+  userId: string;           // Recipient user ID
+  type: NotificationType;
+  title: string;
+  body: string;
+  data: {
+    gameSessionId?: string;
+    inviterId?: string;
+    inviterName?: string;
+    courtName?: string;
+    gameDate?: string;
+    gameTime?: string;
+    matchType?: string;
+  };
+  read: boolean;
+  createdAt: Timestamp;
+  expiresAt?: Timestamp;
+  channels: ('inApp' | 'push' | 'sms')[];
+};
+
+// For creating notifications (without id, with serverTimestamp)
+export type NotificationCreate = Omit<Notification, 'id' | 'createdAt'> & {
+  createdAt?: any; // Will use serverTimestamp()
+};
+

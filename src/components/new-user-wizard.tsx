@@ -7,13 +7,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { PickleballBallIcon } from '@/components/icons/pickleball-ball-icon';
-import { Check, ChevronRight, MapPin, Users, Calendar, Sparkles } from 'lucide-react';
+import { Check, ChevronRight, MapPin, Users, Calendar, Sparkles, Bell, MessageSquare } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import type { NotificationPreferences } from '@/lib/types';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/lib/types';
 import { useUser, useFirestore } from '@/firebase/provider';
 import { doc, updateDoc } from 'firebase/firestore';
 import { addCourtAction, addPlayerAction } from '@/lib/actions';
 import { useRouter } from 'next/navigation';
 
-type WizardStep = 'welcome' | 'profile' | 'court' | 'players' | 'complete';
+type WizardStep = 'welcome' | 'profile' | 'notifications' | 'court' | 'players' | 'complete';
 
 interface NewUserWizardProps {
   open: boolean;
@@ -43,6 +46,11 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
   const [playerPhone, setPlayerPhone] = useState('');
   const [addedPlayers, setAddedPlayers] = useState<string[]>([]);
   
+  // Notification preferences state
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(
+    DEFAULT_NOTIFICATION_PREFERENCES
+  );
+  
   // Initialize with current profile data
   useEffect(() => {
     if (profile) {
@@ -63,9 +71,26 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
         lastName: lastName.trim(),
         phone: phone.trim(),
       });
-      setStep('court');
+      setStep('notifications');
     } catch (error) {
       console.error('Error saving profile:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleSaveNotifications = async () => {
+    if (!user || !firestore) return;
+    
+    setIsLoading(true);
+    try {
+      const userRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userRef, {
+        notificationPreferences: notificationPrefs,
+      });
+      setStep('court');
+    } catch (error) {
+      console.error('Error saving notifications:', error);
     } finally {
       setIsLoading(false);
     }
@@ -232,6 +257,79 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
           </>
         )}
         
+        {step === 'notifications' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                How should I notify you?
+              </DialogTitle>
+              <DialogDescription>
+                Choose how you want to hear about game invites and updates.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-primary/10">
+                    <Bell className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">In-App Notifications</label>
+                    <p className="text-xs text-muted-foreground">Bell icon in the app</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={notificationPrefs.channels.inApp}
+                  onCheckedChange={(checked) => setNotificationPrefs(prev => ({
+                    ...prev,
+                    channels: { ...prev.channels, inApp: checked }
+                  }))}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-green-100">
+                    <MessageSquare className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">SMS Text Messages</label>
+                    <p className="text-xs text-muted-foreground">
+                      {(profile?.phone || phone) 
+                        ? 'Get texts for game invites' 
+                        : 'Add phone number to enable'}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={notificationPrefs.channels.sms}
+                  onCheckedChange={(checked) => setNotificationPrefs(prev => ({
+                    ...prev,
+                    channels: { ...prev.channels, sms: checked }
+                  }))}
+                  disabled={!profile?.phone && !phone}
+                />
+              </div>
+              
+              {(profile?.phone || phone) && notificationPrefs.channels.sms && (
+                <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                  📱 SMS will be sent to {profile?.phone || phone}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep('profile')}>
+                Back
+              </Button>
+              <Button onClick={handleSaveNotifications} disabled={isLoading} className="flex-1">
+                {isLoading ? 'Saving...' : 'Continue'}
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
+        
         {step === 'court' && (
           <>
             <DialogHeader>
@@ -259,7 +357,7 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep('profile')}>
+              <Button variant="outline" onClick={() => setStep('notifications')}>
                 Back
               </Button>
               <Button onClick={handleAddCourt} disabled={isLoading} className="flex-1">

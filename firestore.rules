@@ -141,6 +141,33 @@ service cloud.firestore {
     }
 
     /**
+     * @description Controls access to notification documents.
+     * @path /notifications/{notificationId}
+     * @allow (get, list) - Users can read their own notifications.
+     * @allow (update) - Users can update their own notifications (mark as read).
+     * @allow (create, delete) - Only server/admin can create or delete notifications.
+     * @principle Users can only access and update their own notifications.
+     */
+    match /notifications/{notificationId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isOwner() {
+            return isSignedIn() && resource.data.userId == request.auth.uid;
+        }
+
+        // Users can read their own notifications
+        allow get: if isOwner();
+        allow list: if isSignedIn() && request.auth.uid != null;
+        // Users can mark their notifications as read
+        allow update: if isOwner() && request.resource.data.userId == resource.data.userId;
+        // Only server can create/delete (via Admin SDK)
+        allow create: if false;
+        allow delete: if false;
+    }
+
+    /**
      * @description Controls access to player contact documents.
      * @path /players/{playerId}
      * @allow (get, list) - Any authenticated user can read players (needed for AI and sessions).

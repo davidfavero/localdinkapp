@@ -15,10 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Upload } from 'lucide-react';
+import { Camera, Upload, Bell, MessageSquare, Smartphone } from 'lucide-react';
 import { collection, query, doc, updateDoc, where } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import type { Court, Player } from '@/lib/types';
+import type { Court, Player, NotificationPreferences } from '@/lib/types';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { UserAvatar } from '@/components/user-avatar';
@@ -59,6 +60,10 @@ export default function ProfilePage() {
 
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(
+    DEFAULT_NOTIFICATION_PREFERENCES
+  );
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
 
   const courtsQuery = useMemoFirebase(
     () => firestore && user?.uid ? query(collection(firestore, 'courts'), where('ownerId', '==', user.uid)) : null, 
@@ -88,7 +93,11 @@ export default function ProfilePage() {
         doublesPreference: currentUser.doublesPreference ?? true,
         homeCourtId: currentUser.homeCourtId || '',
         availability: currentUser.availability || 'Weekdays after 5 PM, flexible on weekends.',
-      })
+      });
+      // Load notification preferences
+      if (currentUser.notificationPreferences) {
+        setNotificationPrefs(currentUser.notificationPreferences);
+      }
     }
   }, [currentUser, form]);
 
@@ -253,6 +262,45 @@ export default function ProfilePage() {
       });
   }
 
+  const handleNotificationPrefChange = (
+    category: 'channels' | 'types',
+    key: string,
+    value: boolean
+  ) => {
+    setNotificationPrefs(prev => ({
+      ...prev,
+      [category]: {
+        ...prev[category],
+        [key]: value,
+      },
+    }));
+  };
+
+  const saveNotificationPreferences = async () => {
+    if (!firestore || !user?.uid) return;
+    
+    setIsSavingNotifications(true);
+    const userRef = doc(firestore, 'users', user.uid);
+    
+    try {
+      await updateDoc(userRef, {
+        notificationPreferences: notificationPrefs,
+      });
+      toast({
+        title: 'Notification Settings Saved',
+        description: 'Your notification preferences have been updated.',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: 'Could not save notification settings. Please try again.',
+      });
+    } finally {
+      setIsSavingNotifications(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {imageToCrop && (
@@ -413,6 +461,138 @@ export default function ProfilePage() {
           </div>
         </form>
       </Form>
+
+      {/* Notification Preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            Notification Settings
+          </CardTitle>
+          <CardDescription>
+            Choose how you want to be notified about games and updates.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Notification Channels */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-muted-foreground">Notification Channels</h4>
+            
+            <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <Bell className="h-4 w-4 text-primary" />
+                </div>
+                <div className="space-y-0.5">
+                  <label className="text-sm font-medium">In-App Notifications</label>
+                  <p className="text-xs text-muted-foreground">
+                    See notifications in the app's notification center
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={notificationPrefs.channels.inApp}
+                onCheckedChange={(checked) => handleNotificationPrefChange('channels', 'inApp', checked)}
+              />
+            </div>
+            
+            <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-green-100">
+                  <MessageSquare className="h-4 w-4 text-green-600" />
+                </div>
+                <div className="space-y-0.5">
+                  <label className="text-sm font-medium">SMS Notifications</label>
+                  <p className="text-xs text-muted-foreground">
+                    Get text messages for important updates
+                    {!currentUser?.phone && (
+                      <span className="block text-orange-600 mt-1">
+                        Add a phone number above to enable SMS
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={notificationPrefs.channels.sms}
+                onCheckedChange={(checked) => handleNotificationPrefChange('channels', 'sms', checked)}
+                disabled={!currentUser?.phone}
+              />
+            </div>
+          </div>
+
+          {/* Notification Types */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-muted-foreground">What to Notify</h4>
+            
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">Game Invitations</label>
+                  <p className="text-xs text-muted-foreground">When someone invites you to play</p>
+                </div>
+                <Switch
+                  checked={notificationPrefs.types.gameInvites}
+                  onCheckedChange={(checked) => handleNotificationPrefChange('types', 'gameInvites', checked)}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">Game Reminders</label>
+                  <p className="text-xs text-muted-foreground">Reminders before your upcoming games</p>
+                </div>
+                <Switch
+                  checked={notificationPrefs.types.gameReminders}
+                  onCheckedChange={(checked) => handleNotificationPrefChange('types', 'gameReminders', checked)}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">RSVP Updates</label>
+                  <p className="text-xs text-muted-foreground">When players accept or decline your invites</p>
+                </div>
+                <Switch
+                  checked={notificationPrefs.types.rsvpUpdates}
+                  onCheckedChange={(checked) => handleNotificationPrefChange('types', 'rsvpUpdates', checked)}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">Game Changes</label>
+                  <p className="text-xs text-muted-foreground">When game time or location changes</p>
+                </div>
+                <Switch
+                  checked={notificationPrefs.types.gameChanges}
+                  onCheckedChange={(checked) => handleNotificationPrefChange('types', 'gameChanges', checked)}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">Spot Available</label>
+                  <p className="text-xs text-muted-foreground">When you're moved off a waitlist</p>
+                </div>
+                <Switch
+                  checked={notificationPrefs.types.spotAvailable}
+                  onCheckedChange={(checked) => handleNotificationPrefChange('types', 'spotAvailable', checked)}
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button 
+            onClick={saveNotificationPreferences} 
+            disabled={isSavingNotifications}
+            className="ml-auto"
+          >
+            {isSavingNotifications ? 'Saving...' : 'Save Notification Settings'}
+          </Button>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

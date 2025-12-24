@@ -19,9 +19,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { getClientAuth, signOutUser } from '@/firebase/auth';
 import { setAuthTokenAction, clearAuthToken } from '@/lib/auth-actions';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { NewUserWizard } from '@/components/new-user-wizard';
+import { NotificationBell } from '@/components/notification-bell';
+import type { Notification } from '@/lib/types';
 
 const navItems = [
   { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
@@ -77,6 +79,21 @@ export default function DashboardLayout({
       return status === 'PENDING';
     }).length;
   }, [invitedSessions, user]);
+  
+  // Query for unread notifications
+  const notificationsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+      collection(firestore, 'notifications'),
+      where('userId', '==', user.uid),
+      where('read', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+  }, [firestore, user]);
+  
+  const { data: unreadNotifications } = useCollection<Notification>(notificationsQuery);
+  const unreadCount = unreadNotifications?.length || 0;
   
   // New user detection - show wizard if profile is incomplete
   const [showNewUserWizard, setShowNewUserWizard] = useState(false);
@@ -180,7 +197,10 @@ export default function DashboardLayout({
       
       <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
           <h1 className="text-xl font-bold text-foreground font-headline">{pageTitle}</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+              {/* Notification Bell */}
+              <NotificationBell unreadCount={unreadCount} />
+              
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all">
