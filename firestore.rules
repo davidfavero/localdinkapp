@@ -157,11 +157,12 @@ service cloud.firestore {
             return isSignedIn() && resource.data.userId == request.auth.uid;
         }
 
-        // Users can read their own notifications
+        // Users can read their own notifications (get single doc)
         allow get: if isOwner();
-        allow list: if isSignedIn() && request.auth.uid != null;
+        // Users can list/query notifications (the query itself filters by userId)
+        allow list: if isSignedIn();
         // Users can mark their notifications as read
-        allow update: if isOwner() && request.resource.data.userId == resource.data.userId;
+        allow update: if isOwner();
         // Only server can create/delete (via Admin SDK)
         allow create: if false;
         allow delete: if false;
