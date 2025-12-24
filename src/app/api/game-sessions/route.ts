@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAdminDb, getLastInitError } from '@/firebase/admin';
 import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
+import { sendGameInviteNotifications } from '@/lib/notifications';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -129,6 +130,34 @@ export async function POST(request: Request) {
           }`.trim()
         : 'the organizer';
 
+    const formattedStartTime = data.startTimeDisplay ?? formatFallback(startDate);
+    const matchType = data.isDoubles ? 'Doubles' : 'Singles';
+    const dateDisplay = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const timeDisplay = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    // Get invited player IDs (excluding organizer)
+    const invitedPlayerIds = data.playerIds.filter(id => id !== data.organizerId);
+    
+    // Send in-app notifications to invited players
+    if (invitedPlayerIds.length > 0) {
+      try {
+        await sendGameInviteNotifications({
+          gameSessionId: sessionRef.id,
+          inviterName: organizerName,
+          inviterId: data.organizerId,
+          inviteeIds: invitedPlayerIds,
+          matchType,
+          date: dateDisplay,
+          time: timeDisplay,
+          courtName: resolvedCourtName || 'the courts',
+        });
+        console.log(`In-app notifications sent to ${invitedPlayerIds.length} players`);
+      } catch (notifError) {
+        console.error('Error sending in-app notifications:', notifError);
+        // Don't fail the request if notifications fail
+      }
+    }
+
     const playerIds = new Set<string>(data.playerIds);
     data.attendees
       .filter((attendee) => attendee.source === 'player')
@@ -137,7 +166,6 @@ export async function POST(request: Request) {
     const playerRefs = Array.from(playerIds).map((id) => adminDb.collection('players').doc(id));
     const playerSnaps = await Promise.all(playerRefs.map((ref) => ref.get()));
 
-    const formattedStartTime = data.startTimeDisplay ?? formatFallback(startDate);
     const locationLabel = [resolvedCourtName, resolvedCourtLocation]
       .filter((segment) => typeof segment === 'string' && segment.trim().length > 0)
       .join(' • ');

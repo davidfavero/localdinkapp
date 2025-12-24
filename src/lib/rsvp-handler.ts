@@ -9,6 +9,7 @@ import { getAdminDb } from '@/firebase/admin';
 import { sendSmsMessage, normalizeToE164, isTwilioConfigured } from '@/server/twilio';
 import type { RsvpStatus, GameSessionStatus, Player } from './types';
 import { FieldValue } from 'firebase-admin/firestore';
+import { sendNotification, sendRsvpNotification } from './notifications';
 
 export type RsvpActionResult = {
   success: boolean;
@@ -153,7 +154,7 @@ async function getPlayerDetails(playerId: string): Promise<Player | null> {
 /**
  * Send SMS notification (with error handling)
  */
-async function sendNotification(phone: string | undefined, message: string): Promise<boolean> {
+async function sendSmsNotification(phone: string | undefined, message: string): Promise<boolean> {
   if (!phone || !isTwilioConfigured()) {
     console.log('[rsvp] Skipping notification - no phone or Twilio not configured');
     return false;
@@ -245,10 +246,29 @@ export async function handleAccept(
   ]);
   
   const playerName = player ? `${player.firstName} ${player.lastName}`.trim() : 'A player';
+  const matchType = session.isDoubles ? 'Doubles' : 'Singles';
+  const gameDate = session.startTimeDisplay || 'upcoming game';
   
-  // Notify organizer
+  // Send in-app notification to organizer
+  if (session.organizerId !== playerId) {
+    try {
+      await sendRsvpNotification({
+        organizerId: session.organizerId,
+        responderId: playerId,
+        responderName: playerName,
+        gameSessionId: sessionId,
+        matchType,
+        date: gameDate,
+        accepted: true,
+      });
+    } catch (notifError) {
+      console.error('[rsvp] Error sending in-app notification:', notifError);
+    }
+  }
+  
+  // Legacy SMS notification to organizer (keeping for now)
   if (organizer?.phone && organizer.id !== playerId) {
-    await sendNotification(
+    await sendSmsNotification(
       organizer.phone, 
       `✅ ${playerName} confirmed for your pickleball game on ${session.startTimeDisplay || 'upcoming'}!`
     );
@@ -304,9 +324,29 @@ export async function handleDecline(
   ]);
   
   const playerName = player ? `${player.firstName} ${player.lastName}`.trim() : 'A player';
+  const matchType = session.isDoubles ? 'Doubles' : 'Singles';
+  const gameDate = session.startTimeDisplay || 'upcoming game';
   
+  // Send in-app notification to organizer
+  if (session.organizerId !== playerId) {
+    try {
+      await sendRsvpNotification({
+        organizerId: session.organizerId,
+        responderId: playerId,
+        responderName: playerName,
+        gameSessionId: sessionId,
+        matchType,
+        date: gameDate,
+        accepted: false,
+      });
+    } catch (notifError) {
+      console.error('[rsvp] Error sending in-app notification:', notifError);
+    }
+  }
+  
+  // Legacy SMS notification
   if (organizer?.phone && organizer.id !== playerId) {
-    await sendNotification(
+    await sendSmsNotification(
       organizer.phone, 
       `${playerName} can't make your pickleball game on ${session.startTimeDisplay || 'upcoming'}.`
     );
@@ -375,7 +415,7 @@ export async function handleCancel(
   
   // Notify organizer
   if (organizer?.phone && organizer.id !== playerId) {
-    await sendNotification(
+    await sendSmsNotification(
       organizer.phone, 
       `⚠️ ${playerName} cancelled for your pickleball game on ${session.startTimeDisplay || 'upcoming'}. Spot reopened!`
     );
@@ -389,7 +429,7 @@ export async function handleCancel(
   for (const confirmedId of confirmedPlayerIds) {
     const confirmedPlayer = await getPlayerDetails(confirmedId);
     if (confirmedPlayer?.phone) {
-      await sendNotification(
+      await sendSmsNotification(
         confirmedPlayer.phone,
         `${playerName} dropped out of the pickleball game. Looking for a replacement!`
       );
@@ -438,7 +478,7 @@ Reply CANCEL if you can no longer make it.`;
   // Notify confirmed players
   for (const player of confirmedPlayers) {
     if (player?.phone) {
-      await sendNotification(player.phone, gameFullMessage);
+      await sendSmsNotification(player.phone, gameFullMessage);
     }
   }
   
@@ -450,7 +490,7 @@ Reply CANCEL if you can no longer make it.`;
   for (const playerId of otherIds) {
     const player = await getPlayerDetails(playerId);
     if (player?.phone) {
-      await sendNotification(
+      await sendSmsNotification(
         player.phone,
         `The pickleball game on ${session.startTimeDisplay || 'upcoming'} is now full. We'll let you know if a spot opens!`
       );
@@ -475,7 +515,7 @@ async function notifySpotOpened(
   for (const waitlistId of alternates) {
     const player = await getPlayerDetails(waitlistId);
     if (player?.phone) {
-      await sendNotification(
+      await sendSmsNotification(
         player.phone,
         `🏓 A spot just opened up! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to claim it!`
       );
@@ -490,7 +530,7 @@ async function notifySpotOpened(
   for (const pendingId of pendingIds) {
     const player = await getPlayerDetails(pendingId);
     if (player?.phone) {
-      await sendNotification(
+      await sendSmsNotification(
         player.phone,
         `🏓 Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to join!`
       );
@@ -527,7 +567,7 @@ export async function sendGameInvites(
 
 Reply YES to join or NO to decline.`;
     
-    const success = await sendNotification(player.phone, message);
+    const success = await sendSmsNotification(player.phone, message);
     if (success) {
       sent++;
     } else {

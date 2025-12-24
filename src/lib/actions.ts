@@ -256,6 +256,36 @@ export async function updateRsvpStatusAction(
             [`playerStatuses.${playerId}`]: status,
         });
 
+        // Send in-app notification to organizer
+        if (sessionData?.organizerId && sessionData.organizerId !== playerId) {
+            try {
+                const { sendRsvpNotification } = await import('./notifications');
+                
+                // Get player name
+                const playerDoc = await adminDb.collection('users').doc(playerId).get();
+                const playerData = playerDoc.exists ? playerDoc.data() : null;
+                const playerName = playerData 
+                    ? `${playerData.firstName || ''} ${playerData.lastName || ''}`.trim() || 'A player'
+                    : 'A player';
+                
+                const matchType = sessionData.isDoubles ? 'Doubles' : 'Singles';
+                const gameDate = sessionData.startTimeDisplay || 'upcoming game';
+                
+                await sendRsvpNotification({
+                    organizerId: sessionData.organizerId,
+                    responderId: playerId,
+                    responderName: playerName,
+                    gameSessionId: sessionId,
+                    matchType,
+                    date: gameDate,
+                    accepted: status === 'CONFIRMED',
+                });
+            } catch (notifError) {
+                console.error('Error sending RSVP notification:', notifError);
+                // Don't fail the action if notification fails
+            }
+        }
+
         return { 
             success: true, 
             message: status === 'CONFIRMED' 

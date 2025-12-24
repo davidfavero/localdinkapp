@@ -2,9 +2,11 @@ import 'server-only';
 
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAdminApp } from '@/firebase/admin';
-import { sendSmsMessage, normalizeToE164, isTwilioConfigured } from '@/server/twilio';
 import type { NotificationType, NotificationCreate, Player, NotificationPreferences } from './types';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from './types';
+
+// SMS is currently disabled - will be enabled when Twilio is configured
+const SMS_ENABLED = false;
 
 // Initialize Firestore
 function getDb() {
@@ -172,9 +174,12 @@ export async function sendNotification(options: SendNotificationOptions): Promis
     }
   }
   
-  // Send SMS notification
-  if (prefs.channels.sms && template.smsBody && userData.phone) {
+  // Send SMS notification (currently disabled until Twilio is configured)
+  if (SMS_ENABLED && prefs.channels.sms && template.smsBody && userData.phone) {
     try {
+      // Dynamic import to avoid issues when Twilio isn't configured
+      const { sendSmsMessage, normalizeToE164, isTwilioConfigured } = await import('@/server/twilio');
+      
       if (!isTwilioConfigured()) {
         console.warn('Twilio not configured, skipping SMS');
       } else {
