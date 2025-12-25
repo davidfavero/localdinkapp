@@ -80,20 +80,27 @@ export default function DashboardLayout({
     }).length;
   }, [invitedSessions, user]);
   
-  // Query for unread notifications
+  // Query for unread notifications - wrapped to handle errors gracefully
   const notificationsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
+    // Simple query without compound filters to avoid index requirements
     return query(
       collection(firestore, 'notifications'),
       where('userId', '==', user.uid),
-      where('read', '==', false),
-      orderBy('createdAt', 'desc'),
       limit(50)
     );
   }, [firestore, user]);
   
-  const { data: unreadNotifications } = useCollection<Notification>(notificationsQuery);
-  const unreadCount = unreadNotifications?.length || 0;
+  const { data: notifications, error: notificationsError } = useCollection<Notification>(notificationsQuery);
+  
+  // Filter unread notifications client-side and handle errors gracefully
+  const unreadCount = useMemo(() => {
+    if (notificationsError) {
+      console.warn('Could not load notifications:', notificationsError);
+      return 0;
+    }
+    return notifications?.filter(n => !n.read).length || 0;
+  }, [notifications, notificationsError]);
   
   // New user detection - show wizard if profile is incomplete
   const [showNewUserWizard, setShowNewUserWizard] = useState(false);
