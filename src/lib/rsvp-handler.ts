@@ -39,29 +39,37 @@ export async function getPlayerByPhone(phone: string): Promise<(Player & { id: s
   const adminDb = await getAdminDb();
   if (!adminDb) return null;
   
-  const normalizedPhone = normalizeToE164(phone);
-  if (!normalizedPhone) return null;
-  
-  // Check users collection
-  const usersSnap = await adminDb.collection('users')
-    .where('phone', '==', normalizedPhone)
-    .limit(1)
-    .get();
-  
-  if (!usersSnap.empty) {
-    const doc = usersSnap.docs[0];
-    return { id: doc.id, ...doc.data() } as Player & { id: string };
+  const raw = phone?.trim();
+  const normalizedPhone = normalizeToE164(raw);
+  const digitsOnly = raw?.replace(/\D/g, '') || '';
+  const candidatePhones = new Set<string>();
+
+  if (raw) candidatePhones.add(raw);
+  if (normalizedPhone) candidatePhones.add(normalizedPhone);
+  if (digitsOnly) candidatePhones.add(digitsOnly);
+  if (digitsOnly.length === 10) {
+    candidatePhones.add(`+1${digitsOnly}`);
+    candidatePhones.add(`1${digitsOnly}`);
   }
-  
-  // Check players collection
-  const playersSnap = await adminDb.collection('players')
-    .where('phone', '==', normalizedPhone)
-    .limit(1)
-    .get();
-  
-  if (!playersSnap.empty) {
-    const doc = playersSnap.docs[0];
-    return { id: doc.id, ...doc.data() } as Player & { id: string };
+  if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+    candidatePhones.add(`+${digitsOnly}`);
+  }
+
+  const collections = ['users', 'players'] as const;
+
+  for (const collectionName of collections) {
+    for (const candidate of candidatePhones) {
+      const snap = await adminDb
+        .collection(collectionName)
+        .where('phone', '==', candidate)
+        .limit(1)
+        .get();
+
+      if (!snap.empty) {
+        const doc = snap.docs[0];
+        return { id: doc.id, ...doc.data() } as Player & { id: string };
+      }
+    }
   }
   
   return null;

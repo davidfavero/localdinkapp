@@ -11,14 +11,19 @@ import {
 import { sendSmsMessage, normalizeToE164 } from '@/server/twilio';
 import Twilio from 'twilio';
 
-// Twilio webhook validation (optional but recommended)
+// Twilio webhook validation (strict in production)
 function validateTwilioRequest(req: NextRequest, body: string): boolean {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const signature = req.headers.get('x-twilio-signature');
   
-  if (!authToken || !signature) {
-    console.warn('[sms-inbound] Missing auth token or signature - skipping validation');
-    return true; // Allow in development
+  if (!authToken) {
+    console.warn('[sms-inbound] Missing TWILIO_AUTH_TOKEN');
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  if (!signature) {
+    console.warn('[sms-inbound] Missing x-twilio-signature header');
+    return process.env.NODE_ENV !== 'production';
   }
   
   const url = req.url;
@@ -31,12 +36,18 @@ export async function POST(req: NextRequest) {
   console.log('[sms-inbound] Received webhook');
   
   try {
-    // Parse form data from Twilio
-    const formData = await req.formData();
-    const from = formData.get('From') as string;
-    const to = formData.get('To') as string;
-    const body = formData.get('Body') as string;
-    const messageSid = formData.get('MessageSid') as string;
+    const rawBody = await req.text();
+    const isValid = validateTwilioRequest(req, rawBody);
+
+    if (!isValid) {
+      console.warn('[sms-inbound] Invalid Twilio signature');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+    }
+
+    // Parse form data payload from Twilio
+    const params = new URLSearchParams(rawBody);
+    const from = params.get('From') || '';
+    const body = params.get('Body') || '';
     
     console.log('[sms-inbound] From:', from, 'Body:', body);
     

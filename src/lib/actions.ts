@@ -11,6 +11,7 @@ import type {
 import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
 import type { ChatInput, ChatOutput, Player, Group, Court } from "./types";
+import { normalizeToE164 } from "@/server/twilio";
 
 export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
@@ -188,11 +189,13 @@ export async function addPlayerAction(
             return { success: false, message: 'Database not available' };
         }
 
+        const normalizedPhone = normalizeToE164(playerData.phone);
+
         const newPlayer = {
             firstName: playerData.firstName,
             lastName: playerData.lastName || '',
             email: playerData.email?.toLowerCase().trim() || '',
-            phone: playerData.phone || '',
+            phone: normalizedPhone || '',
             avatarUrl: '',
             ownerId: userId,
             createdAt: new Date().toISOString(),

@@ -50,6 +50,17 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(
     DEFAULT_NOTIFICATION_PREFERENCES
   );
+
+  const normalizePhoneForStorage = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    if (digitsOnly.length === 10) return `+1${digitsOnly}`;
+    if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) return `+${digitsOnly}`;
+    if (digitsOnly.length >= 10 && digitsOnly.length <= 15) return `+${digitsOnly}`;
+    return trimmed;
+  };
   
   // Initialize with current profile data
   useEffect(() => {
@@ -69,7 +80,7 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
       await updateDoc(userRef, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        phone: phone.trim(),
+        phone: normalizePhoneForStorage(phone),
       });
       setStep('notifications');
     } catch (error) {
