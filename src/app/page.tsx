@@ -80,7 +80,17 @@ export default function LandingPage() {
       </main>
 
       <footer className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} LocalDink. Game on.</p>
+        <div className="flex flex-col items-center gap-2">
+          <p>&copy; {new Date().getFullYear()} LocalDink. Game on.</p>
+          <div className="flex items-center gap-4 text-sm">
+            <Link href="/privacy-policy" className="underline underline-offset-4">
+              Privacy Policy
+            </Link>
+            <Link href="/terms-and-conditions" className="underline underline-offset-4">
+              Terms and Conditions
+            </Link>
+          </div>
+        </div>
       </footer>
     </div>
   );

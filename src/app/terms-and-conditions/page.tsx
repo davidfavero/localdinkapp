@@ -101,7 +101,10 @@ export default function TermsAndConditionsPage() {
           </section>
         </div>
 
-        <div className="mt-10 border-t pt-6 text-sm text-muted-foreground">
+        <div className="mt-10 border-t pt-6 text-sm text-muted-foreground flex items-center gap-4">
+          <Link href="/" className="underline underline-offset-4">
+            Back to LocalDink
+          </Link>
           <Link href="/privacy-policy" className="underline underline-offset-4">
             View Privacy Policy
           </Link>
