@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  const host = request.headers.get('host')?.toLowerCase() ?? '';
+  if (host.startsWith('www.localdink.com')) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.protocol = 'https';
+    redirectUrl.host = 'localdink.com';
+    return NextResponse.redirect(redirectUrl, 308);
+  }
+
   const { pathname } = request.nextUrl;
   
   // Public routes that don't require authentication
