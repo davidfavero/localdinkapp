@@ -15,6 +15,12 @@ import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, 
 import { disambiguateName } from './name-disambiguation';
 import { createGameSessionTool } from '@/ai/tools/create-game-session';
 
+const APP_TIME_ZONE = 'America/New_York';
+
+function getCurrentAppDate(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: APP_TIME_ZONE }));
+}
+
 // ============================================================================
 // REGEX-BASED EXTRACTION HELPERS (Fallback when AI misses details)
 // ============================================================================
@@ -24,7 +30,7 @@ import { createGameSessionTool } from '@/ai/tools/create-game-session';
  */
 function extractDateFromText(text: string): string | null {
   const lower = text.toLowerCase();
-  const today = new Date();
+  const today = getCurrentAppDate();
   
   // "today"
   if (/\btoday\b/.test(lower)) {
@@ -361,9 +367,8 @@ function formatPlayerNames(names: string[]): string {
 // Returns an ISO string that represents the intended LOCAL time (assumes US Eastern timezone)
 function parseDateTime(dateStr: string, timeStr: string): Date | null {
   try {
-    // Get current date in Eastern timezone for reference
-    const nowEastern = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-    const easternNow = new Date(nowEastern);
+    // Get current app date in Eastern timezone for reference
+    const easternNow = getCurrentAppDate();
     
     let year = easternNow.getFullYear();
     let month = easternNow.getMonth();
@@ -453,12 +458,22 @@ export async function chat(
     
     const historyToConsider = input.history.slice(-6); // Consider last 6 messages for better context
     const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
+    const currentMessageText = input.message.trim();
+    const currentMessagePlayers = extractPlayersFromText(currentMessageText, knownPlayers);
+    const shouldUseCurrentMessageForPlayers =
+      !isConfirmation(currentMessageText) &&
+      !isPhoneNumber(currentMessageText) &&
+      currentMessagePlayers.length > 0;
 
     // ========================================================================
     // STEP 1: Gather ALL text from conversation (current + history) for extraction
     // ========================================================================
-    const allUserMessages = historyToConsider.filter(h => h.sender === 'user').map(h => h.text);
-    allUserMessages.push(input.message);
+    const allUserMessages = shouldUseCurrentMessageForPlayers
+      ? [currentMessageText]
+      : [
+          ...historyToConsider.filter((h) => h.sender === 'user').map((h) => h.text),
+          currentMessageText,
+        ];
     const combinedText = allUserMessages.join(' '); // All user text combined for regex extraction
     
     console.log('[chat] Combined user text for extraction:', combinedText);
@@ -469,7 +484,9 @@ export async function chat(
     const regexDate = extractDateFromText(combinedText);
     const regexTime = extractTimeFromText(combinedText);
     const regexLocation = extractLocationFromText(combinedText, knownCourts);
-    const regexPlayers = extractPlayersFromText(combinedText, knownPlayers);
+    const regexPlayers = shouldUseCurrentMessageForPlayers
+      ? currentMessagePlayers
+      : extractPlayersFromText(combinedText, knownPlayers);
     
     console.log('[chat] Regex extraction results:', {
       date: regexDate,
@@ -503,7 +520,7 @@ export async function chat(
         }
     }
 
-    const today = new Date();
+    const today = getCurrentAppDate();
     const todayFormatted = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     
     // Calculate day of week dates for better relative date parsing
@@ -637,6 +654,10 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     if (regexPlayers.length > 0 && (!extractedDetails.players || extractedDetails.players.length === 0)) {
       console.log('[chat] Using regex players:', regexPlayers);
       extractedDetails.players = regexPlayers;
+    }
+    if (shouldUseCurrentMessageForPlayers && currentMessagePlayers.length > 0) {
+      // Explicit names in a new user request should override stale conversation carry-over.
+      extractedDetails.players = currentMessagePlayers;
     }
     
     // Also check if regex found better/more complete data even if AI found something
@@ -853,8 +874,17 @@ Only ask a question if something is genuinely missing from ALL messages.`,
           const notifiedMsg = createResult.notifiedCount && createResult.notifiedCount > 0
             ? ` I've sent SMS invitations to ${createResult.notifiedCount} player${createResult.notifiedCount === 1 ? '' : 's'}.`
             : '';
+          const failedTexts = (createResult.skippedPlayers || []).filter(
+            (item: { playerId: string; reason: string }) => item.reason !== 'Duplicate phone number'
+          );
+          const skippedMsg = failedTexts.length > 0
+            ? ` I could not send SMS to ${failedTexts.length} player${failedTexts.length === 1 ? '' : 's'} (${failedTexts
+                .slice(0, 2)
+                .map((item: { playerId: string; reason: string }) => item.reason)
+                .join('; ')}).`
+            : '';
           return {
-            confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}.${notifiedMsg} You can view it in your Game Sessions.`,
+            confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}.${notifiedMsg}${skippedMsg} You can view it in your Game Sessions.`,
           };
         } else {
           return {

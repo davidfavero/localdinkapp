@@ -30,6 +30,12 @@ export const createGameSessionTool = ai.defineTool(
       success: z.boolean(),
       sessionId: z.string().optional(),
       notifiedCount: z.number().optional(),
+      skippedPlayers: z.array(
+        z.object({
+          playerId: z.string(),
+          reason: z.string(),
+        })
+      ).optional(),
       error: z.string().optional(),
     }),
   },
@@ -78,6 +84,7 @@ export const createGameSessionTool = ai.defineTool(
         success: true,
         sessionId: data.sessionId,
         notifiedCount: data.notifiedCount || 0,
+        skippedPlayers: data.skippedPlayers || [],
       };
     } catch (error: any) {
       console.error('Failed to create game session:', error);
