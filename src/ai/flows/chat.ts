@@ -190,6 +190,7 @@ function extractLocationFromText(text: string, knownCourts: Court[]): { location
  */
 function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] {
   const players: string[] = [];
+  const firstNameMentions = new Set<string>();
   const lower = text.toLowerCase();
   
   // Always add "me" if it's a scheduling request
@@ -216,9 +217,13 @@ function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] 
     // Check for first name in context of "with" or "and"
     const withPattern = new RegExp(`\\b(with|and)\\s+${firstName}\\b`, 'i');
     if (withPattern.test(lower)) {
-      players.push(`${player.firstName} ${player.lastName}`);
+      // Keep first-name mention as-is so disambiguation can ask clarifying questions
+      // when multiple contacts share that first name.
+      firstNameMentions.add(player.firstName);
     }
   }
+
+  firstNameMentions.forEach((name) => players.push(name));
   
   return [...new Set(players)]; // Remove duplicates
 }
@@ -836,13 +841,7 @@ Only ask a question if something is genuinely missing from ALL messages.`,
           { id: currentUser.id, source: 'user' as const },
           ...uniqueInvitedPlayers
             .filter(p => p.id && p.id !== currentUser.id)
-            .map(p => {
-              // Find the full player data to check if they're a user or contact
-              const fullPlayer = knownPlayers.find(kp => kp.id === p.id);
-              // If they have an email, they're likely a registered user
-              const isUser = fullPlayer?.email && fullPlayer.email.length > 0;
-              return { id: p.id!, source: isUser ? 'user' as const : 'player' as const };
-            }),
+            .map(p => ({ id: p.id!, source: 'player' as const })),
         ];
 
         // Build player statuses

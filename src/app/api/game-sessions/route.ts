@@ -158,13 +158,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const playerIds = new Set<string>(data.playerIds);
-    data.attendees
-      .filter((attendee) => attendee.source === 'player')
-      .forEach((attendee) => playerIds.add(attendee.id));
-
-    const playerRefs = Array.from(playerIds).map((id) => adminDb.collection('players').doc(id));
-    const playerSnaps = await Promise.all(playerRefs.map((ref) => ref.get()));
+    const smsCandidates = data.attendees.filter(
+      (attendee) => attendee.id !== data.organizerId
+    );
 
     const locationLabel = [resolvedCourtName, resolvedCourtLocation]
       .filter((segment) => typeof segment === 'string' && segment.trim().length > 0)
@@ -179,21 +175,29 @@ export async function POST(request: Request) {
       console.warn('Twilio is not configured. SMS notifications will be skipped.');
     }
 
-    for (const snap of playerSnaps) {
+    for (const candidate of smsCandidates) {
+      const recordRef =
+        candidate.source === 'user'
+          ? adminDb.collection('users').doc(candidate.id)
+          : adminDb.collection('players').doc(candidate.id);
+      const snap = await recordRef.get();
       if (!snap.exists) {
-        skippedPlayers.push({ playerId: snap.id, reason: 'Player record not found' });
+        skippedPlayers.push({
+          playerId: candidate.id,
+          reason: `${candidate.source === 'user' ? 'User' : 'Player'} record not found`,
+        });
         continue;
       }
 
       const playerData = snap.data() as Record<string, any>;
       const phone = normalizeToE164(playerData?.phone);
       if (!phone) {
-        skippedPlayers.push({ playerId: snap.id, reason: 'Missing or invalid phone number' });
+        skippedPlayers.push({ playerId: candidate.id, reason: 'Missing or invalid phone number' });
         continue;
       }
 
       if (seenPhones.has(phone)) {
-        skippedPlayers.push({ playerId: snap.id, reason: 'Duplicate phone number' });
+        skippedPlayers.push({ playerId: candidate.id, reason: 'Duplicate phone number' });
         continue;
       }
       seenPhones.add(phone);
@@ -219,13 +223,13 @@ export async function POST(request: Request) {
 
       try {
         const message = await sendSmsMessage({ to: phone, body: messageBody });
-        notifiedPlayers.push({ playerId: snap.id, phone, messageSid: message.sid });
-        console.log(`SMS sent successfully to ${phone} for player ${snap.id}`);
+        notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message.sid });
+        console.log(`SMS sent successfully to ${phone} for attendee ${candidate.id}`);
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : 'Twilio failed to send the message.';
-        console.warn(`Failed to send SMS to ${phone} for player ${snap.id}:`, errorMessage);
-        skippedPlayers.push({ playerId: snap.id, reason: errorMessage });
+        console.warn(`Failed to send SMS to ${phone} for attendee ${candidate.id}:`, errorMessage);
+        skippedPlayers.push({ playerId: candidate.id, reason: errorMessage });
       }
     }
 
