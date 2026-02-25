@@ -214,9 +214,16 @@ function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] 
       continue;
     }
     
-    // Check for first name in context of "with" or "and"
-    const withPattern = new RegExp(`\\b(with|and)\\s+${firstName}\\b`, 'i');
-    if (withPattern.test(lower)) {
+    // Check for first name in common invite phrasing.
+    // Examples:
+    // - "schedule with Melissa"
+    // - "invite Melissa to play"
+    // - "add Melissa"
+    const firstNamePattern = new RegExp(
+      `\\b(with|and|invite|inviting|add|include)\\s+${firstName}\\b`,
+      'i'
+    );
+    if (firstNamePattern.test(lower)) {
       // Keep first-name mention as-is so disambiguation can ask clarifying questions
       // when multiple contacts share that first name.
       firstNameMentions.add(player.firstName);
@@ -799,12 +806,22 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       }
       return acc;
     }, [] as { id?: string; name: string; phone?: string }[]);
+    const nonSelfInvitedPlayers = uniqueInvitedPlayers.filter((p) => p.id !== currentUser?.id);
+    const userAskedToInviteOthers = /\b(with|invite|inviting|add|include)\b/i.test(processedInput);
     
     extractedDetails.invitedPlayers = uniqueInvitedPlayers;
     extractedDetails.currentUser = currentUser;
 
     const playerNames = uniqueInvitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
     const formattedPlayerNames = formatPlayerNames(playerNames);
+
+    // If user asked to invite someone but no non-self player was resolved, ask for clarification
+    // instead of silently scheduling a solo session.
+    if (currentUser && userAskedToInviteOthers && nonSelfInvitedPlayers.length === 0) {
+      return {
+        confirmationText: "I want to make sure I invite the right person. Who should I schedule this game with?",
+      };
+    }
 
     // Find court if location is mentioned - use client-provided courts for reliable matching
     let courtId: string | null = null;
@@ -870,6 +887,9 @@ Only ask a question if something is genuinely missing from ALL messages.`,
         });
 
         if (createResult.success) {
+          const inviteeSummary = nonSelfInvitedPlayers.length > 0
+            ? ` with ${formatPlayerNames(nonSelfInvitedPlayers.map((p) => p.name))}`
+            : '';
           const notifiedMsg = createResult.notifiedCount && createResult.notifiedCount > 0
             ? ` I've sent SMS invitations to ${createResult.notifiedCount} player${createResult.notifiedCount === 1 ? '' : 's'}.`
             : '';
@@ -882,8 +902,12 @@ Only ask a question if something is genuinely missing from ALL messages.`,
                 .map((item: { playerId: string; reason: string }) => item.reason)
                 .join('; ')}).`
             : '';
+          const smsIntentMsg =
+            nonSelfInvitedPlayers.length > 0 && !notifiedMsg && !skippedMsg
+              ? " I'll send SMS invitations to your invitees."
+              : '';
           return {
-            confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}.${notifiedMsg}${skippedMsg} You can view it in your Game Sessions.`,
+            confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}. You're inviting${inviteeSummary}.${notifiedMsg}${skippedMsg}${smsIntentMsg} You can view it in your Game Sessions.`,
           };
         } else {
           return {
