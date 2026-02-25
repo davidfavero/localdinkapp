@@ -176,15 +176,19 @@ export async function POST(request: Request) {
     }
 
     for (const candidate of smsCandidates) {
-      const recordRef =
-        candidate.source === 'user'
-          ? adminDb.collection('users').doc(candidate.id)
-          : adminDb.collection('players').doc(candidate.id);
-      const snap = await recordRef.get();
+      // Resolve against the declared source first, then fall back to the other collection.
+      // This handles legacy sessions where attendee source/id pairing is inconsistent.
+      const primaryCollection = candidate.source === 'user' ? 'users' : 'players';
+      const fallbackCollection = primaryCollection === 'users' ? 'players' : 'users';
+
+      let snap = await adminDb.collection(primaryCollection).doc(candidate.id).get();
+      if (!snap.exists) {
+        snap = await adminDb.collection(fallbackCollection).doc(candidate.id).get();
+      }
       if (!snap.exists) {
         skippedPlayers.push({
           playerId: candidate.id,
-          reason: `${candidate.source === 'user' ? 'User' : 'Player'} record not found`,
+          reason: `Attendee record not found in users or players`,
         });
         continue;
       }
