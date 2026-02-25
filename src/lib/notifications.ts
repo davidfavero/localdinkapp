@@ -6,8 +6,11 @@ import type { NotificationType, NotificationCreate, Player, NotificationPreferen
 import { DEFAULT_NOTIFICATION_PREFERENCES } from './types';
 
 // Initialize Firestore
-function getDb() {
-  const app = getAdminApp();
+async function getDb() {
+  const app = await getAdminApp();
+  if (!app) {
+    throw new Error('Firebase Admin app is not initialized');
+  }
   return getFirestore(app);
 }
 
@@ -118,7 +121,7 @@ interface SendNotificationOptions {
  */
 export async function sendNotification(options: SendNotificationOptions): Promise<{ success: boolean; channels: string[] }> {
   const { userId, type, data, templateData = {} } = options;
-  const db = getDb();
+  const db = await getDb();
   
   // Get user's notification preferences and phone
   const userDoc = await db.collection('users').doc(userId).get();
