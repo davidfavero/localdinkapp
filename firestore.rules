@@ -171,11 +171,11 @@ service cloud.firestore {
     /**
      * @description Controls access to player contact documents.
      * @path /players/{playerId}
-     * @allow (get, list) - Any authenticated user can read players (needed for AI and sessions).
+     * @allow (get, list) - Only the contact owner can read, plus linked user can read their linked card.
      * @allow (create) - Any authenticated user can create a player contact with their ownerId.
      * @allow (update) - Owner can update, OR user can link themselves (set linkedUserId to their uid).
      * @allow (delete) - Only the owner can delete their player contacts.
-     * @principle Enforces user ownership with special case for user linking.
+     * @principle Enforces strict contact privacy by owner.
      */
     match /players/{playerId} {
         function isSignedIn() {
@@ -184,6 +184,10 @@ service cloud.firestore {
 
         function isOwner() {
             return isSignedIn() && resource.data.ownerId == request.auth.uid;
+        }
+
+        function isLinkedUser() {
+            return isSignedIn() && resource.data.linkedUserId == request.auth.uid;
         }
 
         function willBeOwner() {
@@ -202,9 +206,9 @@ service cloud.firestore {
                 && request.resource.data.lastName == resource.data.lastName;
         }
 
-        // Allow authenticated users to read any player (needed for shared sessions/AI)
-        allow get: if isSignedIn();
-        allow list: if isSignedIn();
+        // Restrict reads to the owner, or the linked user for their own linked record.
+        allow get: if isOwner() || isLinkedUser();
+        allow list: if isOwner() || isLinkedUser();
         // Only allow creating if the ownerId matches the user
         allow create: if willBeOwner();
         // Owner can update, or user can link themselves

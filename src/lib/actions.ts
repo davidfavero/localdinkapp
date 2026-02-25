@@ -46,63 +46,18 @@ export async function chatAction(
 ): Promise<ChatOutput> {
     const { message, history } = input;
 
-    // Use provided data from client-side
+    // Use only user-scoped data from client-side.
+    // Never broaden to global users/players/groups server-side.
     let players: Player[] = knownPlayers || [];
     let groups: (Group & { id: string })[] = knownGroups || [];
     let courts: Court[] = knownCourts || [];
 
-    // Supplement with server-side data
-    const adminDb = await getAdminDb();
-    if (adminDb && currentUser?.id) {
-        try {
-            const existingIds = new Set(players.map(p => p.id));
-            const existingGroupIds = new Set(groups.map(g => g.id));
-            
-            // Fetch from users collection (ALL users)
-            try {
-                const usersSnap = await adminDb.collection('users').get();
-                usersSnap.docs.forEach(doc => {
-                    if (!existingIds.has(doc.id)) {
-                        players.push({ id: doc.id, ...doc.data() } as Player);
-                        existingIds.add(doc.id);
-                    }
-                });
-            } catch (e) {
-                console.warn('Could not fetch users:', e);
-            }
-
-            // Fetch ALL players from players collection
-            try {
-                const playersSnap = await adminDb.collection('players').get();
-                playersSnap.docs.forEach(doc => {
-                    if (!existingIds.has(doc.id)) {
-                        const data = doc.data();
-                        players.push({ id: doc.id, ...data } as Player);
-                        existingIds.add(doc.id);
-                    }
-                });
-            } catch (e) {
-                console.warn('Could not fetch players:', e);
-            }
-
-            // Fetch ALL groups
-            try {
-                const groupsSnap = await adminDb.collection('groups').get();
-                groupsSnap.docs.forEach(doc => {
-                    if (!existingGroupIds.has(doc.id)) {
-                        const data = doc.data();
-                        groups.push({ id: doc.id, ...data } as Group & { id: string });
-                        existingGroupIds.add(doc.id);
-                    }
-                });
-            } catch (e) {
-                console.warn('Could not fetch groups:', e);
-            }
-
-            console.log(`[chatAction] Loaded ${players.length} players, ${groups.length} groups`);
-        } catch (error) {
-            console.error('Error fetching data from Admin DB:', error);
-        }
+    if (currentUser?.id) {
+        players = players.filter(
+            (p) => p.id === currentUser.id || p.ownerId === currentUser.id || p.isCurrentUser
+        );
+        groups = groups.filter((g) => g.ownerId === currentUser.id);
+        courts = courts.filter((c) => c.ownerId === currentUser.id);
     }
 
     // If still no players, use just the current user

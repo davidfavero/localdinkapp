@@ -51,13 +51,6 @@ export default function RobinChatPage() {
   const [knownGroups, setKnownGroups] = useState<(Group & { id: string })[]>([]);
   const [knownCourts, setKnownCourts] = useState<Court[]>([]);
 
-  // Use real-time listeners for users, players, groups, and courts - filtered by owner
-  const usersQuery = useMemoFirebase(
-    () => firestore && user?.uid ? query(collection(firestore, 'users')) : null,
-    [firestore, user?.uid]
-  );
-  const { data: usersData } = useCollection<Player>(usersQuery);
-
   // Players owned by current user
   const playersQuery = useMemoFirebase(
     () => firestore && user?.uid ? query(collection(firestore, 'players'), where('ownerId', '==', user.uid)) : null,
@@ -311,13 +304,6 @@ export default function RobinChatPage() {
       }
     };
 
-    // Add users from Firestore
-    if (usersData) {
-      usersData.forEach(user => {
-        addPlayer(user);
-      });
-    }
-
     // Add players from Firestore
     if (playersData) {
       playersData.forEach(player => {
@@ -337,7 +323,7 @@ export default function RobinChatPage() {
     }));
 
     setKnownPlayers(playersWithCurrent);
-  }, [usersData, playersData, currentUser, authUser?.uid, isUserLoading]);
+  }, [playersData, currentUser, authUser?.uid, isUserLoading]);
 
   // Set groups data
   useEffect(() => {

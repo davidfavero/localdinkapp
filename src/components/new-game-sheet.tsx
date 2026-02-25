@@ -80,17 +80,17 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
   const { user } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
 
-  // Fetch ALL players (shared roster)
+  // Fetch only players owned by current user
   const playersQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'players'));
+    return query(collection(firestore, 'players'), where('ownerId', '==', user.uid));
   }, [firestore, user?.uid]);
   const { data: availablePlayers, isLoading: isLoadingPlayers } = useCollection<Player>(playersQuery);
 
-  // Fetch ALL groups
+  // Fetch only groups owned by current user
   const groupsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
-    return query(collection(firestore, 'groups'));
+    return query(collection(firestore, 'groups'), where('ownerId', '==', user.uid));
   }, [firestore, user?.uid]);
   const { data: availableGroups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
 
