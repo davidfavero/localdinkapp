@@ -45,7 +45,7 @@ const RSVP_PRIORITY: Record<RsvpStatus, number> = {
 
 export default function GameSessionsPage() {
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, profile } = useUser();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -53,6 +53,10 @@ export default function GameSessionsPage() {
     courtId: string;
     startTime: Date;
     isDoubles: boolean;
+    playerIds?: string[];
+    attendees?: { id: string; source: 'user' | 'player' }[];
+    playerStatuses?: Record<string, RsvpStatus>;
+    maxPlayers?: number;
   } | null>(null);
   const [pageSize] = useState(24);
   const [error, setError] = useState<string | null>(null);
@@ -306,6 +310,7 @@ export default function GameSessionsPage() {
   // Note: Courts have public read access, but we still wait for user auth
   // to ensure the page doesn't make any queries before auth is resolved
   const [allCourts, setAllCourts] = useState<Court[]>([]);
+  const [availableEditPlayers, setAvailableEditPlayers] = useState<Player[]>([]);
   useEffect(() => {
     if (!firestore || !user) return;
     (async () => {
@@ -319,6 +324,26 @@ export default function GameSessionsPage() {
     })();
   }, [firestore, user]);
 
+  useEffect(() => {
+    if (!firestore || !user?.uid) return;
+    (async () => {
+      try {
+        const contactsSnap = await getDocs(
+          query(collection(firestore, 'players'), where('ownerId', '==', user.uid))
+        );
+        const contacts = contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Player));
+        const merged = new Map<string, Player>();
+        contacts.forEach((p) => merged.set(p.id, p));
+        if (profile?.id) {
+          merged.set(profile.id, { ...profile, isCurrentUser: true });
+        }
+        setAvailableEditPlayers(Array.from(merged.values()));
+      } catch (error) {
+        console.error('Error fetching available edit players:', error);
+      }
+    })();
+  }, [firestore, user?.uid, profile]);
+
   const handleSessionClick = (session: GameSession) => {
     // Look for session in both organized sessions and invites
     const rawSession = rawSessions?.find((s: any) => s.id === session.id) 
@@ -329,6 +354,10 @@ export default function GameSessionsPage() {
         courtId: rawSession.courtId,
         startTime: rawSession.startTime?.toDate() || new Date(),
         isDoubles: rawSession.isDoubles,
+        playerIds: rawSession.playerIds || [],
+        attendees: rawSession.attendees || [],
+        playerStatuses: rawSession.playerStatuses || {},
+        maxPlayers: rawSession.maxPlayers,
       });
       setIsEditSheetOpen(true);
     }
@@ -370,6 +399,8 @@ export default function GameSessionsPage() {
         sessionId={selectedSessionId}
         sessionData={selectedSessionData}
         courts={allCourts}
+        availablePlayers={availableEditPlayers}
+        currentUserId={user?.uid || null}
       />
 
       {(isLoadingSessions || isHydrating) && (

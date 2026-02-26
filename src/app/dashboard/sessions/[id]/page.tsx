@@ -83,10 +83,11 @@ const SessionDetailSkeleton = () => (
 
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { toast } = useToast();
-  const { user: currentUser } = useUser();
+  const { user: currentUser, profile: currentUserProfile } = useUser();
   const [isCancelling, setIsCancelling] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [allCourts, setAllCourts] = useState<Court[]>([]);
+  const [availableEditPlayers, setAvailableEditPlayers] = useState<Player[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const firestore = useFirestore();
 
@@ -231,6 +232,26 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     })();
   }, [firestore, currentUser]);
 
+  useEffect(() => {
+    if (!firestore || !currentUser?.uid) return;
+    (async () => {
+      try {
+        const contactsSnap = await getDocs(
+          query(collection(firestore, 'players'), where('ownerId', '==', currentUser.uid))
+        );
+        const contacts = contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Player));
+        const merged = new Map<string, Player>();
+        contacts.forEach((p) => merged.set(p.id, p));
+        if (currentUserProfile?.id) {
+          merged.set(currentUserProfile.id, { ...currentUserProfile, isCurrentUser: true });
+        }
+        setAvailableEditPlayers(Array.from(merged.values()));
+      } catch (error) {
+        console.error('Error loading available players for edit:', error);
+      }
+    })();
+  }, [firestore, currentUser?.uid, currentUserProfile]);
+
   const session = hydratedSession;
 
   const isOrganizer = session && currentUser && session.organizer.id === currentUser.uid;
@@ -325,8 +346,14 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           courtId: rawSession.courtId,
           startTime: rawSession.startTime?.toDate() || new Date(),
           isDoubles: rawSession.isDoubles,
+          playerIds: rawSession.playerIds || [],
+          attendees: rawSession.attendees || [],
+          playerStatuses: rawSession.playerStatuses || {},
+          maxPlayers: rawSession.maxPlayers,
         } : null}
         courts={allCourts}
+        availablePlayers={availableEditPlayers}
+        currentUserId={currentUser?.uid || null}
       />
 
       <div className="grid md:grid-cols-3 gap-6">

@@ -17,7 +17,8 @@ import { useFirestore, useUser } from '@/firebase';
 import { doc, updateDoc, deleteDoc, Timestamp, collection, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, CalendarIcon } from 'lucide-react';
-import type { Court } from '@/lib/types';
+import { Checkbox } from '@/components/ui/checkbox';
+import type { Court, Player, GameSessionAttendee, RsvpStatus } from '@/lib/types';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +28,8 @@ const sessionSchema = z.object({
     required_error: 'Date is required',
   }),
   time: z.string().min(1, 'Time is required'),
-  isDoubles: z.boolean(),
+  format: z.enum(['singles', 'doubles', 'custom']),
+  customPlayerCount: z.number().int().min(2).max(24).optional(),
 });
 
 // Generate time options in 30-minute increments from 6:00 AM to 10:00 PM
@@ -56,8 +58,14 @@ interface EditGameSessionSheetProps {
     courtId: string;
     startTime: Date;
     isDoubles: boolean;
+    playerIds?: string[];
+    attendees?: GameSessionAttendee[];
+    playerStatuses?: Record<string, RsvpStatus>;
+    maxPlayers?: number;
   } | null;
   courts: Court[];
+  availablePlayers: Player[];
+  currentUserId: string | null;
 }
 
 export function EditGameSessionSheet({
@@ -66,6 +74,8 @@ export function EditGameSessionSheet({
   sessionId,
   sessionData,
   courts,
+  availablePlayers,
+  currentUserId,
 }: EditGameSessionSheetProps) {
   const router = useRouter();
   const firestore = useFirestore();
@@ -74,6 +84,7 @@ export function EditGameSessionSheet({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
 
   const {
     register,
@@ -85,7 +96,8 @@ export function EditGameSessionSheet({
   } = useForm<SessionFormData>({
     resolver: zodResolver(sessionSchema),
     defaultValues: {
-      isDoubles: true,
+      format: 'doubles',
+      customPlayerCount: 4,
     },
   });
 
@@ -103,14 +115,38 @@ export function EditGameSessionSheet({
       const period = hours >= 12 ? 'PM' : 'AM';
       const formattedTime = `${displayHour}:${minutes.toString().padStart(2, '0')} ${period}`;
       
+      const maxPlayers = sessionData.maxPlayers || (sessionData.isDoubles ? 4 : 2);
+      const defaultFormat =
+        maxPlayers === 2 ? 'singles' : maxPlayers === 4 ? 'doubles' : 'custom';
+      const initialPlayerIds = Array.from(
+        new Set([
+          ...(sessionData.playerIds || []),
+          ...(currentUserId ? [currentUserId] : []),
+        ])
+      );
+      setSelectedPlayerIds(initialPlayerIds);
+
       reset({
         courtId: sessionData.courtId,
         date: startTime,
         time: formattedTime,
-        isDoubles: sessionData.isDoubles,
+        format: defaultFormat,
+        customPlayerCount: maxPlayers,
       });
     }
-  }, [sessionData, open, reset]);
+  }, [sessionData, open, reset, currentUserId]);
+
+  const selectedFormat = watch('format');
+
+  const togglePlayerSelection = (playerId: string, checked: boolean) => {
+    if (playerId === currentUserId) return;
+    setSelectedPlayerIds((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, playerId]));
+      }
+      return prev.filter((id) => id !== playerId);
+    });
+  };
 
   const onSubmit = async (data: SessionFormData) => {
     if (!firestore || !sessionId || !user) return;
@@ -133,10 +169,45 @@ export function EditGameSessionSheet({
       startDateTime.setHours(hours, minutes, 0, 0);
 
       const sessionRef = doc(firestore, 'game-sessions', sessionId);
+      const mergedSelectedIds = Array.from(
+        new Set([
+          ...(currentUserId ? [currentUserId] : []),
+          ...selectedPlayerIds,
+        ])
+      );
+      const maxPlayers =
+        data.format === 'singles'
+          ? 2
+          : data.format === 'doubles'
+            ? 4
+            : Math.max(2, Math.min(24, data.customPlayerCount || mergedSelectedIds.length || 4));
+      const isDoubles = maxPlayers > 2;
+      const attendees: GameSessionAttendee[] = mergedSelectedIds.map((id) => {
+        if (id === currentUserId) {
+          return { id, source: 'user' };
+        }
+        return { id, source: 'player' };
+      });
+
+      const existingStatuses = sessionData?.playerStatuses || {};
+      const nextStatuses: Record<string, RsvpStatus> = {};
+      mergedSelectedIds.forEach((id) => {
+        if (id === currentUserId) {
+          nextStatuses[id] = 'CONFIRMED';
+          return;
+        }
+        nextStatuses[id] = existingStatuses[id] || 'PENDING';
+      });
+
       const payload = {
         courtId: data.courtId,
         startTime: Timestamp.fromDate(startDateTime),
-        isDoubles: data.isDoubles,
+        isDoubles,
+        maxPlayers,
+        minPlayers: Math.min(2, maxPlayers),
+        playerIds: mergedSelectedIds,
+        attendees,
+        playerStatuses: nextStatuses,
       };
 
       await updateDoc(sessionRef, payload);
@@ -290,11 +361,11 @@ export function EditGameSessionSheet({
 
             {/* Game Type */}
             <div className="space-y-2">
-              <Label htmlFor="gameType">Game Type</Label>
+              <Label htmlFor="gameType">Game Format</Label>
               <Select
-                value={watch('isDoubles') ? 'doubles' : 'singles'}
+                value={selectedFormat}
                 onValueChange={(value) =>
-                  setValue('isDoubles', value === 'doubles', { shouldValidate: true })
+                  setValue('format', value as 'singles' | 'doubles' | 'custom', { shouldValidate: true })
                 }
               >
                 <SelectTrigger>
@@ -303,8 +374,53 @@ export function EditGameSessionSheet({
                 <SelectContent>
                   <SelectItem value="doubles">Doubles</SelectItem>
                   <SelectItem value="singles">Singles</SelectItem>
+                  <SelectItem value="custom">Custom / Round Robin</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {selectedFormat === 'custom' && (
+              <div className="space-y-2">
+                <Label htmlFor="customPlayerCount">Max Players</Label>
+                <Input
+                  id="customPlayerCount"
+                  type="number"
+                  min={2}
+                  max={24}
+                  value={watch('customPlayerCount') || 4}
+                  onChange={(event) =>
+                    setValue('customPlayerCount', Number(event.target.value), { shouldValidate: true })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use this for larger games (for example, 8-12 players).
+                </p>
+              </div>
+            )}
+
+            {/* Player Selection */}
+            <div className="space-y-2">
+              <Label>Invitees</Label>
+              <div className="max-h-44 overflow-y-auto rounded-md border p-3 space-y-2">
+                {availablePlayers.map((player) => {
+                  const fullName = `${player.firstName || ''} ${player.lastName || ''}`.trim() || player.name || 'Unknown Player';
+                  const isCurrent = player.id === currentUserId;
+                  const isChecked = selectedPlayerIds.includes(player.id) || isCurrent;
+                  return (
+                    <label key={player.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={isChecked}
+                        disabled={isCurrent}
+                        onCheckedChange={(checked) => togglePlayerSelection(player.id, Boolean(checked))}
+                      />
+                      <span>{fullName}{isCurrent ? ' (You)' : ''}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                You can add or remove invitees here before saving changes.
+              </p>
             </div>
 
             {/* Delete Button */}
