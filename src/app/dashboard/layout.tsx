@@ -33,6 +33,16 @@ const navItems = [
   { href: '/dashboard/courts', icon: MapPin, label: 'My\nCourts' },
 ];
 
+function canViewAdminDebug(email?: string): boolean {
+  const normalized = (email || '').toLowerCase();
+  const fromEnv = (process.env.NEXT_PUBLIC_ADMIN_DEBUG_EMAILS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const allowlist = fromEnv.length > 0 ? fromEnv : ['davidfavero@gmail.com', 'david@localdink.com'];
+  return allowlist.includes(normalized);
+}
+
 const getPageTitle = (pathname: string) => {
   if (pathname.startsWith('/dashboard/sessions/')) return 'Game Details';
   if (pathname === '/dashboard/sessions') return 'Game Sessions';
@@ -227,6 +237,14 @@ export default function DashboardLayout({
                       Your Profile
                     </Link>
                   </DropdownMenuItem>
+                  {canViewAdminDebug(currentUser?.email || user?.email || undefined) && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/admin-debug" className="flex items-center gap-2 cursor-pointer">
+                        <User className="h-4 w-4" />
+                        Admin Debug
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
                     onClick={async () => {

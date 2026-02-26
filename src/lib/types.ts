@@ -60,6 +60,8 @@ export type Player = {
   ownerId?: string; // User who created this player contact
   linkedUserId?: string; // Links to a registered user account (if email/phone matches)
   notificationPreferences?: NotificationPreferences; // User's notification settings
+  timezone?: string;
+  nameDisambiguationMemory?: Record<string, string>;
 };
 
 export type Court = {
@@ -73,6 +75,7 @@ export type Court = {
   isHome?: boolean;
   isFavorite?: boolean;
   ownerId: string; // User who created this court
+  timezone?: string;
 };
 
 export type Group = {
@@ -198,6 +201,16 @@ export const ChatOutputSchema = z.object({
     suggestedEmail: z.string().optional(),
     suggestedPhone: z.string().optional(),
   })).nullish().describe('Players mentioned but not found in database'),
+  createdSessionId: z.string().nullish(),
+  createdSessionStartTime: z.string().nullish(),
+  createdSessionCourtName: z.string().nullish(),
+  undoExpiresAt: z.number().nullish(),
+  notifiedCount: z.number().nullish(),
+  skippedPlayers: z.array(z.object({
+    playerId: z.string(),
+    reason: z.string(),
+  })).nullish(),
+  disambiguationMemoryUpdates: z.record(z.string()).nullish(),
 })
 export type ChatOutput = z.infer<typeof ChatOutputSchema>
 

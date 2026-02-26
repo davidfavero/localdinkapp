@@ -169,6 +169,10 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         try {
           const [firstName, ...lastName] = (user.displayName || 'New User').split(' ');
           const userEmail = user.email?.toLowerCase().trim() || '';
+          const detectedTimezone =
+            typeof Intl !== 'undefined'
+              ? Intl.DateTimeFormat().resolvedOptions().timeZone
+              : 'America/New_York';
           
           const newUserProfile: Omit<Player, 'id'> & { ownerId: string } = {
             firstName,
@@ -176,6 +180,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
             email: userEmail,
             avatarUrl: user.photoURL || '',
             ownerId: user.uid,
+            timezone: detectedTimezone || 'America/New_York',
             // Include phone number if user signed in with phone auth
             ...(user.phoneNumber && { phone: user.phoneNumber }),
           };

@@ -17,8 +17,8 @@ import { createGameSessionTool } from '@/ai/tools/create-game-session';
 
 const APP_TIME_ZONE = 'America/New_York';
 
-function getCurrentAppDate(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: APP_TIME_ZONE }));
+function getCurrentAppDate(timeZone: string = APP_TIME_ZONE): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone }));
 }
 
 // ============================================================================
@@ -28,9 +28,9 @@ function getCurrentAppDate(): Date {
 /**
  * Extract date from natural language (e.g., "December 25", "tomorrow", "this Thursday")
  */
-function extractDateFromText(text: string): string | null {
+function extractDateFromText(text: string, timeZone: string = APP_TIME_ZONE): string | null {
   const lower = text.toLowerCase();
-  const today = getCurrentAppDate();
+  const today = getCurrentAppDate(timeZone);
   
   // "today"
   if (/\btoday\b/.test(lower)) {
@@ -377,7 +377,7 @@ function formatPlayerNames(names: string[]): string {
 
 // Helper to parse date and time into a Date object
 // Returns an ISO string that represents the intended LOCAL time (assumes US Eastern timezone)
-function parseDateTime(dateStr: string, timeStr: string): Date | null {
+function parseDateTime(dateStr: string, timeStr: string, timeZone: string = APP_TIME_ZONE): Date | null {
   try {
     // Get current app date in Eastern timezone for reference
     const easternNow = getCurrentAppDate();
@@ -429,20 +429,31 @@ function parseDateTime(dateStr: string, timeStr: string): Date | null {
     const hoursStr = String(hours).padStart(2, '0');
     const minutesStr = String(minutes).padStart(2, '0');
     
-    // Calculate Eastern timezone offset (EST is -5, EDT is -4)
-    // We'll use a date in the target month to determine if DST is in effect
-    const targetDate = new Date(year, month, day);
-    const jan = new Date(year, 0, 1);
-    const jul = new Date(year, 6, 1);
-    const stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
-    const isDST = targetDate.getTimezoneOffset() < stdOffset;
-    
-    // For Eastern: EST = -05:00, EDT = -04:00
-    // But since we want the stored time to represent the local time, we use the offset
-    const offsetHours = isDST ? 4 : 5;
-    
-    // Create ISO string with Eastern timezone offset
-    const isoString = `${year}-${monthStr}-${dayStr}T${hoursStr}:${minutesStr}:00.000-0${offsetHours}:00`;
+    const utcDate = new Date(Date.UTC(year, month, day, hours, minutes, 0));
+    const tzParts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(utcDate);
+    const getPart = (type: string) => tzParts.find((part) => part.type === type)?.value || '00';
+    const tzAsUtc = Date.UTC(
+      Number(getPart('year')),
+      Number(getPart('month')) - 1,
+      Number(getPart('day')),
+      Number(getPart('hour')),
+      Number(getPart('minute')),
+      0
+    );
+    const offsetMinutes = Math.round((tzAsUtc - utcDate.getTime()) / 60000);
+    const sign = offsetMinutes <= 0 ? '-' : '+';
+    const absOffset = Math.abs(offsetMinutes);
+    const offsetHours = String(Math.floor(absOffset / 60)).padStart(2, '0');
+    const offsetMins = String(absOffset % 60).padStart(2, '0');
+    const isoString = `${year}-${monthStr}-${dayStr}T${hoursStr}:${minutesStr}:00.000${sign}${offsetHours}:${offsetMins}`;
     
     console.log(`[parseDateTime] Parsed "${dateStr}" + "${timeStr}" => ${isoString}`);
     
@@ -458,7 +469,8 @@ export async function chat(
   knownPlayers: Player[], 
   input: ChatInput, 
   knownGroups: (Group & { id: string })[] = [],
-  knownCourts: Court[] = []
+  knownCourts: Court[] = [],
+  disambiguationMemory: Record<string, string> = {}
 ): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
     const knownGroupNames = knownGroups.map(g => g.name);
@@ -493,7 +505,8 @@ export async function chat(
     // ========================================================================
     // STEP 2: Run REGEX extraction FIRST (reliable, deterministic)
     // ========================================================================
-    const regexDate = extractDateFromText(combinedText);
+    const userTimezone = currentUser?.timezone || APP_TIME_ZONE;
+    const regexDate = extractDateFromText(combinedText, userTimezone);
     const regexTime = extractTimeFromText(combinedText);
     const regexLocation = extractLocationFromText(combinedText, knownCourts);
     const regexPlayers = shouldUseCurrentMessageForPlayers
@@ -532,7 +545,7 @@ export async function chat(
         }
     }
 
-    const today = getCurrentAppDate();
+    const today = getCurrentAppDate(userTimezone);
     const todayFormatted = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     
     // Calculate day of week dates for better relative date parsing
@@ -733,6 +746,7 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     const allResults: { id?: string; name: string; phone?: string; question?: string; isGroup?: boolean; groupName?: string }[] = [];
     const questions: string[] = [];
     const unknownPlayersList: { name: string; suggestedEmail?: string; suggestedPhone?: string }[] = [];
+    const disambiguationMemoryUpdates: Record<string, string> = {};
     
     for (const playerName of (players || [])) {
       const trimmedName = playerName.toLowerCase().trim();
@@ -745,6 +759,27 @@ Only ask a question if something is genuinely missing from ALL messages.`,
           phone: currentUser.phone 
         });
         continue;
+      }
+
+      const aliasKey = trimmedName;
+      const aliasFirstNameKey = trimmedName.split(' ')[0];
+      const rememberedPlayerId =
+        disambiguationMemory[aliasKey] ||
+        (aliasFirstNameKey ? disambiguationMemory[aliasFirstNameKey] : undefined);
+      if (rememberedPlayerId) {
+        const rememberedPlayer = knownPlayers.find((p) => p.id === rememberedPlayerId);
+        if (rememberedPlayer) {
+          allResults.push({
+            id: rememberedPlayer.id,
+            name: `${rememberedPlayer.firstName} ${rememberedPlayer.lastName}`,
+            phone: rememberedPlayer.phone,
+          });
+          disambiguationMemoryUpdates[aliasKey] = rememberedPlayer.id;
+          if (aliasFirstNameKey) {
+            disambiguationMemoryUpdates[aliasFirstNameKey] = rememberedPlayer.id;
+          }
+          continue;
+        }
       }
       
       // Check if it's a group name
@@ -786,6 +821,12 @@ Only ask a question if something is genuinely missing from ALL messages.`,
           name: result.disambiguatedName, 
           phone: playerData?.phone 
         });
+        if (playerData?.id) {
+          disambiguationMemoryUpdates[aliasKey] = playerData.id;
+          if (aliasFirstNameKey) {
+            disambiguationMemoryUpdates[aliasFirstNameKey] = playerData.id;
+          }
+        }
       }
     }
     
@@ -811,6 +852,9 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     
     extractedDetails.invitedPlayers = uniqueInvitedPlayers;
     extractedDetails.currentUser = currentUser;
+    if (Object.keys(disambiguationMemoryUpdates).length > 0) {
+      extractedDetails.disambiguationMemoryUpdates = disambiguationMemoryUpdates;
+    }
 
     const playerNames = uniqueInvitedPlayers.map(p => p.id === currentUser?.id ? 'You' : p.name);
     const formattedPlayerNames = formatPlayerNames(playerNames);
@@ -826,11 +870,13 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     // Find court if location is mentioned - use client-provided courts for reliable matching
     let courtId: string | null = null;
     let courtName: string | null = null;
+    let resolvedTimezone = userTimezone;
     if (location && currentUser) {
       const matchedCourt = findCourtByName(location, knownCourts);
       if (matchedCourt) {
         courtId = matchedCourt.id;
         courtName = matchedCourt.name;
+        resolvedTimezone = matchedCourt.timezone || userTimezone;
         console.log(`[chat] Matched court: "${location}" -> "${courtName}" (id: ${courtId})`);
       } else {
         console.log(`[chat] No court found for: "${location}"`);
@@ -844,7 +890,7 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     if (hasAllDetails && currentUser) {
       try {
         // Parse date and time into ISO string
-        const dateTime = parseDateTime(date, time);
+        const dateTime = parseDateTime(date, time, resolvedTimezone);
         if (!dateTime) {
           return { 
             confirmationText: "I'm sorry, I had trouble parsing the date and time. Could you try again with a clearer format?" 
@@ -908,6 +954,12 @@ Only ask a question if something is genuinely missing from ALL messages.`,
               : '';
           return {
             confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}. You're inviting${inviteeSummary}.${notifiedMsg}${skippedMsg}${smsIntentMsg} You can view it in your Game Sessions.`,
+            createdSessionId: createResult.sessionId,
+            createdSessionStartTime: dateTime.toISOString(),
+            createdSessionCourtName: courtName,
+            undoExpiresAt: Date.now() + 10 * 60 * 1000,
+            notifiedCount: createResult.notifiedCount || 0,
+            skippedPlayers: createResult.skippedPlayers || [],
           };
         } else {
           return {

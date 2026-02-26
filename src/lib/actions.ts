@@ -78,7 +78,41 @@ export async function chatAction(
     
     try {
         const { chat } = await import("@/ai/flows/chat");
-        const response = await chat(knownPlayersWithCurrent, { message, history }, groups, courts);
+        const disambiguationMemory = currentUser?.nameDisambiguationMemory || {};
+        const response = await chat(knownPlayersWithCurrent, { message, history }, groups, courts, disambiguationMemory);
+
+        if (currentUser?.id) {
+            const adminDb = await getAdminDb();
+            if (adminDb) {
+                if (response.disambiguationMemoryUpdates && Object.keys(response.disambiguationMemoryUpdates).length > 0) {
+                    const mergedMemory = {
+                        ...(disambiguationMemory || {}),
+                        ...response.disambiguationMemoryUpdates,
+                    };
+                    await adminDb.collection('users').doc(currentUser.id).set(
+                        { nameDisambiguationMemory: mergedMemory },
+                        { merge: true }
+                    );
+                }
+
+                await adminDb.collection('robin-actions').add({
+                    userId: currentUser.id,
+                    inputMessage: message,
+                    extractedPlayers: response.players || [],
+                    extractedDate: response.date || null,
+                    extractedTime: response.time || null,
+                    extractedLocation: response.location || null,
+                    invitedPlayers: (response.invitedPlayers || []).map((p) => ({
+                        id: p.id || null,
+                        name: p.name,
+                    })),
+                    createdSessionId: response.createdSessionId || null,
+                    notifiedCount: response.notifiedCount || 0,
+                    skippedPlayers: response.skippedPlayers || [],
+                    createdAt: new Date().toISOString(),
+                });
+            }
+        }
         return response;
     } catch (error: any) {
         console.error('Error in chatAction:', error);
@@ -97,6 +131,7 @@ export async function addCourtAction(
         address?: string;
         city?: string;
         state?: string;
+        timezone?: string;
     },
     userId: string
 ): Promise<{ success: boolean; courtId?: string; message: string }> {
@@ -106,6 +141,12 @@ export async function addCourtAction(
             return { success: false, message: 'Database not available' };
         }
 
+        let fallbackTimezone = '';
+        const userDoc = await adminDb.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+            fallbackTimezone = userDoc.data()?.timezone || '';
+        }
+
         const newCourt = {
             name: courtData.name,
             location: courtData.location || courtData.city || '',
@@ -113,6 +154,7 @@ export async function addCourtAction(
             city: courtData.city || '',
             state: courtData.state || '',
             ownerId: userId,
+            timezone: courtData.timezone || fallbackTimezone || 'America/New_York',
             createdAt: new Date().toISOString(),
         };
 
@@ -126,6 +168,49 @@ export async function addCourtAction(
     } catch (error: any) {
         console.error('Error adding court:', error);
         return { success: false, message: error.message || 'Failed to add court' };
+    }
+}
+
+export async function undoRecentSessionAction(
+    sessionId: string,
+    userId: string
+): Promise<{ success: boolean; message: string }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available' };
+        }
+
+        const sessionRef = adminDb.collection('game-sessions').doc(sessionId);
+        const sessionDoc = await sessionRef.get();
+        if (!sessionDoc.exists) {
+            return { success: false, message: 'Session not found.' };
+        }
+
+        const sessionData = sessionDoc.data() || {};
+        if (sessionData.organizerId !== userId) {
+            return { success: false, message: 'You can only undo sessions you created.' };
+        }
+
+        const createdAtRaw = sessionData.createdAt;
+        let createdAtMs = 0;
+        if (createdAtRaw?.toDate) {
+            createdAtMs = createdAtRaw.toDate().getTime();
+        } else if (typeof createdAtRaw === 'string') {
+            createdAtMs = new Date(createdAtRaw).getTime();
+        } else {
+            createdAtMs = 0;
+        }
+
+        if (!createdAtMs || Date.now() - createdAtMs > 10 * 60 * 1000) {
+            return { success: false, message: 'Undo window expired (10 minutes).' };
+        }
+
+        await sessionRef.delete();
+        return { success: true, message: 'Session undone successfully.' };
+    } catch (error: any) {
+        console.error('Error undoing session:', error);
+        return { success: false, message: error?.message || 'Failed to undo session.' };
     }
 }
 

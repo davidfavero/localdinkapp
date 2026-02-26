@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, Sparkles, Trash2, Check, X, Calendar, MapPin, Plus, UserPlus } from 'lucide-react';
 import { UserAvatar } from '@/components/user-avatar';
-import { chatAction, updateRsvpStatusAction, addCourtAction, addPlayerAction } from '@/lib/actions';
+import { chatAction, updateRsvpStatusAction, addCourtAction, addPlayerAction, undoRecentSessionAction } from '@/lib/actions';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import type { Message, Player, Group, Court } from '@/lib/types';
 import { useUser, useFirestore, useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -21,6 +22,7 @@ const DEFAULT_MESSAGE: Message = {
 };
 
 export default function RobinChatPage() {
+  const router = useRouter();
   const { profile: currentUser, user: authUser, isUserLoading } = useUser();
   
   // Load messages from localStorage on initial render, but only if same user
@@ -195,6 +197,13 @@ export default function RobinChatPage() {
   const [isAddingPlayer, setIsAddingPlayer] = useState<string | null>(null);
   const [newPlayerPhone, setNewPlayerPhone] = useState('');
   const [newPlayerEmail, setNewPlayerEmail] = useState('');
+  const [pendingRecentSession, setPendingRecentSession] = useState<{
+    sessionId: string;
+    courtName?: string | null;
+    startTime?: string | null;
+    undoExpiresAt?: number | null;
+  } | null>(null);
+  const [isUndoingSession, setIsUndoingSession] = useState(false);
   
   // Handle adding a new court
   const handleAddCourt = async () => {
@@ -205,6 +214,7 @@ export default function RobinChatPage() {
       const result = await addCourtAction({
         name: pendingUnknownCourt.name,
         location: pendingUnknownCourt.suggestedLocation || '',
+        timezone: currentUser?.timezone,
       }, authUser.uid);
       
       const responseText = result.success 
@@ -219,6 +229,32 @@ export default function RobinChatPage() {
     } finally {
       setIsAddingCourt(false);
     }
+  };
+
+  const handleUndoRecentSession = async () => {
+    if (!pendingRecentSession?.sessionId || !authUser?.uid) return;
+
+    setIsUndoingSession(true);
+    try {
+      const result = await undoRecentSessionAction(pendingRecentSession.sessionId, authUser.uid);
+      setMessages((prev) => [
+        ...prev,
+        { sender: 'robin', text: result.success ? 'Done - I undid that session.' : `I couldn't undo that session: ${result.message}` },
+      ]);
+      if (result.success) {
+        setPendingRecentSession(null);
+      }
+    } catch (error) {
+      console.error('Error undoing recent session:', error);
+      setMessages((prev) => [...prev, { sender: 'robin', text: 'Sorry, I had trouble undoing that session.' }]);
+    } finally {
+      setIsUndoingSession(false);
+    }
+  };
+
+  const handleEditRecentSession = () => {
+    if (!pendingRecentSession?.sessionId) return;
+    router.push(`/dashboard/sessions/${pendingRecentSession.sessionId}`);
   };
   
   // Handle adding a new player
@@ -346,6 +382,7 @@ export default function RobinChatPage() {
 
   const clearChat = () => {
     setMessages([DEFAULT_MESSAGE]);
+    setPendingRecentSession(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(CHAT_STORAGE_KEY);
     }
@@ -393,6 +430,16 @@ export default function RobinChatPage() {
         if (response.unknownPlayers && response.unknownPlayers.length > 0) {
           console.log('[Chat] Unknown players detected:', response.unknownPlayers);
           setPendingUnknownPlayers(response.unknownPlayers);
+        }
+        if (response.createdSessionId) {
+          setPendingRecentSession({
+            sessionId: response.createdSessionId,
+            courtName: response.createdSessionCourtName,
+            startTime: response.createdSessionStartTime,
+            undoExpiresAt: response.undoExpiresAt,
+          });
+        } else {
+          setPendingRecentSession(null);
         }
         
       } catch (error) {
@@ -485,6 +532,33 @@ export default function RobinChatPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Undo/Edit for a newly created session */}
+        {pendingRecentSession && !isLoading && (
+          <div className="flex items-start gap-2 justify-start">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-accent flex-shrink-0">
+              <RobinIcon className="h-6 w-6" />
+            </div>
+            <Card className="p-3 bg-background border-primary/30 max-w-sm">
+              <div className="flex flex-col gap-2">
+                <div className="text-sm font-medium">
+                  Session created{pendingRecentSession.courtName ? ` at ${pendingRecentSession.courtName}` : ''}.
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Undo is available for 10 minutes after creation.
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1 h-8" onClick={handleEditRecentSession}>
+                    Edit
+                  </Button>
+                  <Button size="sm" className="flex-1 h-8" onClick={handleUndoRecentSession} disabled={isUndoingSession}>
+                    {isUndoingSession ? 'Undoing...' : 'Undo'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
           </div>
         )}
          {isLoading && (

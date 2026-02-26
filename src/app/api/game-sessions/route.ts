@@ -237,6 +237,19 @@ export async function POST(request: Request) {
       }
     }
 
+    try {
+      await adminDb.collection('sms-attempt-logs').add({
+        sessionId: sessionRef.id,
+        organizerId: data.organizerId,
+        notifiedCount: notifiedPlayers.length,
+        notifiedPlayers,
+        skippedPlayers,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (logError) {
+      console.warn('Failed to write sms-attempt-logs:', logError);
+    }
+
     return NextResponse.json({
       success: true,
       sessionId: sessionRef.id,

@@ -215,5 +215,37 @@ service cloud.firestore {
         allow update: if isOwner() || isLinkingSelf();
         allow delete: if isOwner();
     }
+
+    match /robin-actions/{actionId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isOwner() {
+            return isSignedIn() && resource.data.userId == request.auth.uid;
+        }
+
+        allow get: if isOwner();
+        allow list: if isOwner();
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+    }
+
+    match /sms-attempt-logs/{logId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isOwner() {
+            return isSignedIn() && resource.data.organizerId == request.auth.uid;
+        }
+
+        allow get: if isOwner();
+        allow list: if isOwner();
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+    }
   }
 }

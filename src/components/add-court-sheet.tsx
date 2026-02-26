@@ -66,9 +66,15 @@ export function AddCourtSheet({ open, onOpenChange }: AddCourtSheetProps) {
       return;
     }
 
+    const detectedTimezone =
+      typeof Intl !== 'undefined'
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : 'America/New_York';
+
     const payload = {
       ...data,
       ownerId: authUser.uid,
+      timezone: detectedTimezone || 'America/New_York',
     };
 
     const courtsRef = collection(firestore, 'courts');

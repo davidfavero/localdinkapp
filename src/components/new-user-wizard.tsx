@@ -50,6 +50,10 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(
     DEFAULT_NOTIFICATION_PREFERENCES
   );
+  const detectedTimezone =
+    typeof Intl !== 'undefined'
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : 'America/New_York';
 
   const normalizePhoneForStorage = (value: string): string => {
     const trimmed = value.trim();
@@ -81,6 +85,7 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: normalizePhoneForStorage(phone),
+        timezone: profile?.timezone || detectedTimezone || 'America/New_York',
       });
       setStep('notifications');
     } catch (error) {
@@ -118,6 +123,7 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
       await addCourtAction({
         name: courtName.trim(),
         location: courtLocation.trim(),
+        timezone: profile?.timezone || detectedTimezone || 'America/New_York',
       }, user.uid);
       setStep('players');
     } catch (error) {
