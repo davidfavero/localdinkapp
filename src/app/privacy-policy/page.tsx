@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'How LocalDink collects, uses, and protects personal information.',
 };
 
-const LAST_UPDATED = 'February 22, 2026';
+const LAST_UPDATED = 'February 27, 2026';
 
 export default function PrivacyPolicyPage() {
   return (
@@ -47,6 +47,15 @@ export default function PrivacyPolicyPage() {
               If you provide a phone number, you agree to receive transactional messages related to your LocalDink
               account and game activity. Message and data rates may apply. Message frequency varies based on your
               activity and notification settings. You can disable SMS notifications in-app.
+            </p>
+            <p className="mt-2">
+              To opt out by text, reply STOP. For support, reply HELP or contact
+              {' '}
+              <a className="underline underline-offset-4" href="mailto:support@localdink.com">support@localdink.com</a>.
+            </p>
+            <p className="mt-2">
+              See full messaging terms at{' '}
+              <Link href="/sms-terms" className="underline underline-offset-4">localdink.com/sms-terms</Link>.
             </p>
           </section>
 
@@ -112,6 +121,9 @@ export default function PrivacyPolicyPage() {
           </Link>
           <Link href="/terms-and-conditions" className="underline underline-offset-4">
             View Terms and Conditions
+          </Link>
+          <Link href="/sms-terms" className="underline underline-offset-4">
+            View SMS Terms
           </Link>
         </div>
       </div>

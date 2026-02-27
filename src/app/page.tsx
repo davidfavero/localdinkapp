@@ -89,6 +89,9 @@ export default function LandingPage() {
             <Link href="/terms-and-conditions" className="underline underline-offset-4">
               Terms and Conditions
             </Link>
+            <Link href="/sms-terms" className="underline underline-offset-4">
+              SMS Terms
+            </Link>
           </div>
         </div>
       </footer>

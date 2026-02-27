@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'Terms governing your use of LocalDink.',
 };
 
-const LAST_UPDATED = 'February 22, 2026';
+const LAST_UPDATED = 'February 27, 2026';
 
 export default function TermsAndConditionsPage() {
   return (
@@ -41,7 +41,19 @@ export default function TermsAndConditionsPage() {
             <h2 className="text-xl font-semibold">3. SMS and Notifications</h2>
             <p className="mt-2">
               LocalDink may send SMS and in-app notifications related to scheduling and game activity. By providing
-              your phone number, you consent to receive transactional messages. Message and data rates may apply.
+              your phone number, you consent to receive transactional messages.
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-6">
+              <li>Program name: <strong>LocalDink Alerts</strong>.</li>
+              <li>Message types: invites, reminders, RSVP updates, and session changes.</li>
+              <li>Message frequency: varies by account activity.</li>
+              <li><strong>Message and data rates may apply.</strong></li>
+              <li><strong>Reply HELP for help.</strong></li>
+              <li><strong>Reply STOP to cancel.</strong></li>
+              <li>Support contact: <a className="underline underline-offset-4" href="mailto:support@localdink.com">support@localdink.com</a>.</li>
+            </ul>
+            <p className="mt-2">
+              Full SMS terms are available at <Link href="/sms-terms" className="underline underline-offset-4">localdink.com/sms-terms</Link>.
             </p>
           </section>
 
@@ -107,6 +119,9 @@ export default function TermsAndConditionsPage() {
           </Link>
           <Link href="/privacy-policy" className="underline underline-offset-4">
             View Privacy Policy
+          </Link>
+          <Link href="/sms-terms" className="underline underline-offset-4">
+            View SMS Terms
           </Link>
         </div>
       </div>
