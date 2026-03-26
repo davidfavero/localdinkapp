@@ -197,6 +197,8 @@ export default function RobinChatPage() {
   const [isAddingPlayer, setIsAddingPlayer] = useState<string | null>(null);
   const [newPlayerPhone, setNewPlayerPhone] = useState('');
   const [newPlayerEmail, setNewPlayerEmail] = useState('');
+  // Store the original scheduling message so we can replay it after adding a court
+  const [pendingSchedulingMessage, setPendingSchedulingMessage] = useState<string | null>(null);
   const [pendingRecentSession, setPendingRecentSession] = useState<{
     sessionId: string;
     courtName?: string | null;
@@ -217,12 +219,20 @@ export default function RobinChatPage() {
         timezone: currentUser?.timezone,
       }, authUser.uid);
       
-      const responseText = result.success 
-        ? `Perfect! I've added "${pendingUnknownCourt.name}" to your courts. Now I can schedule your game there! 🏸`
-        : `Sorry, I had trouble adding the court: ${result.message}`;
-      
-      setMessages(prev => [...prev, { sender: 'robin', text: responseText }]);
-      setPendingUnknownCourt(null);
+      if (result.success) {
+        setMessages(prev => [...prev, { sender: 'robin', text: `Added "${pendingUnknownCourt.name}" to your courts. Let me schedule that game now...` }]);
+        setPendingUnknownCourt(null);
+        
+        // Store the original message — the useEffect on knownCourts will auto-retry
+        // once the real-time listener picks up the new court
+        if (pendingSchedulingMessage) {
+          pendingSchedulingRef.current = pendingSchedulingMessage;
+          setPendingSchedulingMessage(null);
+        }
+      } else {
+        setMessages(prev => [...prev, { sender: 'robin', text: `Sorry, I had trouble adding the court: ${result.message}` }]);
+        setPendingUnknownCourt(null);
+      }
     } catch (error) {
       console.error('Error adding court:', error);
       setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I had trouble adding the court. Please try again." }]);
@@ -376,6 +386,17 @@ export default function RobinChatPage() {
     }
   }, [courtsData]);
 
+  // When courts update after adding a new court, auto-retry the pending scheduling message
+  const pendingSchedulingRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (pendingSchedulingRef.current && knownCourts.length > 0 && !isLoading) {
+      const msg = pendingSchedulingRef.current;
+      pendingSchedulingRef.current = null;
+      sendMessage(msg);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [knownCourts]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -392,62 +413,65 @@ export default function RobinChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Core send logic — can be called from handleSend or programmatically (e.g., after adding a court)
+  const sendMessage = async (messageText: string) => {
+    const newUserMessage: Message = { sender: 'user', text: messageText };
+      
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+    setInput('');
+    setIsLoading(true);
+      
+    // Clear any previous pending unknowns
+    setPendingUnknownCourt(null);
+    setPendingUnknownPlayers([]);
+
+    try {
+      const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
+      console.log('[Chat] Calling chatAction with:', messageText);
+      console.log('[Chat] Known groups:', knownGroups.map(g => g.name));
+      console.log('[Chat] Known courts:', knownCourts.map(c => c.name));
+      const response = await chatAction({ message: messageText, history }, currentUser || null, knownPlayers, knownGroups, knownCourts);
+      console.log('[Chat] Got response:', response);
+        
+      let responseText = response.confirmationText || "I'm not sure how to respond to that.";
+
+      const newRobinMessage: Message = { sender: 'robin', text: responseText };
+
+      setMessages(prevMessages => [...prevMessages, newRobinMessage]);
+        
+      // Check for unknown court/players that can be added
+      if (response.unknownCourt) {
+        console.log('[Chat] Unknown court detected:', response.unknownCourt);
+        setPendingUnknownCourt(response.unknownCourt);
+        setPendingSchedulingMessage(messageText);
+      }
+      if (response.unknownPlayers && response.unknownPlayers.length > 0) {
+        console.log('[Chat] Unknown players detected:', response.unknownPlayers);
+        setPendingUnknownPlayers(response.unknownPlayers);
+      }
+      if (response.createdSessionId) {
+        setPendingRecentSession({
+          sessionId: response.createdSessionId,
+          courtName: response.createdSessionCourtName,
+          startTime: response.createdSessionStartTime,
+          undoExpiresAt: response.undoExpiresAt,
+        });
+      } else {
+        setPendingRecentSession(null);
+      }
+        
+    } catch (error) {
+      console.error("Error in chat action:", error);
+      setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSend = async () => {
     console.log('[Chat] handleSend called, input:', input);
     if (input.trim()) {
-      const newUserMessage: Message = { sender: 'user', text: input.trim() };
-      const currentInput = input;
-      
-      // Use a functional state update to ensure we have the latest messages
-      setMessages(prevMessages => [...prevMessages, newUserMessage]);
-      setInput('');
-      setIsLoading(true);
-      
-      // Clear any previous pending unknowns
-      setPendingUnknownCourt(null);
-      setPendingUnknownPlayers([]);
-
-      try {
-        // Pass the latest state to the action with known players, groups, and courts
-        const history = [...messages, newUserMessage].map(m => ({...m, sender: m.sender as 'user' | 'robin' }));
-        console.log('[Chat] Calling chatAction with:', currentInput.trim());
-        console.log('[Chat] Known groups:', knownGroups.map(g => g.name));
-        console.log('[Chat] Known courts:', knownCourts.map(c => c.name));
-        const response = await chatAction({ message: currentInput.trim(), history }, currentUser || null, knownPlayers, knownGroups, knownCourts);
-        console.log('[Chat] Got response:', response);
-        
-        let responseText = response.confirmationText || "I'm not sure how to respond to that.";
-
-        const newRobinMessage: Message = { sender: 'robin', text: responseText };
-
-        setMessages(prevMessages => [...prevMessages, newRobinMessage]);
-        
-        // Check for unknown court/players that can be added
-        if (response.unknownCourt) {
-          console.log('[Chat] Unknown court detected:', response.unknownCourt);
-          setPendingUnknownCourt(response.unknownCourt);
-        }
-        if (response.unknownPlayers && response.unknownPlayers.length > 0) {
-          console.log('[Chat] Unknown players detected:', response.unknownPlayers);
-          setPendingUnknownPlayers(response.unknownPlayers);
-        }
-        if (response.createdSessionId) {
-          setPendingRecentSession({
-            sessionId: response.createdSessionId,
-            courtName: response.createdSessionCourtName,
-            startTime: response.createdSessionStartTime,
-            undoExpiresAt: response.undoExpiresAt,
-          });
-        } else {
-          setPendingRecentSession(null);
-        }
-        
-      } catch (error) {
-        console.error("Error in chat action:", error);
-        setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
-      } finally {
-        setIsLoading(false);
-      }
+      await sendMessage(input.trim());
     }
   };
 

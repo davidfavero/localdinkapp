@@ -122,6 +122,24 @@ function extractTimeFromText(text: string): string | null {
     return `${hours}:${minutes.toString().padStart(2, '0')} ${period}`;
   }
   
+  // "4:30" or "16:30" — bare time without am/pm
+  const bareTimeMatch = lower.match(/\b(\d{1,2}):(\d{2})(?!\s*(am|pm))\b/i);
+  if (bareTimeMatch) {
+    let hours = parseInt(bareTimeMatch[1]);
+    const minutes = parseInt(bareTimeMatch[2]);
+    // Assume PM for hours 1-6 (typical game times), AM for 7-11, 24h for 13+
+    let period: string;
+    if (hours >= 13) {
+      hours -= 12;
+      period = 'PM';
+    } else if (hours >= 1 && hours <= 6) {
+      period = 'PM';
+    } else {
+      period = 'AM';
+    }
+    return `${hours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  }
+  
   // "at 2", "at 3" - assume PM for typical game times
   const atTimeMatch = lower.match(/\bat\s+(\d{1,2})(?!\d|:|\s*(am|pm))/i);
   if (atTimeMatch) {
@@ -164,8 +182,8 @@ function extractLocationFromText(text: string, knownCourts: Court[]): { location
     }
   }
   
-  // Look for "at [location]" pattern
-  const atLocationMatch = lower.match(/\bat\s+(?:the\s+)?([a-z][a-z0-9'\s]+?)(?:\s+(?:courts?|on|at|with|tomorrow|today|this|next|\d)|\s*[.,!?]|$)/i);
+  // Look for "at [location]" pattern — supports apostrophes, smart quotes, and mixed case
+  const atLocationMatch = lower.match(/\bat\s+(?:the\s+)?([a-z][a-z0-9'\u2018\u2019\u0027\u0060\s]+?)(?:\s+(?:courts?|on|at|with|tomorrow|today|this|next|\d)|\s*[.,!?]|$)/i);
   if (atLocationMatch) {
     const locationCandidate = atLocationMatch[1].trim();
     // Make sure it's not a time or date
