@@ -2,56 +2,40 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { getAdminDb, getLastInitError } from '@/firebase/admin';
+import { getAdminDb, getAdminAuth } from '@/firebase/admin';
+import { cookies } from 'next/headers';
 
 export async function GET() {
   try {
+    // Require authentication — this is a debug endpoint
+    const cookieStore = await cookies();
+    const idToken = cookieStore.get('auth-token')?.value;
+    if (!idToken) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    try {
+      const auth = await getAdminAuth();
+      await auth.verifyIdToken(idToken);
+    } catch {
+      return NextResponse.json({ error: 'Invalid or expired auth token' }, { status: 401 });
+    }
+
     const adminDb = await getAdminDb();
     
     if (!adminDb) {
-      let saError = null;
-      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        try {
-          const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-          const missing = [];
-          if (!parsed.project_id && !parsed.projectId) missing.push('project_id');
-          if (!parsed.client_email && !parsed.clientEmail) missing.push('client_email');
-          if (!parsed.private_key && !parsed.privateKey) missing.push('private_key');
-          if (missing.length > 0) {
-            saError = `Missing fields in FIREBASE_SERVICE_ACCOUNT: ${missing.join(', ')}`;
-          }
-        } catch (e) {
-          saError = e instanceof Error ? e.message : 'Invalid JSON in FIREBASE_SERVICE_ACCOUNT';
-        }
-      }
-      
-      const initError = getLastInitError();
       return NextResponse.json({
         ok: false,
-        message: 'Firebase Admin SDK not initialized. Check environment variables.',
-        saEnv: !!process.env.FIREBASE_SERVICE_ACCOUNT,
-        saError,
-        saLength: process.env.FIREBASE_SERVICE_ACCOUNT?.length ?? 0,
-        pidEnv: !!process.env.FIREBASE_PROJECT_ID,
-        emailEnv: !!process.env.FIREBASE_CLIENT_EMAIL,
-        keyLen: (process.env.FIREBASE_PRIVATE_KEY ?? '').length,
-        initError: initError ? {
-          message: initError.message,
-          stack: initError.stack,
-        } : null,
+        message: 'Firebase Admin SDK not initialized. Check server logs for details.',
       }, { status: 503 });
     }
 
     const snap = await adminDb.collection('_ping').limit(1).get();
     return NextResponse.json({
       ok: true,
-      saEnv: !!process.env.FIREBASE_SERVICE_ACCOUNT,
-      pidEnv: !!process.env.FIREBASE_PROJECT_ID,
-      emailEnv: !!process.env.FIREBASE_CLIENT_EMAIL,
-      keyLen: (process.env.FIREBASE_PRIVATE_KEY ?? '').length,
       docs: snap.size,
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, message: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ ok: false, message: 'Internal error' }, { status: 500 });
   }
 }

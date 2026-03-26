@@ -47,18 +47,13 @@ service cloud.firestore {
         return isOwner(userId);
       }
 
-      // Allow unauthenticated access to dev-user for development
-      function isDevUser(userId) {
-        return userId == 'dev-user';
-      }
-
       // Allow authenticated users to read any user profile (needed for AI and displaying sessions)
       // Allow owners to write their own profile
-      allow get: if isAuthenticated() || isDevUser(userId);
+      allow get: if isAuthenticated();
       allow list: if isAuthenticated(); // Allow authenticated users to list (needed for AI player lookup)
-      allow create: if isOwner(userId) || isDevUser(userId);
-      allow update: if isExistingOwner(userId) || isDevUser(userId);
-      allow delete: if isExistingOwner(userId) || isDevUser(userId);
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
@@ -71,19 +66,37 @@ service cloud.firestore {
      * @principle Enforces shared access based on membership in the `playerIds` array.
      */
     match /game-sessions/{gameSessionId} {
-      allow get, list, create, update, delete: if true;  // TEMPORARY: Allow all access
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isOrganizer() {
+        return isSignedIn() && resource.data.organizerId == request.auth.uid;
+      }
+
+      function isPlayer() {
+        return isSignedIn() && request.auth.uid in resource.data.playerIds;
+      }
+
+      // Any authenticated user can create a game session
+      allow create: if isSignedIn();
+      // Any authenticated user can read game sessions they're part of, or any for now (needed for dashboard)
+      allow get, list: if isSignedIn();
+      // Only the organizer or a player in the game can update
+      allow update: if isOrganizer() || isPlayer();
+      // Only the organizer can delete
+      allow delete: if isOrganizer();
       
       // Subcollection for player statuses
       match /players/{playerId} {
-        // Allow all access for now (users can update their own status)
-        allow get, list, create, update, delete: if true;
+        // Authenticated users who are part of the game can read/write
+        allow get, list: if request.auth != null;
+        allow create, update: if request.auth != null;
+        allow delete: if request.auth != null && get(/databases/$(database)/documents/game-sessions/$(gameSessionId)).data.organizerId == request.auth.uid;
       }
     }
     
-    // Also try with wildcard path
-    match /{path=**}/game-sessions/{gameSessionId} {
-      allow read, write: if true;
-    }
+    // Remove overly permissive wildcard rule
 
     /**
      * @description Controls access to court documents.

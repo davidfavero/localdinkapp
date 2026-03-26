@@ -40,7 +40,7 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
       return {
         title: `Game invite from ${data.inviterName || 'a friend'}`,
         body: `${data.matchType || 'Game'} on ${data.date || 'TBD'} at ${data.time || 'TBD'} • ${data.courtName || 'TBD'}`,
-        smsBody: `🏓 ${data.inviterName || 'Someone'} invited you to play ${data.matchType || 'pickleball'} on ${data.date || 'TBD'} at ${data.time || 'TBD'} at ${data.courtName || 'the courts'}. Reply Y to accept, N to decline, or tap: ${data.webLink || 'the app'}`,
+        smsBody: `🏓 ${data.inviterName || 'Someone'} invited you to play ${data.matchType || 'pickleball'} on ${data.date || 'TBD'} at ${data.time || 'TBD'} at ${data.courtName || 'the courts'}. Reply Y to accept, N to decline, or tap: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_INVITE_ACCEPTED':
@@ -59,28 +59,28 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
       return {
         title: 'Game starting soon!',
         body: `${data.matchType || 'Your game'} in 2 hours at ${data.courtName || 'the courts'}. Still need your RSVP!`,
-        smsBody: `⏰ Reminder: ${data.matchType || 'Your game'} at ${data.courtName || 'the courts'} starts in 2 hours! Tap to view: ${data.webLink || 'the app'}`,
+        smsBody: `⏰ Reminder: ${data.matchType || 'Your game'} at ${data.courtName || 'the courts'} starts in 2 hours! Tap to view: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_CHANGED':
       return {
         title: 'Game details changed',
         body: `${data.matchType || 'Your game'} on ${data.date || 'TBD'} has been updated`,
-        smsBody: `📝 Game update: ${data.matchType || 'Your game'} on ${data.date || 'TBD'} has changed. Tap for details: ${data.webLink || 'the app'}`,
+        smsBody: `📝 Game update: ${data.matchType || 'Your game'} on ${data.date || 'TBD'} has changed. Tap for details: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_CANCELLED':
       return {
         title: 'Game cancelled',
         body: `${data.matchType || 'The game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'} has been cancelled`,
-        smsBody: `❌ Cancelled: ${data.matchType || 'The game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'} has been cancelled.`,
+        smsBody: `❌ Cancelled: ${data.matchType || 'The game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'} has been cancelled.\nReply STOP to opt out`,
       };
     
     case 'SPOT_AVAILABLE':
       return {
         title: "You're in! 🎉",
         body: `A spot opened up for ${data.matchType || 'the game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'}`,
-        smsBody: `🎉 Good news! A spot opened up for ${data.matchType || 'the game'} on ${data.date || 'TBD'}. You're now confirmed! Tap: ${data.webLink || 'the app'}`,
+        smsBody: `🎉 Good news! A spot opened up for ${data.matchType || 'the game'} on ${data.date || 'TBD'}. You're now confirmed! Tap: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'RSVP_EXPIRED':

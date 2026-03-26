@@ -84,21 +84,41 @@ export async function sendSmsMessage({
   to,
   body,
   from,
+  maxRetries = 2,
 }: {
   to: string;
   body: string;
   from?: string;
+  maxRetries?: number;
 }) {
   const config = resolveTwilioConfig();
   const client = getTwilioClient(config);
 
   const sender = from ?? config.fromNumber;
 
-  return client.messages.create({
-    to,
-    from: sender,
-    body,
-  });
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await client.messages.create({
+        to,
+        from: sender,
+        body,
+      });
+    } catch (error: any) {
+      lastError = error;
+      const status = error?.status ?? error?.code;
+      // Don't retry on client errors (invalid number, etc.) — only on transient/server failures
+      if (status && status >= 400 && status < 500) {
+        throw error;
+      }
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 4000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        console.warn(`[twilio] Retry ${attempt + 1}/${maxRetries} for SMS to ${to}`);
+      }
+    }
+  }
+  throw lastError;
 }
 
 export type TwilioMessageResult = Awaited<ReturnType<typeof sendSmsMessage>>;

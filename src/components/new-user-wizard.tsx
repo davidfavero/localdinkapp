@@ -13,7 +13,7 @@ import type { NotificationPreferences } from '@/lib/types';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/lib/types';
 import { useUser, useFirestore } from '@/firebase/provider';
 import { doc, updateDoc } from 'firebase/firestore';
-import { addCourtAction, addPlayerAction } from '@/lib/actions';
+import { addCourtAction, addPlayerAction, sendSmsOptInAction } from '@/lib/actions';
 import { useRouter } from 'next/navigation';
 
 type WizardStep = 'welcome' | 'profile' | 'notifications' | 'court' | 'players' | 'complete';
@@ -104,6 +104,15 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
       await updateDoc(userRef, {
         notificationPreferences: notificationPrefs,
       });
+      
+      // Send TCPA-required opt-in confirmation when user enables SMS
+      if (notificationPrefs.channels.sms) {
+        const userPhone = profile?.phone || phone;
+        if (userPhone) {
+          await sendSmsOptInAction(user.uid, userPhone);
+        }
+      }
+      
       setStep('court');
     } catch (error) {
       console.error('Error saving notifications:', error);

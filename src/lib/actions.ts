@@ -341,6 +341,29 @@ export async function updateRsvpStatusAction(
     }
 }
 
+/**
+ * Send SMS opt-in confirmation and record consent timestamp.
+ * Called when a user enables SMS notifications.
+ */
+export async function sendSmsOptInAction(
+    userId: string,
+    phone: string
+): Promise<{ success: boolean; message: string }> {
+    try {
+        const { sendOptInConfirmation } = await import('@/lib/sms-compliance');
+        const sent = await sendOptInConfirmation(userId, phone);
+        return {
+            success: sent,
+            message: sent
+                ? 'SMS notifications enabled. A confirmation text has been sent.'
+                : 'Could not send confirmation text. SMS may not be configured.',
+        };
+    } catch (error: any) {
+        console.error('Error sending SMS opt-in:', error);
+        return { success: false, message: error.message || 'Failed to send confirmation' };
+    }
+}
+
 export async function seedDatabaseAction(): Promise<{ success: boolean, message: string, usersAdded: number, courtsAdded: number }> {
     try {
         const adminDb = await getAdminDb();

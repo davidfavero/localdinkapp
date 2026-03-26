@@ -23,6 +23,30 @@ export type SmsIntentResult = {
   followUpQuestion?: string;   // If we need to ask for clarification
 };
 
+// TCPA compliance keywords — must be handled BEFORE any other intent detection
+const STOP_PATTERNS = [
+  /^(stop|stopall|unsubscribe|cancel|end|quit)$/i,
+];
+
+const HELP_PATTERNS = [
+  /^(help|info)$/i,
+];
+
+/**
+ * Check for TCPA compliance keywords (STOP/HELP).
+ * These MUST be handled before any game-related intent detection.
+ */
+export function detectComplianceKeyword(message: string): 'stop' | 'help' | null {
+  const trimmed = message.trim();
+  for (const pattern of STOP_PATTERNS) {
+    if (pattern.test(trimmed)) return 'stop';
+  }
+  for (const pattern of HELP_PATTERNS) {
+    if (pattern.test(trimmed)) return 'help';
+  }
+  return null;
+}
+
 // Common patterns we can detect without AI
 const ACCEPT_PATTERNS = [
   /^(yes|yep|yeah|yea|ya|yup|sure|ok|okay|k|in|im in|i'm in|count me in|i'll be there|see you there|confirmed|accept|joining|join|down|let's go|lets go|absolutely|definitely|for sure|👍|✅|🎾|🏓)$/i,

@@ -46,8 +46,8 @@ export async function setAuthToken(idToken: string) {
   cookieStore.set('auth-token', idToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 24, // 1 day (reduced from 7)
     path: '/',
   });
 }
@@ -66,28 +66,19 @@ export async function clearAuthToken() {
  */
 export async function setAuthTokenAction(idToken: string) {
   try {
-    // Try to verify the token, but don't fail if Admin isn't configured
     const decodedToken = await verifyIdToken(idToken);
     if (!decodedToken) {
-      // If verification fails but we have a token, still set it
-      // (Admin might not be configured, but client-side auth works)
-      console.warn('Token verification failed, but setting token anyway (Admin may not be configured)');
+      console.warn('Token verification failed — rejecting token');
+      return { success: false, error: 'Token verification failed' };
     }
     
-    // Set the cookie
+    // Token is valid — set the cookie
     await setAuthToken(idToken);
     
     return { success: true };
   } catch (error: any) {
     console.error('Error setting auth token:', error);
-    // Even if verification fails, try to set the cookie
-    // The client-side auth is working, so we can trust the token
-    try {
-      await setAuthToken(idToken);
-      return { success: true };
-    } catch (setError: any) {
-      return { success: false, error: error.message || 'Failed to set auth token' };
-    }
+    return { success: false, error: error.message || 'Failed to set auth token' };
   }
 }
 

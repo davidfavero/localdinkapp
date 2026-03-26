@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { getAdminDb, getLastInitError } from '@/firebase/admin';
+import { getAdminDb, getLastInitError, getAdminAuth } from '@/firebase/admin';
 import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
 import { sendGameInviteNotifications } from '@/lib/notifications';
+import { cookies } from 'next/headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,22 @@ function formatFallback(date: Date): string {
 
 export async function POST(request: Request) {
   try {
+    // Authenticate the request
+    const cookieStore = await cookies();
+    const idToken = cookieStore.get('auth-token')?.value;
+    if (!idToken) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    
+    let authenticatedUid: string;
+    try {
+      const auth = await getAdminAuth();
+      const decodedToken = await auth.verifyIdToken(idToken);
+      authenticatedUid = decodedToken.uid;
+    } catch {
+      return NextResponse.json({ error: 'Invalid or expired auth token' }, { status: 401 });
+    }
+
     const raw = await request.json();
     console.log('Received game session creation request:', JSON.stringify(raw, null, 2));
     
@@ -56,6 +73,14 @@ export async function POST(request: Request) {
     }
 
     const data: CreateGameSessionInput = parsed.data;
+
+    // Verify the organizer is the authenticated user (prevent impersonation)
+    if (data.organizerId !== authenticatedUid) {
+      return NextResponse.json(
+        { error: 'organizerId must match the authenticated user' },
+        { status: 403 }
+      );
+    }
 
     const startDate = new Date(data.startTime);
     if (Number.isNaN(startDate.getTime())) {
@@ -216,6 +241,7 @@ export async function POST(request: Request) {
         `It starts ${formattedStartTime}.`,
         `Reply YES if you can play or NO if you need to pass.`,
         `- ${organizerName}`,
+        `Reply STOP to opt out`,
       ];
 
       if (!twilioConfigured) {

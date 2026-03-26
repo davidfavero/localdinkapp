@@ -356,7 +356,7 @@ export async function handleDecline(
   if (organizer?.phone && organizer.id !== playerId) {
     await sendSmsNotification(
       organizer.phone, 
-      `${playerName} can't make your pickleball game on ${session.startTimeDisplay || 'upcoming'}.`
+      `${playerName} can't make your pickleball game on ${session.startTimeDisplay || 'upcoming'}.\nReply STOP to opt out`
     );
   }
   
@@ -425,7 +425,7 @@ export async function handleCancel(
   if (organizer?.phone && organizer.id !== playerId) {
     await sendSmsNotification(
       organizer.phone, 
-      `⚠️ ${playerName} cancelled for your pickleball game on ${session.startTimeDisplay || 'upcoming'}. Spot reopened!`
+      `⚠️ ${playerName} cancelled for your pickleball game on ${session.startTimeDisplay || 'upcoming'}. Spot reopened!\nReply STOP to opt out`
     );
   }
   
@@ -439,13 +439,13 @@ export async function handleCancel(
     if (confirmedPlayer?.phone) {
       await sendSmsNotification(
         confirmedPlayer.phone,
-        `${playerName} dropped out of the pickleball game. Looking for a replacement!`
+        `${playerName} dropped out of the pickleball game. Looking for a replacement!\nReply STOP to opt out`
       );
     }
   }
   
-  // Notify waitlisted/pending players about the opening
-  await notifySpotOpened(sessionId, session, playerId);
+  // Auto-promote the first waitlisted player, or notify pending players
+  await promoteFromWaitlistOrNotify(sessionId, session, playerId);
   
   return { 
     success: true, 
@@ -481,7 +481,7 @@ async function notifyGameFull(
 📅 ${session.startTimeDisplay || 'Check the app for time'}
 👥 Players: ${confirmedNames}
 
-Reply CANCEL if you can no longer make it.`;
+Reply CANCEL if you can no longer make it.\nReply STOP to opt out`;
 
   // Notify confirmed players
   for (const player of confirmedPlayers) {
@@ -500,37 +500,91 @@ Reply CANCEL if you can no longer make it.`;
     if (player?.phone) {
       await sendSmsNotification(
         player.phone,
-        `The pickleball game on ${session.startTimeDisplay || 'upcoming'} is now full. We'll let you know if a spot opens!`
+        `The pickleball game on ${session.startTimeDisplay || 'upcoming'} is now full. We'll let you know if a spot opens!\nReply STOP to opt out`
       );
     }
   }
 }
 
 /**
- * Notify waitlisted and pending players when a spot opens
+ * Auto-promote the first waitlisted player when a spot opens.
+ * If no one is on the waitlist, notify pending players about the opening.
  */
-async function notifySpotOpened(
+async function promoteFromWaitlistOrNotify(
   sessionId: string,
   session: any,
   cancelledPlayerId: string
 ): Promise<void> {
-  console.log(`[rsvp] Notifying waitlist/pending - spot opened in game ${sessionId}`);
+  console.log(`[rsvp] Checking waitlist for auto-promotion in game ${sessionId}`);
   
-  const playerStatuses = session.playerStatuses || {};
+  const adminDb = await getAdminDb();
+  if (!adminDb) return;
   
-  // First notify waitlisted players (in order)
-  const alternates = session.alternates || [];
-  for (const waitlistId of alternates) {
-    const player = await getPlayerDetails(waitlistId);
-    if (player?.phone) {
+  const alternates: string[] = session.alternates || [];
+  const sessionRef = adminDb.collection('game-sessions').doc(sessionId);
+  
+  // Auto-promote the first waitlisted player
+  if (alternates.length > 0) {
+    const promotedId = alternates[0];
+    const remainingAlternates = alternates.slice(1);
+    
+    await sessionRef.update({
+      [`playerStatuses.${promotedId}`]: 'CONFIRMED',
+      alternates: remainingAlternates,
+    });
+    
+    const promoted = await getPlayerDetails(promotedId);
+    const promotedName = promoted ? `${promoted.firstName} ${promoted.lastName}`.trim() : 'A player';
+    
+    console.log(`[rsvp] Auto-promoted ${promotedName} from waitlist`);
+    
+    // Notify the promoted player
+    if (promoted?.phone) {
       await sendSmsNotification(
-        player.phone,
-        `🏓 A spot just opened up! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to claim it!`
+        promoted.phone,
+        `🎉 Great news! A spot opened up and you're now confirmed for pickleball on ${session.startTimeDisplay || 'upcoming'}! See you there!\nReply STOP to opt out`
       );
     }
+    
+    // Send in-app notification for the promotion
+    try {
+      await sendNotification({
+        userId: promotedId,
+        type: 'SPOT_AVAILABLE',
+        data: {
+          gameSessionId: sessionId,
+          matchType: session.isDoubles ? 'Doubles' : 'Singles',
+          gameDate: session.startTimeDisplay,
+        },
+        templateData: {
+          matchType: session.isDoubles ? 'Doubles' : 'Singles',
+          date: session.startTimeDisplay,
+          courtName: session.courtName,
+        },
+      });
+    } catch (error) {
+      console.error('[rsvp] Error sending spot-available notification:', error);
+    }
+    
+    // Check if game is full again after promotion
+    const updatedSessionDoc = await sessionRef.get();
+    const updatedSession = updatedSessionDoc.data()!;
+    const confirmedCount = Object.values(updatedSession.playerStatuses || {})
+      .filter(s => s === 'CONFIRMED').length;
+    const maxPlayers = updatedSession.maxPlayers || (updatedSession.isDoubles ? 4 : 2);
+    
+    if (confirmedCount >= maxPlayers) {
+      await sessionRef.update({
+        status: 'full',
+        gameFullNotifiedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    
+    return;
   }
   
-  // Then notify pending players
+  // No waitlisted players — notify pending players about the opening
+  const playerStatuses = session.playerStatuses || {};
   const pendingIds = Object.entries(playerStatuses)
     .filter(([id, status]) => status === 'PENDING' && id !== cancelledPlayerId)
     .map(([id]) => id);
@@ -540,7 +594,7 @@ async function notifySpotOpened(
     if (player?.phone) {
       await sendSmsNotification(
         player.phone,
-        `🏓 Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to join!`
+        `🏓 Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to join!\nReply STOP to opt out`
       );
     }
   }
@@ -573,7 +627,8 @@ export async function sendGameInvites(
 📍 ${courtName}
 📅 ${dateTime}
 
-Reply YES to join or NO to decline.`;
+Reply YES to join or NO to decline.
+Reply STOP to opt out`;
     
     const success = await sendSmsNotification(player.phone, message);
     if (success) {

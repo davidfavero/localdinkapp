@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { detectSmsIntent } from '@/ai/flows/sms-intent-detection';
+import { detectComplianceKeyword } from '@/ai/flows/sms-intent-detection';
 import { 
   getPlayerByPhone, 
   findPendingGameForPlayer, 
@@ -8,6 +9,7 @@ import {
   handleDecline,
   handleCancel,
 } from '@/lib/rsvp-handler';
+import { handleSmsOptOut, handleSmsHelp } from '@/lib/sms-compliance';
 import { sendSmsMessage, normalizeToE164 } from '@/server/twilio';
 import Twilio from 'twilio';
 
@@ -53,6 +55,22 @@ export async function POST(req: NextRequest) {
     
     if (!from || !body) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    
+    // ==========================================
+    // TCPA COMPLIANCE: Handle STOP/HELP keywords FIRST
+    // These must be processed before ANY other logic.
+    // ==========================================
+    const complianceKeyword = detectComplianceKeyword(body);
+    if (complianceKeyword === 'stop') {
+      const result = await handleSmsOptOut(from);
+      await sendSmsReply(from, result.message);
+      return createTwimlResponse(result.message);
+    }
+    if (complianceKeyword === 'help') {
+      const result = await handleSmsHelp(from);
+      await sendSmsReply(from, result.message);
+      return createTwimlResponse(result.message);
     }
     
     // Find player by phone number

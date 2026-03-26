@@ -1,6 +1,23 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+/**
+ * Lightweight JWT expiry check for Edge middleware.
+ * Full verification happens server-side via Firebase Admin SDK.
+ */
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (typeof payload.exp !== 'number') return true;
+    // Token is expired if exp is in the past (with 30s grace)
+    return payload.exp * 1000 < Date.now() - 30000;
+  } catch {
+    return true;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const host = request.headers.get('host')?.toLowerCase() ?? '';
   if (host.startsWith('www.localdink.com')) {
@@ -12,24 +29,22 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   
-  // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/'];
-  const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith('/api/'));
-  
   // Dashboard routes require authentication
   const isDashboardRoute = pathname.startsWith('/dashboard');
   
   if (isDashboardRoute) {
-    const authToken = request.cookies.get('auth-token');
+    const authToken = request.cookies.get('auth-token')?.value;
     
-    // If no auth token, redirect to login
-    if (!authToken) {
-      console.log('[Middleware] No auth token found, redirecting to login from:', pathname);
+    if (!authToken || isTokenExpired(authToken)) {
+      console.log('[Middleware] Missing or expired auth token, redirecting to login from:', pathname);
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
-    } else {
-      console.log('[Middleware] Auth token found, allowing access to:', pathname);
+      // Clear the stale cookie
+      const response = NextResponse.redirect(loginUrl);
+      if (authToken) {
+        response.cookies.delete('auth-token');
+      }
+      return response;
     }
   }
   
