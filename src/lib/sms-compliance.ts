@@ -27,7 +27,7 @@ const OPT_IN_CONFIRMATION =
   `${PROGRAM_NAME}: You're now enrolled for game invite texts. Msg frequency varies. Msg&data rates may apply. Reply HELP for help, STOP to cancel.`;
 
 /** Standard footer appended to outbound SMS messages. */
-export const SMS_OPT_OUT_FOOTER = '\nReply STOP to opt out';
+const SMS_OPT_OUT_FOOTER = '\nReply STOP to opt out';
 
 // ============================================
 // STOP HANDLER
