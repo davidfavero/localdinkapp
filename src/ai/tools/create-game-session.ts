@@ -1,5 +1,3 @@
-'use server';
-
 /**
  * @fileOverview A tool for creating game sessions via the API.
  */

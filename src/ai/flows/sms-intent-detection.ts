@@ -36,7 +36,7 @@ const HELP_PATTERNS = [
  * Check for TCPA compliance keywords (STOP/HELP).
  * These MUST be handled before any game-related intent detection.
  */
-export function detectComplianceKeyword(message: string): 'stop' | 'help' | null {
+export async function detectComplianceKeyword(message: string): Promise<'stop' | 'help' | null> {
   const trimmed = message.trim();
   for (const pattern of STOP_PATTERNS) {
     if (pattern.test(trimmed)) return 'stop';

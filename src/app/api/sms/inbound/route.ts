@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     // TCPA COMPLIANCE: Handle STOP/HELP keywords FIRST
     // These must be processed before ANY other logic.
     // ==========================================
-    const complianceKeyword = detectComplianceKeyword(body);
+    const complianceKeyword = await detectComplianceKeyword(body);
     if (complianceKeyword === 'stop') {
       const result = await handleSmsOptOut(from);
       await sendSmsReply(from, result.message);

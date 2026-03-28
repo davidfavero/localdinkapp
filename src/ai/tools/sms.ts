@@ -1,5 +1,3 @@
-'use server';
-
 /**
  * @fileOverview A tool for sending SMS messages using Twilio.
  *

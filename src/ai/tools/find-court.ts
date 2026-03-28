@@ -1,5 +1,3 @@
-'use server';
-
 /**
  * @fileOverview A tool for finding courts by name.
  * Updated: 2024-12-10 - Improved matching for apostrophes (I'On vs ION)
