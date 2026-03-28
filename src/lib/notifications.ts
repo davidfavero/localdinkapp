@@ -32,6 +32,7 @@ type TemplateData = {
   time?: string;
   courtName?: string;
   webLink?: string;
+  messagePreview?: string;
 };
 
 function getTemplate(type: NotificationType, data: TemplateData): NotificationTemplate {
@@ -88,6 +89,13 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
         title: 'Invite expired',
         body: `The invite to ${data.matchType || 'the game'} on ${data.date || 'TBD'} has expired`,
       };
+
+    case 'NEW_MESSAGE':
+      return {
+        title: `New message from ${data.inviterName || 'someone'}`,
+        body: data.messagePreview || 'You have a new message',
+        smsBody: `💬 ${data.inviterName || 'Someone'} sent you a message on LocalDink. Open the app to reply: ${data.webLink || 'the app'}\nReply STOP to opt out`,
+      };
     
     default:
       return {
@@ -112,6 +120,9 @@ interface SendNotificationOptions {
     gameDate?: string;
     gameTime?: string;
     matchType?: string;
+    conversationId?: string;
+    senderName?: string;
+    messagePreview?: string;
   };
   templateData?: TemplateData;
 }
@@ -141,11 +152,17 @@ export async function sendNotification(options: SendNotificationOptions): Promis
   }
   
   // Get template
-  const webLink = data.gameSessionId 
-    ? `${process.env.NEXT_PUBLIC_APP_URL || 'https://localdink.app'}/dashboard/sessions/${data.gameSessionId}`
-    : `${process.env.NEXT_PUBLIC_APP_URL || 'https://localdink.app'}/dashboard/sessions`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://localdink.app';
+  let webLink: string;
+  if (data.conversationId) {
+    webLink = `${baseUrl}/dashboard/messages?conversation=${data.conversationId}`;
+  } else if (data.gameSessionId) {
+    webLink = `${baseUrl}/dashboard/sessions/${data.gameSessionId}`;
+  } else {
+    webLink = `${baseUrl}/dashboard/sessions`;
+  }
   
-  const template = getTemplate(type, { ...templateData, webLink });
+  const template = getTemplate(type, { ...templateData, webLink, messagePreview: data.messagePreview });
   
   const channelsUsed: string[] = [];
   
@@ -222,6 +239,8 @@ function getTypePreferenceKey(type: NotificationType): keyof NotificationPrefere
       return 'spotAvailable';
     case 'RSVP_EXPIRED':
       return 'gameInvites';
+    case 'NEW_MESSAGE':
+      return 'messages';
     default:
       return null;
   }

@@ -260,5 +260,53 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if false;
     }
+
+    /**
+     * @description Controls access to conversation documents.
+     * @path /conversations/{conversationId}
+     * @allow (get) - Only participants can read a conversation.
+     * @allow (list) - Authenticated users can list (filtered by participantIds array-contains).
+     * @allow (create) - Creator must be in participantIds.
+     * @allow (update) - Only participants can update (lastMessage, lastReadAt).
+     * @allow (delete) - Not allowed in Phase 1.
+     */
+    match /conversations/{conversationId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isParticipant() {
+            return isSignedIn() && request.auth.uid in resource.data.participantIds;
+        }
+
+        function willBeParticipant() {
+            return isSignedIn() && request.auth.uid in request.resource.data.participantIds;
+        }
+
+        allow get: if isParticipant();
+        allow list: if isSignedIn();
+        allow create: if willBeParticipant();
+        allow update: if isParticipant();
+        allow delete: if false;
+
+        /**
+         * @description Controls access to message documents within a conversation.
+         * @path /conversations/{conversationId}/messages/{messageId}
+         * @allow (get, list) - Only conversation participants can read messages.
+         * @allow (create) - Only participants can send, and senderId must match auth uid.
+         * @allow (update, delete) - Not allowed in Phase 1.
+         */
+        match /messages/{messageId} {
+            function isConversationParticipant() {
+                return request.auth != null &&
+                    request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+            }
+
+            allow get, list: if isConversationParticipant();
+            allow create: if isConversationParticipant() && request.resource.data.senderId == request.auth.uid;
+            allow update: if false;
+            allow delete: if false;
+        }
+    }
   }
 }

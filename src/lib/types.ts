@@ -15,6 +15,7 @@ export type NotificationTypes = {
   rsvpUpdates: boolean;     // When players respond (default: true)
   gameChanges: boolean;     // Time/location changes (default: true)
   spotAvailable: boolean;   // Waitlist promotions (default: true)
+  messages: boolean;        // Player-to-player messages (default: true)
 };
 
 export type NotificationPreferences = {
@@ -41,6 +42,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     rsvpUpdates: true,
     gameChanges: true,
     spotAvailable: true,
+    messages: true,
   },
 };
 
@@ -218,7 +220,7 @@ export type ChatOutput = z.infer<typeof ChatOutputSchema>
 // NOTIFICATION TYPES
 // ============================================
 
-export type NotificationType = 
+export type NotificationType =
   | 'GAME_INVITE'           // Someone invited you to a game
   | 'GAME_INVITE_ACCEPTED'  // Someone accepted your invite
   | 'GAME_INVITE_DECLINED'  // Someone declined your invite
@@ -226,7 +228,8 @@ export type NotificationType =
   | 'GAME_CHANGED'          // Game details changed
   | 'GAME_CANCELLED'        // Game was cancelled
   | 'SPOT_AVAILABLE'        // You've been promoted from waitlist
-  | 'RSVP_EXPIRED';         // Your invite expired
+  | 'RSVP_EXPIRED'          // Your invite expired
+  | 'NEW_MESSAGE';          // New player-to-player message
 
 export type NotificationAction = 'accept' | 'decline' | 'view' | 'dismiss';
 
@@ -244,6 +247,9 @@ export type Notification = {
     gameDate?: string;
     gameTime?: string;
     matchType?: string;
+    conversationId?: string;
+    senderName?: string;
+    messagePreview?: string;
   };
   read: boolean;
   createdAt: Timestamp;
@@ -254,5 +260,39 @@ export type Notification = {
 // For creating notifications (without id, with serverTimestamp)
 export type NotificationCreate = Omit<Notification, 'id' | 'createdAt'> & {
   createdAt?: any; // Will use serverTimestamp()
+};
+
+// ============================================
+// MESSAGING TYPES
+// ============================================
+
+export type ConversationType = '1:1' | 'group';
+
+export type Conversation = {
+  id: string;
+  type: ConversationType;
+  participantIds: string[];
+  participantNames: Record<string, string>;
+  participantAvatars: Record<string, string>;
+  groupName?: string;
+  lastMessage?: {
+    text: string;
+    senderId: string;
+    senderName: string;
+    sentAt: Timestamp;
+  };
+  lastActivityAt: Timestamp;
+  lastReadAt: Record<string, Timestamp>;
+  createdAt: Timestamp;
+  createdBy: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  sentAt: Timestamp;
 };
 

@@ -34,7 +34,9 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { UserAvatar } from '@/components/user-avatar';
 import type { Player, Group } from '@/lib/types';
 import { useState, useEffect } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, MessageCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { createConversationAction } from '@/lib/actions';
 
 const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
@@ -57,8 +59,10 @@ export function EditPlayerSheet({ player, groups, open, onOpenChange }: EditPlay
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: authUser } = useFirebase();
+  const router = useRouter();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isStartingChat, setIsStartingChat] = useState(false);
 
   // Get current group memberships
   const currentGroupIds = groups?.filter(g => g.members?.includes(player?.id || ''))?.map(g => g.id) || [];
@@ -332,6 +336,41 @@ export function EditPlayerSheet({ player, groups, open, onOpenChange }: EditPlay
                     </FormItem>
                   )}
                 />
+
+                {player.linkedUserId && authUser && player.linkedUserId !== authUser.uid && (
+                  <div className="pt-4 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isStartingChat}
+                      onClick={async () => {
+                        if (!authUser) return;
+                        setIsStartingChat(true);
+                        try {
+                          const result = await createConversationAction({
+                            creatorId: authUser.uid,
+                            participantIds: [authUser.uid, player.linkedUserId!],
+                            type: '1:1',
+                          });
+                          if (result.success && result.conversationId) {
+                            onOpenChange(false);
+                            router.push(`/dashboard/messages?conversation=${result.conversationId}`);
+                          } else {
+                            toast({ variant: 'destructive', title: 'Error', description: result.message });
+                          }
+                        } catch (error: any) {
+                          toast({ variant: 'destructive', title: 'Error', description: error.message });
+                        } finally {
+                          setIsStartingChat(false);
+                        }
+                      }}
+                      className="w-full"
+                    >
+                      <MessageCircle className="mr-2 h-4 w-4" />
+                      {isStartingChat ? 'Opening...' : `Message ${player.firstName}`}
+                    </Button>
+                  </div>
+                )}
 
                 {!player.isCurrentUser && (
                   <div className="pt-4 border-t">

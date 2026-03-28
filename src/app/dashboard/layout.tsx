@@ -23,7 +23,7 @@ import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { NewUserWizard } from '@/components/new-user-wizard';
 import { NotificationBell } from '@/components/notification-bell';
-import type { Notification } from '@/lib/types';
+import type { Notification, Conversation } from '@/lib/types';
 
 const navItems = [
   { href: '/dashboard/sessions', icon: PickleballOutlineIcon, activeIcon: PickleballOutlineIcon, label: 'Game\nSessions' },
@@ -111,6 +111,30 @@ export default function DashboardLayout({
     }
     return notifications?.filter(n => !n.read).length || 0;
   }, [notifications, notificationsError]);
+
+  // Query conversations for unread message badge
+  const conversationsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+      collection(firestore, 'conversations'),
+      where('participantIds', 'array-contains', user.uid)
+    );
+  }, [firestore, user]);
+
+  const { data: conversations } = useCollection<Conversation>(conversationsQuery);
+
+  const unreadMessageCount = useMemo(() => {
+    if (!conversations || !user) return 0;
+    return conversations.filter(conv => {
+      if (!conv.lastMessage?.sentAt) return false;
+      if (conv.lastMessage.senderId === user.uid) return false;
+      const lastRead = conv.lastReadAt?.[user.uid];
+      if (!lastRead) return true;
+      const lastReadMs = (lastRead as any).toMillis ? (lastRead as any).toMillis() : 0;
+      const lastMsgMs = (conv.lastMessage.sentAt as any).toMillis ? (conv.lastMessage.sentAt as any).toMillis() : 0;
+      return lastMsgMs > lastReadMs;
+    }).length;
+  }, [conversations, user]);
   
   // New user detection - show wizard if profile is incomplete
   const [showNewUserWizard, setShowNewUserWizard] = useState(false);
@@ -319,6 +343,8 @@ export default function DashboardLayout({
 
             // Check if this is the Game Sessions nav item and has pending invites
             const showBadge = label === 'Game\nSessions' && pendingInviteCount > 0;
+            const showMessageBadge = label === 'Player\nMessages' && unreadMessageCount > 0;
+            const badgeCount = showBadge ? pendingInviteCount : showMessageBadge ? unreadMessageCount : 0;
             
             return (
               <Link
@@ -332,9 +358,9 @@ export default function DashboardLayout({
               >
                 <div className="relative">
                   <CurrentIcon className="h-6 w-6 mb-1" />
-                  {showBadge && (
+                  {(showBadge || showMessageBadge) && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                      {pendingInviteCount > 9 ? '9+' : pendingInviteCount}
+                      {badgeCount > 9 ? '9+' : badgeCount}
                     </span>
                   )}
                 </div>

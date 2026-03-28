@@ -12,6 +12,7 @@ import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
 import type { ChatInput, ChatOutput, Player, Group, Court } from "./types";
 import { normalizeToE164 } from "@/server/twilio";
+import { FieldValue } from 'firebase-admin/firestore';
 
 export async function extractPreferencesAction(
   input: ProfilePreferenceExtractionInput
@@ -439,5 +440,145 @@ export async function seedDatabaseAction(): Promise<{ success: boolean, message:
     } catch (error: any) {
         console.error('Error seeding database:', error);
         return { success: false, message: error.message, usersAdded: 0, courtsAdded: 0 };
+    }
+}
+
+export async function createConversationAction(params: {
+    creatorId: string;
+    participantIds: string[];
+    type: '1:1' | 'group';
+    groupName?: string;
+}): Promise<{ success: boolean; conversationId?: string; message: string }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available' };
+        }
+
+        const { creatorId, participantIds, type, groupName } = params;
+
+        // For 1:1, check if conversation already exists
+        if (type === '1:1' && participantIds.length === 2) {
+            const existing = await adminDb.collection('conversations')
+                .where('type', '==', '1:1')
+                .where('participantIds', 'array-contains', creatorId)
+                .get();
+
+            const found = existing.docs.find(doc => {
+                const data = doc.data();
+                const other = participantIds.find(id => id !== creatorId);
+                return data.participantIds?.includes(other) && data.participantIds?.length === 2;
+            });
+
+            if (found) {
+                return { success: true, conversationId: found.id, message: 'Existing conversation found' };
+            }
+        }
+
+        // Fetch participant profiles for denormalized names/avatars
+        const participantNames: Record<string, string> = {};
+        const participantAvatars: Record<string, string> = {};
+
+        for (const uid of participantIds) {
+            const userDoc = await adminDb.collection('users').doc(uid).get();
+            if (userDoc.exists) {
+                const data = userDoc.data()!;
+                participantNames[uid] = `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Unknown';
+                participantAvatars[uid] = data.avatarUrl || '';
+            }
+        }
+
+        const now = FieldValue.serverTimestamp();
+        const lastReadAt: Record<string, any> = {};
+        for (const uid of participantIds) {
+            lastReadAt[uid] = now;
+        }
+
+        const conversationDoc = await adminDb.collection('conversations').add({
+            type,
+            participantIds,
+            participantNames,
+            participantAvatars,
+            ...(groupName && { groupName }),
+            lastActivityAt: now,
+            lastReadAt,
+            createdAt: now,
+            createdBy: creatorId,
+        });
+
+        return { success: true, conversationId: conversationDoc.id, message: 'Conversation created' };
+    } catch (error: any) {
+        console.error('Error creating conversation:', error);
+        return { success: false, message: error.message || 'Failed to create conversation' };
+    }
+}
+
+export async function sendMessageNotificationAction(params: {
+    conversationId: string;
+    senderId: string;
+    senderName: string;
+    text: string;
+}): Promise<{ success: boolean; message: string }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) {
+            return { success: false, message: 'Database not available' };
+        }
+
+        const { conversationId, senderId, senderName, text } = params;
+
+        // Read conversation to get participants
+        const convDoc = await adminDb.collection('conversations').doc(conversationId).get();
+        if (!convDoc.exists) {
+            return { success: false, message: 'Conversation not found' };
+        }
+
+        const convData = convDoc.data()!;
+        const participantIds: string[] = convData.participantIds || [];
+
+        // Validate sender is a participant
+        if (!participantIds.includes(senderId)) {
+            return { success: false, message: 'Not a participant' };
+        }
+
+        // Update conversation metadata
+        await adminDb.collection('conversations').doc(conversationId).update({
+            lastMessage: {
+                text: text.substring(0, 100),
+                senderId,
+                senderName,
+                sentAt: FieldValue.serverTimestamp(),
+            },
+            lastActivityAt: FieldValue.serverTimestamp(),
+        });
+
+        // Send notifications to other participants
+        const { sendNotification } = await import('./notifications');
+        const recipientIds = participantIds.filter(id => id !== senderId);
+        const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
+
+        for (const recipientId of recipientIds) {
+            try {
+                await sendNotification({
+                    userId: recipientId,
+                    type: 'NEW_MESSAGE',
+                    data: {
+                        conversationId,
+                        senderName,
+                        messagePreview: preview,
+                    },
+                    templateData: {
+                        inviterName: senderName,
+                    },
+                });
+            } catch (notifError) {
+                console.error(`Failed to notify ${recipientId}:`, notifError);
+            }
+        }
+
+        return { success: true, message: 'Notifications sent' };
+    } catch (error: any) {
+        console.error('Error sending message notification:', error);
+        return { success: false, message: error.message || 'Failed to send notifications' };
     }
 }

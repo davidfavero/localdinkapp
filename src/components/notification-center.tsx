@@ -2,16 +2,17 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Calendar, 
-  UserPlus, 
-  UserMinus, 
-  Clock, 
-  MapPin, 
+import {
+  Calendar,
+  UserPlus,
+  UserMinus,
+  Clock,
+  MapPin,
   XCircle,
   Bell,
   CheckCircle2,
-  PartyPopper
+  PartyPopper,
+  MessageCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ const notificationIcons: Record<NotificationType, typeof Calendar> = {
   GAME_CANCELLED: XCircle,
   SPOT_AVAILABLE: PartyPopper,
   RSVP_EXPIRED: Clock,
+  NEW_MESSAGE: MessageCircle,
 };
 
 const notificationColors: Record<NotificationType, string> = {
@@ -47,6 +49,7 @@ const notificationColors: Record<NotificationType, string> = {
   GAME_CANCELLED: 'text-red-600 bg-red-100',
   SPOT_AVAILABLE: 'text-green-600 bg-green-100',
   RSVP_EXPIRED: 'text-muted-foreground bg-muted',
+  NEW_MESSAGE: 'text-blue-600 bg-blue-100',
 };
 
 function NotificationItem({ 
@@ -135,7 +138,9 @@ export function NotificationCenter({ onClose }: NotificationCenterProps) {
     }
     
     // Navigate based on notification type
-    if (notification.data?.gameSessionId) {
+    if (notification.data?.conversationId) {
+      router.push(`/dashboard/messages?conversation=${notification.data.conversationId}`);
+    } else if (notification.data?.gameSessionId) {
       router.push(`/dashboard/sessions/${notification.data.gameSessionId}`);
     } else {
       router.push('/dashboard/sessions');

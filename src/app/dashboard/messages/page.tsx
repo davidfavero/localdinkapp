@@ -1,16 +1,48 @@
 'use client';
-import { MessageCircle } from 'lucide-react';
+
+import { useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { ConversationList } from '@/components/conversation-list';
+import { ConversationDetail } from '@/components/conversation-detail';
+import { NewConversationSheet } from '@/components/new-conversation-sheet';
+
+function MessagesContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const conversationId = searchParams.get('conversation');
+  const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
+
+  if (conversationId) {
+    return (
+      <ConversationDetail
+        conversationId={conversationId}
+        onBack={() => router.push('/dashboard/messages')}
+      />
+    );
+  }
+
+  return (
+    <>
+      <ConversationList
+        onSelectConversation={(id) => router.push(`/dashboard/messages?conversation=${id}`)}
+        onNewConversation={() => setIsNewConversationOpen(true)}
+      />
+      <NewConversationSheet
+        open={isNewConversationOpen}
+        onOpenChange={setIsNewConversationOpen}
+        onConversationCreated={(id) => {
+          setIsNewConversationOpen(false);
+          router.push(`/dashboard/messages?conversation=${id}`);
+        }}
+      />
+    </>
+  );
+}
 
 export default function MessagesPage() {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center">
-      <MessageCircle className="w-24 h-24 text-muted-foreground/50 mb-4" />
-      <h1 className="text-2xl font-bold font-headline text-foreground">
-        Player-to-Player Messaging
-      </h1>
-      <p className="mt-2 text-lg text-muted-foreground max-w-md">
-        This feature is coming soon! You'll be able to chat directly with other players and groups right here.
-      </p>
-    </div>
+    <Suspense>
+      <MessagesContent />
+    </Suspense>
   );
 }
