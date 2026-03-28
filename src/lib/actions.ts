@@ -79,7 +79,35 @@ export async function chatAction(
     try {
         const { chat } = await import("@/ai/flows/chat");
         const disambiguationMemory = currentUser?.nameDisambiguationMemory || {};
-        const response = await chat(knownPlayersWithCurrent, { message, history }, groups, courts, disambiguationMemory);
+
+        // Build play frequency map from game history for smarter name disambiguation
+        const playFrequency: Record<string, number> = {};
+        if (currentUser?.id) {
+            const adminDb = await getAdminDb();
+            if (adminDb) {
+                const sessionsSnap = await adminDb.collection('game-sessions')
+                    .where('playerIds', 'array-contains', currentUser.id)
+                    .get();
+
+                const now = Date.now();
+                const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+                for (const doc of sessionsSnap.docs) {
+                    const data = doc.data();
+                    const sessionTime = data.startTime?.toMillis?.() || 0;
+                    const weight = (now - sessionTime) < NINETY_DAYS_MS ? 1.0 : 0.5;
+                    for (const playerId of (data.playerIds || [])) {
+                        if (playerId === currentUser.id) continue;
+                        const player = knownPlayersWithCurrent.find(p => p.id === playerId);
+                        if (player) {
+                            const fullName = `${player.firstName} ${player.lastName}`;
+                            playFrequency[fullName] = (playFrequency[fullName] || 0) + weight;
+                        }
+                    }
+                }
+            }
+        }
+
+        const response = await chat(knownPlayersWithCurrent, { message, history }, groups, courts, disambiguationMemory, playFrequency);
 
         if (currentUser?.id) {
             const adminDb = await getAdminDb();

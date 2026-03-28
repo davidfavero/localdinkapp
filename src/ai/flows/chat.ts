@@ -488,7 +488,8 @@ export async function chat(
   input: ChatInput, 
   knownGroups: (Group & { id: string })[] = [],
   knownCourts: Court[] = [],
-  disambiguationMemory: Record<string, string> = {}
+  disambiguationMemory: Record<string, string> = {},
+  playFrequency: Record<string, number> = {}
 ): Promise<ChatOutput> {
     const knownPlayerNames = knownPlayers.map(p => `${p.firstName} ${p.lastName}`);
     const knownGroupNames = knownGroups.map(g => g.name);
@@ -824,7 +825,7 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       }
       
       // Otherwise, try to disambiguate as a player name
-      const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames });
+      const result = await disambiguateName({ playerName, knownPlayers: knownPlayerNames, playFrequency });
       if (result.question) {
         // Check if this is an "unknown player" question
         if (result.question.includes("don't know") || result.question.includes("To add them")) {

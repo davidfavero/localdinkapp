@@ -8,6 +8,7 @@
 export type NameDisambiguationInput = {
   playerName: string;
   knownPlayers: string[]; // Array of full names like "Melissa Favero"
+  playFrequency?: Record<string, number>; // full name → frequency score from game history
 };
 
 export type NameDisambiguationOutput = {
@@ -22,7 +23,7 @@ export type NameDisambiguationOutput = {
 export async function disambiguateName(
   input: NameDisambiguationInput
 ): Promise<NameDisambiguationOutput> {
-  const { playerName, knownPlayers } = input;
+  const { playerName, knownPlayers, playFrequency } = input;
   const searchName = playerName.toLowerCase().trim();
   
   console.log(`[disambiguate] Looking for "${searchName}" in:`, knownPlayers);
@@ -49,7 +50,17 @@ export async function disambiguateName(
   }
 
   if (firstNameMatches.length > 1) {
-    // Multiple matches - need clarification
+    // Multiple matches - try to auto-resolve using play frequency
+    if (playFrequency) {
+      const scored = firstNameMatches
+        .map(name => ({ name, score: playFrequency[name] || 0 }))
+        .sort((a, b) => b.score - a.score);
+      if (scored[0].score > 0 && scored[0].score > (scored[1]?.score || 0)) {
+        console.log(`[disambiguate] Auto-resolved by play frequency: "${scored[0].name}" (score: ${scored[0].score.toFixed(1)} vs ${scored[1]?.score.toFixed(1) || 0})`);
+        return { disambiguatedName: scored[0].name };
+      }
+    }
+    // No frequency data or tied scores - need clarification
     console.log(`[disambiguate] Multiple matches:`, firstNameMatches);
     return {
       question: `Do you mean ${firstNameMatches.join(' or ')}?`,
@@ -68,6 +79,16 @@ export async function disambiguateName(
   }
 
   if (partialMatches.length > 1) {
+    // Try to auto-resolve using play frequency
+    if (playFrequency) {
+      const scored = partialMatches
+        .map(name => ({ name, score: playFrequency[name] || 0 }))
+        .sort((a, b) => b.score - a.score);
+      if (scored[0].score > 0 && scored[0].score > (scored[1]?.score || 0)) {
+        console.log(`[disambiguate] Auto-resolved partial by play frequency: "${scored[0].name}" (score: ${scored[0].score.toFixed(1)})`);
+        return { disambiguatedName: scored[0].name };
+      }
+    }
     console.log(`[disambiguate] Multiple partial matches:`, partialMatches);
     return {
       question: `Do you mean ${partialMatches.join(' or ')}?`,
