@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, MessageCircle, Users } from 'lucide-react';
+import { Search, MessageCircle, Users, Phone, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +19,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where } from 'firebase/firestore';
-import { createConversationAction } from '@/lib/actions';
+import { createConversationAction, sendDirectSmsAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import type { Player, Group } from '@/lib/types';
 
@@ -58,11 +58,19 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
 
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
 
-  // Filter players: only those with linkedUserId (registered users)
+  const [smsPlayer, setSmsPlayer] = useState<(Player & { id: string }) | null>(null);
+  const [smsText, setSmsText] = useState('');
+  const [isSendingSms, setIsSendingSms] = useState(false);
+
+  // Show all players (with linked account or phone number), excluding self
   const messagePlayers = useMemo(() => {
     if (!players) return [];
     return players
-      .filter(p => p.linkedUserId && p.linkedUserId !== user?.uid)
+      .filter(p => {
+        if (p.linkedUserId === user?.uid) return false;
+        if (p.isCurrentUser) return false;
+        return p.linkedUserId || p.phone;
+      })
       .filter(p => {
         if (!search) return true;
         const name = `${p.firstName} ${p.lastName}`.toLowerCase();
@@ -72,24 +80,59 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
 
   const handleSelectPlayer = async (player: Player & { id: string }) => {
     if (!user || isCreating) return;
-    setIsCreating(true);
+
+    // Player has a linked account → in-app conversation
+    if (player.linkedUserId) {
+      setIsCreating(true);
+      try {
+        const result = await createConversationAction({
+          creatorId: user.uid,
+          participantIds: [user.uid, player.linkedUserId],
+          type: '1:1',
+        });
+
+        if (result.success && result.conversationId) {
+          onConversationCreated(result.conversationId);
+        } else {
+          toast({ variant: 'destructive', title: 'Error', description: result.message });
+        }
+      } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Error', description: error.message });
+      } finally {
+        setIsCreating(false);
+      }
+      return;
+    }
+
+    // Player has phone only → show SMS compose
+    setSmsPlayer(player);
+    setSmsText('');
+  };
+
+  const handleSendSms = async () => {
+    if (!smsPlayer?.phone || !smsText.trim() || !user || isSendingSms) return;
+    setIsSendingSms(true);
 
     try {
-      const result = await createConversationAction({
-        creatorId: user.uid,
-        participantIds: [user.uid, player.linkedUserId!],
-        type: '1:1',
+      const senderName = user.displayName || 'A LocalDink player';
+      const result = await sendDirectSmsAction({
+        senderName,
+        recipientPhone: smsPlayer.phone,
+        text: smsText.trim(),
       });
 
-      if (result.success && result.conversationId) {
-        onConversationCreated(result.conversationId);
+      if (result.success) {
+        toast({ title: 'SMS sent', description: `Message sent to ${smsPlayer.firstName}.` });
+        setSmsPlayer(null);
+        setSmsText('');
+        onOpenChange(false);
       } else {
         toast({ variant: 'destructive', title: 'Error', description: result.message });
       }
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
     } finally {
-      setIsCreating(false);
+      setIsSendingSms(false);
     }
   };
 
@@ -98,10 +141,10 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
     setIsCreating(true);
 
     try {
-      // Gather all group members who are registered users
+      // Gather all group members
       const memberPlayerIds = group.members || [];
       const registeredUserIds = new Set<string>();
-      registeredUserIds.add(user.uid); // Always include current user
+      registeredUserIds.add(user.uid);
 
       for (const memberId of memberPlayerIds) {
         const player = players.find(p => p.id === memberId);
@@ -110,11 +153,12 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
         }
       }
 
+      // Need at least one other registered member for in-app conversation
       if (registeredUserIds.size < 2) {
+        // All members are SMS-only — show a toast with guidance
         toast({
-          variant: 'destructive',
-          title: 'No registered members',
-          description: 'This group has no other registered members to message.',
+          title: 'SMS-only group',
+          description: 'All members in this group use SMS. Select individual players to text them.',
         });
         setIsCreating(false);
         return;
@@ -183,24 +227,65 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
                 </div>
               ) : messagePlayers.length > 0 ? (
                 <div className="space-y-1">
-                  {messagePlayers.map(player => (
-                    <button
-                      key={player.id}
-                      onClick={() => handleSelectPlayer(player as Player & { id: string })}
-                      disabled={isCreating}
-                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
-                    >
-                      <UserAvatar player={player} className="h-10 w-10" />
-                      <span className="text-sm font-medium">
-                        {player.firstName} {player.lastName}
-                      </span>
-                    </button>
-                  ))}
+                  {smsPlayer ? (
+                    <div className="p-3 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <UserAvatar player={smsPlayer} className="h-10 w-10" />
+                        <div>
+                          <p className="text-sm font-medium">{smsPlayer.firstName} {smsPlayer.lastName}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> SMS
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          value={smsText}
+                          onChange={(e) => setSmsText(e.target.value)}
+                          placeholder="Type a message..."
+                          className="flex-1"
+                          onKeyDown={(e) => e.key === 'Enter' && handleSendSms()}
+                          autoFocus
+                        />
+                        <Button
+                          size="icon"
+                          onClick={handleSendSms}
+                          disabled={!smsText.trim() || isSendingSms}
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => setSmsPlayer(null)}>
+                        Back to players
+                      </Button>
+                    </div>
+                  ) : (
+                    messagePlayers.map(player => (
+                      <button
+                        key={player.id}
+                        onClick={() => handleSelectPlayer(player as Player & { id: string })}
+                        disabled={isCreating}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
+                      >
+                        <UserAvatar player={player} className="h-10 w-10" />
+                        <div className="flex-1 text-left">
+                          <span className="text-sm font-medium">
+                            {player.firstName} {player.lastName}
+                          </span>
+                        </div>
+                        {!player.linkedUserId && (
+                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            SMS
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
                 </div>
               ) : (
                 <div className="py-8 text-center">
                   <p className="text-sm text-muted-foreground">
-                    {search ? 'No players match your search.' : 'No registered players to message. Players need a LocalDink account to receive messages.'}
+                    {search ? 'No players match your search.' : 'No players with phone numbers found.'}
                   </p>
                 </div>
               )}

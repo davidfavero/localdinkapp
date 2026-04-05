@@ -582,3 +582,29 @@ export async function sendMessageNotificationAction(params: {
         return { success: false, message: error.message || 'Failed to send notifications' };
     }
 }
+
+export async function sendDirectSmsAction(params: {
+    senderName: string;
+    recipientPhone: string;
+    text: string;
+}): Promise<{ success: boolean; message: string }> {
+    try {
+        const { sendSmsMessage, normalizeToE164, isTwilioConfigured } = await import('@/server/twilio');
+
+        if (!isTwilioConfigured()) {
+            return { success: false, message: 'SMS is not configured.' };
+        }
+
+        const normalized = normalizeToE164(params.recipientPhone);
+        if (!normalized) {
+            return { success: false, message: 'Invalid phone number.' };
+        }
+
+        const body = `${params.senderName}: ${params.text}`;
+        await sendSmsMessage({ to: normalized, body });
+        return { success: true, message: 'SMS sent' };
+    } catch (error: any) {
+        console.error('Error sending direct SMS:', error);
+        return { success: false, message: error.message || 'Failed to send SMS' };
+    }
+}
