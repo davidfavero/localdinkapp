@@ -8,6 +8,7 @@ import { useDoc } from './firestore/use-doc';
 import { useFirebase } from './provider';
 import type { Player } from '@/lib/types';
 import { useMemoFirebase } from './provider';
+import { linkPlayerContactsAction } from '@/lib/actions';
 
 /**
  * Returns current Firebase user's app-specific profile, and loading states.
@@ -45,6 +46,8 @@ export function useUser(user: User | null) {
             ...(user.phoneNumber && { phone: user.phoneNumber }),
           };
           await setDoc(userDocRef, newUserProfile);
+          // Link any existing player contacts that match this user's phone/email
+          linkPlayerContactsAction(user.uid, user.phoneNumber, user.email).catch(console.error);
         } catch (error) {
           console.error('Error creating user profile:', error);
         } finally {

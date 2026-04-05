@@ -243,6 +243,63 @@ export async function undoRecentSessionAction(
     }
 }
 
+/**
+ * After a new user creates their account, find any player contacts across all
+ * users that match this person's phone or email and set linkedUserId on them.
+ * This lets other users who already added this person as a contact immediately
+ * message them in-app.
+ */
+export async function linkPlayerContactsAction(
+    userId: string,
+    phone?: string | null,
+    email?: string | null
+): Promise<{ linkedCount: number }> {
+    try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) return { linkedCount: 0 };
+
+        const normalizedPhone = normalizeToE164(phone ?? undefined);
+        const normalizedEmail = email?.toLowerCase().trim();
+        let linkedCount = 0;
+
+        // Find player contacts matching by phone
+        if (normalizedPhone) {
+            const byPhone = await adminDb.collection('players')
+                .where('phone', '==', normalizedPhone)
+                .get();
+            for (const doc of byPhone.docs) {
+                const data = doc.data();
+                if (!data.linkedUserId && data.ownerId !== userId) {
+                    await doc.ref.update({ linkedUserId: userId });
+                    linkedCount++;
+                }
+            }
+        }
+
+        // Find player contacts matching by email
+        if (normalizedEmail) {
+            const byEmail = await adminDb.collection('players')
+                .where('email', '==', normalizedEmail)
+                .get();
+            for (const doc of byEmail.docs) {
+                const data = doc.data();
+                if (!data.linkedUserId && data.ownerId !== userId) {
+                    await doc.ref.update({ linkedUserId: userId });
+                    linkedCount++;
+                }
+            }
+        }
+
+        if (linkedCount > 0) {
+            console.log(`[linkPlayerContacts] Linked ${linkedCount} player contacts to user ${userId}`);
+        }
+        return { linkedCount };
+    } catch (error) {
+        console.error('Error linking player contacts:', error);
+        return { linkedCount: 0 };
+    }
+}
+
 export async function addPlayerAction(
     playerData: {
         firstName: string;
@@ -270,7 +327,7 @@ export async function addPlayerAction(
             createdAt: new Date().toISOString(),
         };
 
-        // Check if a user with this email already exists (for linking)
+        // Check if a user with this email or phone already exists (for linking)
         let linkedUserId: string | undefined;
         if (newPlayer.email) {
             try {
@@ -282,7 +339,22 @@ export async function addPlayerAction(
                     linkedUserId = existingUser.docs[0].id;
                 }
             } catch (e) {
-                console.warn('Could not check for existing user:', e);
+                console.warn('Could not check for existing user by email:', e);
+            }
+        }
+
+        // Also check by phone number (users who signed in via phone auth)
+        if (!linkedUserId && normalizedPhone) {
+            try {
+                const existingUser = await adminDb.collection('users')
+                    .where('phone', '==', normalizedPhone)
+                    .limit(1)
+                    .get();
+                if (!existingUser.empty) {
+                    linkedUserId = existingUser.docs[0].id;
+                }
+            } catch (e) {
+                console.warn('Could not check for existing user by phone:', e);
             }
         }
 
