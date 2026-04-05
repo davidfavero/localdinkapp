@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { ChatHistory, ChatInput, ChatInputSchema, ChatOutput, ChatOutputSchema, Player, Group, Court } from '@/lib/types';
 import { disambiguateName } from './name-disambiguation';
 import { createGameSessionTool } from '@/ai/tools/create-game-session';
+import { ROBIN_SYSTEM_PROMPT } from '@/ai/robin-prompt';
 
 const APP_TIME_ZONE = 'America/New_York';
 
@@ -590,7 +591,10 @@ export async function chat(
       console.log('[AI] Starting generation for message:', processedInput.substring(0, 100));
       
       const result = await ai.generate({
-        prompt: `You are Robin, a pickleball scheduling assistant. Your ONLY job is to extract scheduling details from user messages.
+        prompt: `${ROBIN_SYSTEM_PROMPT}
+
+## YOUR TASK: EXTRACT SCHEDULING DETAILS
+Your ONLY job right now is to extract scheduling details from user messages.
 
 ## CRITICAL: EXTRACT EVERYTHING IN ONE PASS
 
