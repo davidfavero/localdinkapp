@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, MessageCircle, Users, Phone, Send, ArrowLeft } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { useState, useMemo } from 'react';
+import { Search, MessageCircle, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
   Sheet,
@@ -19,7 +17,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where } from 'firebase/firestore';
-import { createConversationAction, sendDirectSmsAction } from '@/lib/actions';
+import { createConversationAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import type { Player, Group } from '@/lib/types';
 
@@ -58,12 +56,6 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
 
   const { data: groups, isLoading: isLoadingGroups } = useCollection<Group>(groupsQuery);
 
-  const [smsPlayer, setSmsPlayer] = useState<(Player & { id: string }) | null>(null);
-  const [smsText, setSmsText] = useState('');
-  const [isSendingSms, setIsSendingSms] = useState(false);
-  const [smsMessages, setSmsMessages] = useState<{ sender: 'user'; text: string; sentAt: Date }[]>([]);
-  const smsMessagesEndRef = useRef<HTMLDivElement>(null);
-
   // Show all players (with linked account or phone number), excluding self
   const messagePlayers = useMemo(() => {
     if (!players) return [];
@@ -83,67 +75,30 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
   const handleSelectPlayer = async (player: Player & { id: string }) => {
     if (!user || isCreating) return;
 
-    // Player has a linked account → in-app conversation
-    if (player.linkedUserId) {
-      setIsCreating(true);
-      try {
-        const result = await createConversationAction({
-          creatorId: user.uid,
-          participantIds: [user.uid, player.linkedUserId],
-          type: '1:1',
-        });
-
-        if (result.success && result.conversationId) {
-          onConversationCreated(result.conversationId);
-        } else {
-          toast({ variant: 'destructive', title: 'Error', description: result.message });
-        }
-      } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Error', description: error.message });
-      } finally {
-        setIsCreating(false);
-      }
-      return;
-    }
-
-    // Player has phone only → show SMS chat view
-    setSmsPlayer(player);
-    setSmsText('');
-    setSmsMessages([]);
-  };
-
-  // Auto-scroll SMS messages
-  useEffect(() => {
-    smsMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [smsMessages.length]);
-
-  const handleSendSms = async () => {
-    if (!smsPlayer?.phone || !smsText.trim() || !user || isSendingSms) return;
-    const text = smsText.trim();
-    setSmsText('');
-    setIsSendingSms(true);
-
-    // Optimistically add the message to the chat
-    setSmsMessages(prev => [...prev, { sender: 'user', text, sentAt: new Date() }]);
-
+    setIsCreating(true);
     try {
-      const senderName = user.displayName || 'A LocalDink player';
-      const result = await sendDirectSmsAction({
-        senderName,
-        recipientPhone: smsPlayer.phone,
-        text,
+      // Linked player → use their user ID as participant
+      // Unlinked player → use player:ID as participant (SMS will be sent on messages)
+      const result = await createConversationAction({
+        creatorId: user.uid,
+        participantIds: player.linkedUserId
+          ? [user.uid, player.linkedUserId]
+          : [user.uid],
+        type: '1:1',
+        ...(player.linkedUserId
+          ? {}
+          : { playerParticipantIds: [player.id] }),
       });
 
-      if (!result.success) {
+      if (result.success && result.conversationId) {
+        onConversationCreated(result.conversationId);
+      } else {
         toast({ variant: 'destructive', title: 'Error', description: result.message });
-        // Remove the optimistic message on failure
-        setSmsMessages(prev => prev.slice(0, -1));
       }
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
-      setSmsMessages(prev => prev.slice(0, -1));
     } finally {
-      setIsSendingSms(false);
+      setIsCreating(false);
     }
   };
 
@@ -195,97 +150,9 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
   };
 
   return (
-    <Sheet open={open} onOpenChange={(val) => { if (!val) { setSmsPlayer(null); setSmsMessages([]); } onOpenChange(val); }}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="h-[80vh] rounded-t-2xl p-0">
-        {smsPlayer ? (
-          /* ── SMS Chat View ── */
-          <div className="flex flex-col h-full">
-            {/* Header — matches conversation-detail.tsx */}
-            <div className="flex items-center gap-3 p-4 border-b bg-background">
-              <Button variant="ghost" size="icon" onClick={() => { setSmsPlayer(null); setSmsMessages([]); }} className="shrink-0">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <UserAvatar player={smsPlayer} className="h-9 w-9 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-foreground truncate">
-                  {smsPlayer.firstName} {smsPlayer.lastName}
-                </p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Phone className="h-3 w-3" /> SMS
-                </p>
-              </div>
-            </div>
-
-            {/* Messages area — native scroll like Robin chat */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
-              {smsMessages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                  <Phone className="h-8 w-8 text-muted-foreground/40 mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Send an SMS to {smsPlayer.firstName}
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {smsMessages.map((msg, i) => {
-                    const isLast = i === smsMessages.length - 1 || false;
-                    return (
-                      <div
-                        key={i}
-                        className={cn(
-                          'flex items-end gap-2 justify-end',
-                          isLast ? 'mb-3' : 'mb-0.5'
-                        )}
-                      >
-                        <div className="max-w-xs md:max-w-md">
-                          <div
-                            className={cn(
-                              'rounded-2xl px-3 py-2 text-sm bg-primary text-primary-foreground',
-                              isLast && 'rounded-br-none'
-                            )}
-                          >
-                            {msg.text}
-                          </div>
-                          {isLast && (
-                            <p className="text-[10px] text-muted-foreground/50 mt-0.5 text-right mr-1">
-                              Sent via SMS
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={smsMessagesEndRef} />
-                </>
-              )}
-            </div>
-
-            {/* Input bar — matches Robin chat & conversation-detail.tsx */}
-            <div className="border-t bg-background/80 backdrop-blur-sm p-4 pb-24">
-              <form
-                onSubmit={(e) => { e.preventDefault(); handleSendSms(); }}
-                className="flex items-center gap-2"
-              >
-                <Input
-                  value={smsText}
-                  onChange={(e) => setSmsText(e.target.value)}
-                  placeholder={`Text ${smsPlayer.firstName}...`}
-                  className="flex-1"
-                  disabled={isSendingSms}
-                  autoFocus
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!smsText.trim() || isSendingSms}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </form>
-            </div>
-          </div>
-        ) : (
-          /* ── Player/Group Picker ── */
+          {/* ── Player/Group Picker ── */}
           <div className="p-6 flex flex-col h-full">
             <SheetHeader>
               <SheetTitle>New Conversation</SheetTitle>
@@ -402,7 +269,6 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
           </TabsContent>
         </Tabs>
           </div>
-        )}
       </SheetContent>
     </Sheet>
   );

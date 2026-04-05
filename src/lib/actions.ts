@@ -535,6 +535,8 @@ export async function createConversationAction(params: {
     participantIds: string[];
     type: '1:1' | 'group';
     groupName?: string;
+    /** Player doc IDs for participants who don't have user accounts yet */
+    playerParticipantIds?: string[];
 }): Promise<{ success: boolean; conversationId?: string; message: string }> {
     try {
         const adminDb = await getAdminDb();
@@ -542,18 +544,24 @@ export async function createConversationAction(params: {
             return { success: false, message: 'Database not available' };
         }
 
-        const { creatorId, participantIds, type, groupName } = params;
+        const { creatorId, participantIds, type, groupName, playerParticipantIds = [] } = params;
+
+        // Build the full list of participant IDs (user UIDs + player:PLAYER_ID for unlinked)
+        const allParticipantIds = [
+            ...participantIds,
+            ...playerParticipantIds.map(id => `player:${id}`),
+        ];
 
         // For 1:1, check if conversation already exists
-        if (type === '1:1' && participantIds.length === 2) {
+        if (type === '1:1' && allParticipantIds.length === 2) {
             const existing = await adminDb.collection('conversations')
                 .where('type', '==', '1:1')
                 .where('participantIds', 'array-contains', creatorId)
                 .get();
 
+            const other = allParticipantIds.find(id => id !== creatorId);
             const found = existing.docs.find(doc => {
                 const data = doc.data();
-                const other = participantIds.find(id => id !== creatorId);
                 return data.participantIds?.includes(other) && data.participantIds?.length === 2;
             });
 
@@ -566,6 +574,7 @@ export async function createConversationAction(params: {
         const participantNames: Record<string, string> = {};
         const participantAvatars: Record<string, string> = {};
 
+        // Look up user accounts
         for (const uid of participantIds) {
             const userDoc = await adminDb.collection('users').doc(uid).get();
             if (userDoc.exists) {
@@ -575,15 +584,26 @@ export async function createConversationAction(params: {
             }
         }
 
+        // Look up player contacts (unlinked)
+        for (const playerId of playerParticipantIds) {
+            const playerDoc = await adminDb.collection('players').doc(playerId).get();
+            if (playerDoc.exists) {
+                const data = playerDoc.data()!;
+                const key = `player:${playerId}`;
+                participantNames[key] = `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Unknown';
+                participantAvatars[key] = data.avatarUrl || '';
+            }
+        }
+
         const now = FieldValue.serverTimestamp();
         const lastReadAt: Record<string, any> = {};
-        for (const uid of participantIds) {
-            lastReadAt[uid] = now;
+        for (const pid of allParticipantIds) {
+            lastReadAt[pid] = now;
         }
 
         const conversationDoc = await adminDb.collection('conversations').add({
             type,
-            participantIds,
+            participantIds: allParticipantIds,
             participantNames,
             participantAvatars,
             ...(groupName && { groupName }),
@@ -645,6 +665,32 @@ export async function sendMessageNotificationAction(params: {
         const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
 
         for (const recipientId of recipientIds) {
+            // Player participants (player:XXXX) — send SMS directly
+            if (recipientId.startsWith('player:')) {
+                const playerId = recipientId.replace('player:', '');
+                try {
+                    const playerDoc = await adminDb.collection('players').doc(playerId).get();
+                    if (playerDoc.exists) {
+                        const playerData = playerDoc.data()!;
+                        const phone = normalizeToE164(playerData.phone);
+                        if (phone) {
+                            const { sendSmsMessage, isTwilioConfigured } = await import('@/server/twilio');
+                            if (isTwilioConfigured()) {
+                                await sendSmsMessage({
+                                    to: phone,
+                                    body: `${senderName}: ${text}`,
+                                });
+                                console.log(`SMS sent to player ${playerId} at ${phone}`);
+                            }
+                        }
+                    }
+                } catch (smsError) {
+                    console.error(`Failed to SMS player ${playerId}:`, smsError);
+                }
+                continue;
+            }
+
+            // Regular user participants — send in-app notification
             try {
                 await sendNotification({
                     userId: recipientId,
