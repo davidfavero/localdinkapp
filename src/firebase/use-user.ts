@@ -29,6 +29,9 @@ export function useUser(user: User | null) {
     error: profileError,
   } = useDoc<Player>(userDocRef);
 
+  // Track whether we've already run linking for this session
+  const [hasLinked, setHasLinked] = useState(false);
+
   useEffect(() => {
     if (user && !profile && !isProfileLoading && !isCreatingProfile && !profileError) {
       const createProfile = async () => {
@@ -48,6 +51,7 @@ export function useUser(user: User | null) {
           await setDoc(userDocRef, newUserProfile);
           // Link any existing player contacts that match this user's phone/email
           linkPlayerContactsAction(user.uid, user.phoneNumber, user.email).catch(console.error);
+          setHasLinked(true);
         } catch (error) {
           console.error('Error creating user profile:', error);
         } finally {
@@ -57,6 +61,15 @@ export function useUser(user: User | null) {
       createProfile();
     }
   }, [user, profile, isProfileLoading, isCreatingProfile, userDocRef, firestore, profileError]);
+
+  // For existing users who already have a profile, run linking once per session
+  // This catches cases where a contact was added before the user signed up
+  useEffect(() => {
+    if (user && profile && !hasLinked) {
+      setHasLinked(true);
+      linkPlayerContactsAction(user.uid, user.phoneNumber, user.email).catch(console.error);
+    }
+  }, [user, profile, hasLinked]);
 
   return {
     profile: profile ? { ...profile, id: user!.uid } : null,
