@@ -17,6 +17,9 @@ const ptSans = PT_Sans({
 export const metadata: Metadata = {
   title: 'LocalDink: AI Pickleball Scheduler',
   description: 'An AI-powered scheduler for local pickleball games.',
+  icons: {
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
