@@ -202,7 +202,17 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
     const startTime = new Date(data.date);
     startTime.setHours(hours, minutes, 0, 0);
 
-    const directAttendees = (data.playerIds ?? []).map((id) => createAttendee(id, 'player'));
+    // Resolve linked players to their user UIDs so game invites,
+    // notifications, and RSVP work correctly on the recipient's side.
+    const resolveAttendee = (playerId: string) => {
+      const player = playerMap.get(playerId);
+      if (player?.linkedUserId) {
+        return createAttendee(player.linkedUserId, 'user');
+      }
+      return createAttendee(playerId, 'player');
+    };
+
+    const directAttendees = (data.playerIds ?? []).map(resolveAttendee);
     const groupAttendees = (data.groupIds ?? []).flatMap((groupId) => {
       const group = groupMap.get(groupId);
       if (!group?.members) {
@@ -211,7 +221,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       }
       return group.members
         .filter((memberId): memberId is string => typeof memberId === 'string' && memberId.trim().length > 0)
-        .map((memberId) => createAttendee(memberId, 'player'));
+        .map(resolveAttendee);
     });
 
     const attendees = uniqueAttendees([
@@ -378,7 +388,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                      <PopoverContent className="w-auto p-0 z-[60]" align="start">
                         <Calendar
                           mode="single"
                           selected={field.value}

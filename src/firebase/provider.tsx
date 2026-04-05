@@ -12,12 +12,13 @@ import {
 import type { User } from 'firebase/auth';
 import { onAuth, getClientAuth } from './auth';
 import { getClientApp } from './app';
-import { getFirestore, doc, setDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { Player } from '@/lib/types';
 import { useDoc } from './firestore/use-doc';
+import { linkPlayerContactsAction } from '@/lib/actions';
 
 interface FirebaseContextValue {
   app: FirebaseApp | null;
@@ -160,6 +161,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   } = useDoc<Player>(userDocRef);
 
   // Create profile if it doesn't exist, and link any existing player contacts
+  const [hasLinked, setHasLinked] = useState(false);
+  
   useEffect(() => {
     if (user && !profile && !isProfileLoading && !isCreatingProfile && !profileError) {
       const createProfile = async () => {
@@ -186,36 +189,9 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
           };
           await setDoc(userDocRef, newUserProfile);
           
-          // Link any existing player contacts that have this email
-          if (userEmail) {
-            try {
-              const playersQuery = query(
-                collection(firestore, 'players'),
-                where('email', '==', userEmail)
-              );
-              const playersSnapshot = await getDocs(playersQuery);
-              
-              // Update each matching player contact to link to this user
-              const batch = writeBatch(firestore);
-              playersSnapshot.docs.forEach(playerDoc => {
-                if (!playerDoc.data().linkedUserId) {
-                  batch.update(playerDoc.ref, {
-                    linkedUserId: user.uid,
-                    // Update avatar if they didn't have one
-                    ...(user.photoURL && !playerDoc.data().avatarUrl && { avatarUrl: user.photoURL }),
-                  });
-                }
-              });
-              
-              if (!playersSnapshot.empty) {
-                await batch.commit();
-                console.log(`Linked ${playersSnapshot.size} player contact(s) to new user ${user.uid}`);
-              }
-            } catch (linkError) {
-              // Don't fail profile creation if linking fails
-              console.warn('Could not link player contacts:', linkError);
-            }
-          }
+          // Link any existing player contacts by phone AND email (server-side)
+          linkPlayerContactsAction(user.uid, user.phoneNumber, user.email).catch(console.error);
+          setHasLinked(true);
         } catch (error) {
           console.error('Error creating user profile:', error);
         } finally {
@@ -225,6 +201,15 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       createProfile();
     }
   }, [user, profile, isProfileLoading, isCreatingProfile, userDocRef, firestore, profileError]);
+
+  // For existing users who already have a profile, run linking once per session
+  // This catches cases where a contact was added after the user signed up
+  useEffect(() => {
+    if (user && profile && !hasLinked) {
+      setHasLinked(true);
+      linkPlayerContactsAction(user.uid, user.phoneNumber, user.email).catch(console.error);
+    }
+  }, [user, profile, hasLinked]);
 
   const value: FirebaseContextValue = {
     app,
