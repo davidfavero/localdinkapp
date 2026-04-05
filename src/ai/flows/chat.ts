@@ -646,6 +646,15 @@ Only ask a question if something is genuinely missing from ALL messages.`,
         },
         config: {
           temperature: 0.05, // Very low temperature for deterministic extraction
+          safetySettings: [
+            // Let Robin handle off-topic/inappropriate messages naturally
+            // rather than having the API block them. Robin's system prompt
+            // redirects conversation back to pickleball scheduling.
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+          ],
         },
       });
       console.log('[AI] Generation result:', result ? 'success' : 'null', result?.output ? 'has output' : 'no output');
