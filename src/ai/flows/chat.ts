@@ -853,10 +853,11 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       }
     }
     
-    // Store unknown players for the UI to offer adding them
-    if (unknownPlayersList.length > 0) {
-      extractedDetails.unknownPlayers = unknownPlayersList;
-    }
+    // Always overwrite the AI's unknownPlayers with code-computed results.
+    // The LLM may incorrectly flag players as unknown even when disambiguation resolves them.
+    extractedDetails.unknownPlayers = unknownPlayersList.length > 0 ? unknownPlayersList : undefined;
+    // Clear the AI's unknownCourt — the code handles court resolution below.
+    extractedDetails.unknownCourt = undefined;
     
     if (questions.length > 0) {
       return { ...extractedDetails, confirmationText: questions.join(' ') };
