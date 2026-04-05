@@ -1,9 +1,15 @@
 /**
- * @fileOverview A tool for creating game sessions via the API.
+ * @fileOverview A tool for creating game sessions using the admin SDK directly.
+ * Uses Firestore admin instead of the HTTP API to avoid cookie-based auth issues
+ * when called from server-side Genkit flows.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { getAdminDb } from '@/firebase/admin';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
+import { sendGameInviteNotifications } from '@/lib/notifications';
 
 const CreateGameSessionToolSchema = z.object({
   courtId: z.string().describe('The ID of the court where the game will be played.'),
@@ -39,50 +45,159 @@ export const createGameSessionTool = ai.defineTool(
   },
   async (input) => {
     try {
-      // For server-side code, use APP_URL (not NEXT_PUBLIC_APP_URL)
-      // In production, set this to https://www.localdink.com in Firebase App Hosting
-      const baseUrl = process.env.APP_URL || 
-                     process.env.NEXT_PUBLIC_APP_URL || 
-                     'http://localhost:9002';
-      const response = await fetch(`${baseUrl}/api/game-sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          courtId: input.courtId,
-          organizerId: input.organizerId,
-          startTime: input.startTime,
-          startTimeDisplay: new Date(input.startTime).toLocaleString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-          }),
-          isDoubles: input.isDoubles,
-          durationMinutes: input.durationMinutes || 120,
-          status: 'open',
-          playerIds: input.playerIds,
-          attendees: input.attendees,
-          playerStatuses: input.playerStatuses,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        return {
-          success: false,
-          error: errorData.error || 'Failed to create game session',
-        };
+      const adminDb = await getAdminDb();
+      if (!adminDb) {
+        return { success: false, error: 'Firebase Admin DB is not available.' };
       }
 
-      const data = await response.json();
+      const startDate = new Date(input.startTime);
+      if (Number.isNaN(startDate.getTime())) {
+        return { success: false, error: 'Invalid startTime.' };
+      }
+
+      const durationMinutes = input.durationMinutes || 120;
+      const maxPlayers = input.isDoubles ? 4 : 2;
+      const startTimeDisplay = new Intl.DateTimeFormat('en-US', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+      }).format(startDate);
+
+      // Create the game session document
+      const sessionRef = adminDb.collection('game-sessions').doc();
+      await sessionRef.set({
+        courtId: input.courtId,
+        organizerId: input.organizerId,
+        startTime: Timestamp.fromDate(startDate),
+        startTimeDisplay,
+        isDoubles: input.isDoubles,
+        durationMinutes,
+        status: 'open',
+        playerIds: input.playerIds,
+        attendees: input.attendees,
+        groupIds: [],
+        playerStatuses: input.playerStatuses,
+        minPlayers: maxPlayers,
+        maxPlayers,
+        alternates: [],
+        invitesSentAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // Look up court and organizer info for notifications
+      const courtSnap = await adminDb.collection('courts').doc(input.courtId).get();
+      const courtRecord = courtSnap.exists ? courtSnap.data() ?? {} : {};
+      const courtName = typeof courtRecord?.name === 'string' ? courtRecord.name : undefined;
+      const courtLocation = typeof courtRecord?.location === 'string' ? courtRecord.location : undefined;
+
+      const organizerSnap = await adminDb.collection('users').doc(input.organizerId).get();
+      const organizerRecord = organizerSnap.exists ? organizerSnap.data() ?? {} : {};
+      const organizerName = typeof organizerRecord?.firstName === 'string'
+        ? `${organizerRecord.firstName}${organizerRecord?.lastName ? ` ${organizerRecord.lastName}` : ''}`.trim()
+        : 'the organizer';
+
+      const matchType = input.isDoubles ? 'Doubles' : 'Singles';
+      const dateDisplay = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      const timeDisplay = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+      // Send in-app notifications
+      const invitedPlayerIds = input.playerIds.filter(id => id !== input.organizerId);
+      if (invitedPlayerIds.length > 0) {
+        try {
+          await sendGameInviteNotifications({
+            gameSessionId: sessionRef.id,
+            inviterName: organizerName,
+            inviterId: input.organizerId,
+            inviteeIds: invitedPlayerIds,
+            matchType,
+            date: dateDisplay,
+            time: timeDisplay,
+            courtName: courtName || 'the courts',
+          });
+        } catch (notifError) {
+          console.error('Error sending in-app notifications:', notifError);
+        }
+      }
+
+      // Send SMS invitations
+      const smsCandidates = input.attendees.filter(a => a.id !== input.organizerId);
+      const locationLabel = [courtName, courtLocation]
+        .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+        .join(' • ');
+
+      const notifiedPlayers: Array<{ playerId: string; phone: string; messageSid: string }> = [];
+      const skippedPlayers: Array<{ playerId: string; reason: string }> = [];
+      const seenPhones = new Set<string>();
+      const twilioConfigured = isTwilioConfigured();
+
+      for (const candidate of smsCandidates) {
+        const primaryCollection = candidate.source === 'user' ? 'users' : 'players';
+        const fallbackCollection = primaryCollection === 'users' ? 'players' : 'users';
+
+        let snap = await adminDb.collection(primaryCollection).doc(candidate.id).get();
+        if (!snap.exists) {
+          snap = await adminDb.collection(fallbackCollection).doc(candidate.id).get();
+        }
+        if (!snap.exists) {
+          skippedPlayers.push({ playerId: candidate.id, reason: 'Attendee record not found' });
+          continue;
+        }
+
+        const playerData = snap.data() as Record<string, any>;
+        const phone = normalizeToE164(playerData?.phone);
+        if (!phone) {
+          skippedPlayers.push({ playerId: candidate.id, reason: 'Missing or invalid phone number' });
+          continue;
+        }
+        if (seenPhones.has(phone)) {
+          skippedPlayers.push({ playerId: candidate.id, reason: 'Duplicate phone number' });
+          continue;
+        }
+        seenPhones.add(phone);
+
+        const playerName = (typeof playerData?.firstName === 'string' ? playerData.firstName : '') || 'there';
+        const bodyParts = [
+          `Hi ${playerName}!`,
+          `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ''}.`,
+          `It starts ${startTimeDisplay}.`,
+          `Reply YES if you can play or NO if you need to pass.`,
+          `- ${organizerName}`,
+          `Reply STOP to opt out`,
+        ];
+
+        if (!twilioConfigured) {
+          skippedPlayers.push({ playerId: snap.id, reason: 'Twilio is not configured' });
+          continue;
+        }
+
+        try {
+          const message = await sendSmsMessage({ to: phone, body: bodyParts.join(' ') });
+          notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message.sid });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Twilio failed to send';
+          skippedPlayers.push({ playerId: candidate.id, reason: errorMessage });
+        }
+      }
+
+      // Log SMS attempts
+      try {
+        await adminDb.collection('sms-attempt-logs').add({
+          sessionId: sessionRef.id,
+          organizerId: input.organizerId,
+          notifiedCount: notifiedPlayers.length,
+          notifiedPlayers,
+          skippedPlayers,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (logError) {
+        console.warn('Failed to write sms-attempt-logs:', logError);
+      }
+
       return {
         success: true,
-        sessionId: data.sessionId,
-        notifiedCount: data.notifiedCount || 0,
-        skippedPlayers: data.skippedPlayers || [],
+        sessionId: sessionRef.id,
+        notifiedCount: notifiedPlayers.length,
+        skippedPlayers,
       };
     } catch (error: any) {
       console.error('Failed to create game session:', error);
