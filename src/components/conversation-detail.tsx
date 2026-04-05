@@ -5,7 +5,6 @@ import { ArrowLeft, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
@@ -14,7 +13,7 @@ import { useDoc } from '@/firebase/firestore/use-doc';
 import { collection, query, orderBy, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { sendMessageNotificationAction } from '@/lib/actions';
 import type { Conversation, ConversationMessage } from '@/lib/types';
-import { formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 
 interface ConversationDetailProps {
   conversationId: string;
@@ -143,13 +142,77 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
     };
   }, [conversation]);
 
+  // Header avatar for the other participant (1:1)
+  const headerAvatar = useMemo(() => {
+    if (!conversation || !user || conversation.type === 'group') return null;
+    const otherId = conversation.participantIds.find(id => id !== user.uid);
+    if (!otherId) return null;
+    return getAvatarPlayer(otherId);
+  }, [conversation, user, getAvatarPlayer]);
+
+  // Current user avatar
+  const myAvatar = useMemo(() => {
+    if (!currentUser) return null;
+    return {
+      id: user?.uid || '',
+      firstName: currentUser.firstName || '',
+      lastName: currentUser.lastName || '',
+      avatarUrl: currentUser.avatarUrl || '',
+      email: currentUser.email || '',
+    };
+  }, [currentUser, user]);
+
+  // Helper: get a Date from a Firestore timestamp
+  const toDate = (ts: any): Date | null => {
+    if (!ts) return null;
+    if (ts.toDate) return ts.toDate();
+    return new Date(ts);
+  };
+
+  // Helper: format a section date header (Apple-style)
+  const formatDateHeader = (date: Date): string => {
+    if (isToday(date)) return 'Today';
+    if (isYesterday(date)) return 'Yesterday';
+    return format(date, 'EEEE, MMM d');
+  };
+
+  // Should we show a date separator before this message?
+  const shouldShowDateSeparator = (msg: ConversationMessage, prevMsg?: ConversationMessage): boolean => {
+    const msgDate = toDate(msg.sentAt);
+    if (!msgDate) return false;
+    if (!prevMsg) return true; // Always show for first message
+    const prevDate = toDate(prevMsg.sentAt);
+    if (!prevDate) return true;
+    return !isSameDay(msgDate, prevDate);
+  };
+
+  // Should we show the avatar? (consecutive messages from same sender get grouped)
+  const isLastInGroup = (msg: ConversationMessage, nextMsg?: ConversationMessage): boolean => {
+    if (!nextMsg) return true;
+    return nextMsg.senderId !== msg.senderId;
+  };
+
+  const isFirstInGroup = (msg: ConversationMessage, prevMsg?: ConversationMessage): boolean => {
+    if (!prevMsg) return true;
+    return prevMsg.senderId !== msg.senderId;
+  };
+
   return (
     <div className="flex flex-col h-full -m-4 md:-m-6">
-      {/* Header */}
+      {/* Header — with avatar like Apple/Telegram */}
       <div className="flex items-center gap-3 p-4 border-b bg-background sticky top-0 z-10">
         <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
           <ArrowLeft className="h-5 w-5" />
         </Button>
+        {headerAvatar ? (
+          <UserAvatar player={headerAvatar as any} className="h-9 w-9 shrink-0" />
+        ) : conversation?.type === 'group' ? (
+          <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <span className="text-xs font-semibold text-primary">
+              {(conversation.groupName || 'G')[0].toUpperCase()}
+            </span>
+          </div>
+        ) : null}
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground truncate">{displayName}</p>
           {conversation?.type === 'group' && (
@@ -160,8 +223,8 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
         </div>
       </div>
 
-      {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
+      {/* Messages — native scroll like Robin chat */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-1">
         {isLoading ? (
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
@@ -172,64 +235,96 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
             ))}
           </div>
         ) : messages && messages.length > 0 ? (
-          <div className="space-y-3">
-            {messages.map((msg) => {
+          <>
+            {messages.map((msg, idx) => {
               const isMe = msg.senderId === user?.uid;
+              const prevMsg = messages[idx - 1];
+              const nextMsg = messages[idx + 1];
+              const showDate = shouldShowDateSeparator(msg, prevMsg);
+              const lastInGroup = isLastInGroup(msg, nextMsg);
+              const firstInGroup = isFirstInGroup(msg, prevMsg);
               const avatarPlayer = !isMe ? getAvatarPlayer(msg.senderId) : null;
-              const timeAgo = msg.sentAt
-                ? formatDistanceToNow(
-                    (msg.sentAt as any).toDate ? (msg.sentAt as any).toDate() : new Date(msg.sentAt as any),
-                    { addSuffix: true }
-                  )
-                : '';
+              const msgDate = toDate(msg.sentAt);
 
               return (
-                <div
-                  key={msg.id}
-                  className={cn('flex items-end gap-2', isMe ? 'justify-end' : 'justify-start')}
-                >
-                  {!isMe && avatarPlayer && (
-                    <UserAvatar player={avatarPlayer as any} className="h-8 w-8 shrink-0" />
-                  )}
-                  <div className={cn('max-w-xs md:max-w-md')}>
-                    {!isMe && conversation?.type === 'group' && (
-                      <p className="text-[10px] text-muted-foreground mb-0.5 ml-1">
-                        {msg.senderName}
-                      </p>
-                    )}
-                    <div
-                      className={cn(
-                        'rounded-2xl p-3 text-sm',
-                        isMe
-                          ? 'bg-primary text-primary-foreground rounded-br-none'
-                          : 'bg-muted text-foreground rounded-bl-none'
-                      )}
-                    >
-                      {msg.text}
+                <div key={msg.id}>
+                  {/* Date separator — centered, Apple-style */}
+                  {showDate && msgDate && (
+                    <div className="flex justify-center my-4">
+                      <span className="text-[11px] text-muted-foreground/70 bg-muted/60 px-3 py-1 rounded-full">
+                        {formatDateHeader(msgDate)}
+                      </span>
                     </div>
-                    <p className={cn(
-                      'text-[10px] text-muted-foreground/60 mt-0.5',
-                      isMe ? 'text-right mr-1' : 'ml-1'
-                    )}>
-                      {timeAgo}
-                    </p>
+                  )}
+
+                  <div
+                    className={cn(
+                      'flex items-end gap-2',
+                      isMe ? 'justify-end' : 'justify-start',
+                      lastInGroup ? 'mb-3' : 'mb-0.5'
+                    )}
+                  >
+                    {/* Avatar — only on last message in a group (like Apple) */}
+                    {!isMe && lastInGroup && avatarPlayer ? (
+                      <UserAvatar player={avatarPlayer as any} className="h-8 w-8 shrink-0" />
+                    ) : !isMe ? (
+                      <div className="w-8 shrink-0" /> /* spacer for alignment */
+                    ) : null}
+
+                    <div className={cn('max-w-xs md:max-w-md')}>
+                      {/* Sender name in group chats — only on first in group */}
+                      {!isMe && conversation?.type === 'group' && firstInGroup && (
+                        <p className="text-[11px] text-muted-foreground font-medium mb-0.5 ml-1">
+                          {msg.senderName}
+                        </p>
+                      )}
+                      <div
+                        className={cn(
+                          'rounded-2xl px-3 py-2 text-sm',
+                          isMe
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-foreground',
+                          // Tail on last message in group only
+                          isMe && lastInGroup && 'rounded-br-none',
+                          !isMe && lastInGroup && 'rounded-bl-none',
+                        )}
+                      >
+                        {msg.text}
+                      </div>
+                      {/* Timestamp — only on last message in a group */}
+                      {lastInGroup && msgDate && (
+                        <p className={cn(
+                          'text-[10px] text-muted-foreground/50 mt-0.5',
+                          isMe ? 'text-right mr-1' : 'ml-1'
+                        )}>
+                          {format(msgDate, 'h:mm a')}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* User avatar on right — only on last in group */}
+                    {isMe && lastInGroup && myAvatar ? (
+                      <UserAvatar player={myAvatar as any} className="h-8 w-8 shrink-0" />
+                    ) : isMe ? (
+                      <div className="w-8 shrink-0" />
+                    ) : null}
                   </div>
                 </div>
               );
             })}
             <div ref={messagesEndRef} />
-          </div>
+          </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
             <p className="text-sm text-muted-foreground">
-              No messages yet. Send the first message!
+              No messages yet. Say hello!
             </p>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
-      {/* Input bar */}
-      <div className="border-t bg-background/80 backdrop-blur-sm p-4 pb-24">
+      {/* Input bar — matches Robin chat */}
+      <div className="bg-background/80 backdrop-blur-sm border-t p-4 pb-24">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -240,7 +335,7 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
           <Input
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
-            placeholder="Type a message..."
+            placeholder={`Message ${displayName || ''}...`}
             className="flex-1"
             disabled={isSending}
           />

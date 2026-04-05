@@ -216,8 +216,8 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
               </div>
             </div>
 
-            {/* Messages area */}
-            <ScrollArea className="flex-1 p-4">
+            {/* Messages area — native scroll like Robin chat */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-1">
               {smsMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-12">
                   <Phone className="h-8 w-8 text-muted-foreground/40 mb-2" />
@@ -226,23 +226,39 @@ export function NewConversationSheet({ open, onOpenChange, onConversationCreated
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {smsMessages.map((msg, i) => (
-                    <div key={i} className="flex items-end gap-2 justify-end">
-                      <div className="max-w-xs md:max-w-md">
-                        <div className="rounded-2xl p-3 text-sm bg-primary text-primary-foreground rounded-br-none">
-                          {msg.text}
+                <>
+                  {smsMessages.map((msg, i) => {
+                    const isLast = i === smsMessages.length - 1 || false;
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          'flex items-end gap-2 justify-end',
+                          isLast ? 'mb-3' : 'mb-0.5'
+                        )}
+                      >
+                        <div className="max-w-xs md:max-w-md">
+                          <div
+                            className={cn(
+                              'rounded-2xl px-3 py-2 text-sm bg-primary text-primary-foreground',
+                              isLast && 'rounded-br-none'
+                            )}
+                          >
+                            {msg.text}
+                          </div>
+                          {isLast && (
+                            <p className="text-[10px] text-muted-foreground/50 mt-0.5 text-right mr-1">
+                              Sent via SMS
+                            </p>
+                          )}
                         </div>
-                        <p className="text-[10px] text-muted-foreground/60 mt-0.5 text-right mr-1">
-                          Sent via SMS
-                        </p>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div ref={smsMessagesEndRef} />
-                </div>
+                </>
               )}
-            </ScrollArea>
+            </div>
 
             {/* Input bar — matches Robin chat & conversation-detail.tsx */}
             <div className="border-t bg-background/80 backdrop-blur-sm p-4 pb-24">
