@@ -3,9 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { useFirestore, useUser } from '@/firebase/provider';
-import { errorEmitter } from '@/firebase/error-emitter';
+import { useUser } from '@/firebase/provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,8 +17,7 @@ import {
 } from '@/components/ui/sheet';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { FirestorePermissionError } from '@/firebase/errors';
+import { addPlayerAction } from '@/lib/actions';
 
 const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
@@ -38,7 +35,6 @@ interface AddPlayerSheetProps {
 
 export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
   const { toast } = useToast();
-  const firestore = useFirestore();
   const { user } = useUser();
 
   const form = useForm<PlayerFormValues>({
@@ -54,7 +50,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
   const { isSubmitting } = form.formState;
 
   const onSubmit = async (data: PlayerFormValues) => {
-    if (!firestore || !user) {
+    if (!user) {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -64,63 +60,32 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
     }
     
     try {
-      // Check if this email matches an existing registered user
-      let linkedUserId: string | undefined;
-      let linkedUserData: { avatarUrl?: string; firstName?: string; lastName?: string } | undefined;
-      
-      if (data.email) {
-        const usersQuery = query(
-          collection(firestore, 'users'),
-          where('email', '==', data.email.toLowerCase().trim())
-        );
-        const usersSnapshot = await getDocs(usersQuery);
-        
-        if (!usersSnapshot.empty) {
-          const linkedUser = usersSnapshot.docs[0];
-          linkedUserId = linkedUser.id;
-          linkedUserData = linkedUser.data() as typeof linkedUserData;
-          console.log('Found linked user:', linkedUserId);
-        }
-      }
-      
-      // Use linked user's data if available, otherwise use provided data
-      const avatarIds = ['user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'];
-      const randomAvatarId = avatarIds[Math.floor(Math.random() * avatarIds.length)];
-      const randomAvatar = PlaceHolderImages.find(p => p.id === randomAvatarId);
-      
-      const payload = {
-        firstName: linkedUserData?.firstName || data.firstName,
-        lastName: linkedUserData?.lastName || data.lastName,
-        email: data.email.toLowerCase().trim(),
-        phone: data.phone || '',
-        ownerId: user.uid,
-        avatarUrl: linkedUserData?.avatarUrl || randomAvatar?.imageUrl || '',
-        // Link to actual user account if found
-        ...(linkedUserId && { linkedUserId }),
-      };
+      const result = await addPlayerAction(
+        {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone,
+        },
+        user.uid
+      );
 
-      const playersRef = collection(firestore, 'players');
-      console.log('Adding player to collection:', playersRef.path, 'Payload:', payload);
-      const docRef = await addDoc(playersRef, payload);
-      
-      console.log('Player added successfully with ID:', docRef.id);
-      toast({
-        title: linkedUserId ? 'Player Linked!' : 'Player Added!',
-        description: linkedUserId 
-          ? `${payload.firstName} ${payload.lastName} is a registered user and has been linked to your contacts.`
-          : `${data.firstName} ${data.lastName} has been added to your players.`,
-      });
-      form.reset();
-      onOpenChange(false);
+      if (result.success) {
+        toast({
+          title: 'Player Added!',
+          description: result.message,
+        });
+        form.reset();
+        onOpenChange(false);
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result.message,
+        });
+      }
     } catch (error: any) {
-      console.error('Error adding player - Full error:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      const permissionError = new FirestorePermissionError({
-        path: 'players',
-        operation: 'create',
-      });
-      errorEmitter.emit('permission-error', permissionError);
+      console.error('Error adding player:', error);
       toast({
         variant: 'destructive',
         title: 'Uh oh! Something went wrong.',

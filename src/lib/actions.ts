@@ -262,16 +262,31 @@ export async function linkPlayerContactsAction(
         const normalizedEmail = email?.toLowerCase().trim();
         let linkedCount = 0;
 
-        // Find player contacts matching by phone
+        // Find player contacts matching by phone — check multiple formats
+        // because older contacts may have been saved with raw input (e.g. "404-538-9332")
         if (normalizedPhone) {
-            const byPhone = await adminDb.collection('players')
-                .where('phone', '==', normalizedPhone)
-                .get();
-            for (const doc of byPhone.docs) {
-                const data = doc.data();
-                if (!data.linkedUserId && data.ownerId !== userId) {
-                    await doc.ref.update({ linkedUserId: userId });
-                    linkedCount++;
+            // Build set of phone format variants to search for
+            const digits = normalizedPhone.replace(/\D/g, ''); // e.g. "14045389332"
+            const last10 = digits.slice(-10); // e.g. "4045389332"
+            const phoneVariants = new Set([
+                normalizedPhone,                           // +14045389332
+                last10,                                    // 4045389332
+                `${last10.slice(0,3)}-${last10.slice(3,6)}-${last10.slice(6)}`, // 404-538-9332
+                `(${last10.slice(0,3)}) ${last10.slice(3,6)}-${last10.slice(6)}`, // (404) 538-9332
+                `1${last10}`,                              // 14045389332
+            ]);
+
+            for (const variant of phoneVariants) {
+                const byPhone = await adminDb.collection('players')
+                    .where('phone', '==', variant)
+                    .get();
+                for (const doc of byPhone.docs) {
+                    const data = doc.data();
+                    if (!data.linkedUserId && data.ownerId !== userId) {
+                        // Link AND normalize the stored phone for future matches
+                        await doc.ref.update({ linkedUserId: userId, phone: normalizedPhone });
+                        linkedCount++;
+                    }
                 }
             }
         }
