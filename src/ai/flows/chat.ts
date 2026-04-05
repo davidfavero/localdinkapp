@@ -938,24 +938,33 @@ Only ask a question if something is genuinely missing from ALL messages.`,
           };
         }
 
-        // Build attendees array - determine correct source for each player
-        // Players with isCurrentUser or email are from 'users' collection
-        // Others are from 'players' collection (contacts)
+        // Build attendees array - resolve linked users to their actual user UIDs
+        // so that game invites, notifications, and RSVP all work correctly.
         const attendees = [
           { id: currentUser.id, source: 'user' as const },
           ...uniqueInvitedPlayers
             .filter(p => p.id && p.id !== currentUser.id)
-            .map(p => ({ id: p.id!, source: 'player' as const })),
+            .map(p => {
+              // Check if this player contact is linked to a real user account
+              const playerData = knownPlayers.find(kp => kp.id === p.id);
+              if (playerData?.linkedUserId) {
+                // Use the linked user's UID so they see invites in their dashboard
+                return { id: playerData.linkedUserId, source: 'user' as const };
+              }
+              // Unlinked player — use the player doc ID
+              return { id: p.id!, source: 'player' as const };
+            }),
         ];
 
-        // Build player statuses
+        // Build player statuses using the same resolved IDs
         const playerStatuses: Record<string, 'CONFIRMED' | 'DECLINED' | 'PENDING'> = {
           [currentUser.id]: 'CONFIRMED',
         };
-        uniqueInvitedPlayers
-          .filter(p => p.id && p.id !== currentUser.id)
-          .forEach(p => {
-            if (p.id) playerStatuses[p.id] = 'PENDING';
+        // Use attendees (which already resolved linkedUserIds) for status keys
+        attendees
+          .filter(a => a.id !== currentUser.id)
+          .forEach(a => {
+            playerStatuses[a.id] = 'PENDING';
           });
 
         // Determine if doubles (default to true if 4+ players, false if 2 players)
