@@ -262,6 +262,10 @@ export async function linkPlayerContactsAction(
         const normalizedEmail = email?.toLowerCase().trim();
         let linkedCount = 0;
 
+        console.log(`[linkPlayerContacts] Attempting to link for user ${userId}`);
+        console.log(`[linkPlayerContacts] Phone: ${phone} -> normalized: ${normalizedPhone}`);
+        console.log(`[linkPlayerContacts] Email: ${email} -> normalized: ${normalizedEmail}`);
+
         // Find player contacts matching by phone — check multiple formats
         // because older contacts may have been saved with raw input (e.g. "404-538-9332")
         if (normalizedPhone) {
@@ -282,10 +286,14 @@ export async function linkPlayerContactsAction(
                     .get();
                 for (const doc of byPhone.docs) {
                     const data = doc.data();
+                    console.log(`[linkPlayerContacts] Found player ${doc.id} (${data.firstName} ${data.lastName}) with phone "${variant}", ownerId=${data.ownerId}, linkedUserId=${data.linkedUserId || 'none'}`);
                     if (!data.linkedUserId && data.ownerId !== userId) {
                         // Link AND normalize the stored phone for future matches
                         await doc.ref.update({ linkedUserId: userId, phone: normalizedPhone });
                         linkedCount++;
+                        console.log(`[linkPlayerContacts] ✓ Linked player ${doc.id} to user ${userId}`);
+                    } else {
+                        console.log(`[linkPlayerContacts] ✗ Skipped: linkedUserId=${data.linkedUserId || 'none'}, ownerId=${data.ownerId}, targetUserId=${userId}`);
                     }
                 }
             }

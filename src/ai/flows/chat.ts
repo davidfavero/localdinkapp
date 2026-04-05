@@ -653,11 +653,19 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     } catch (aiError: any) {
       console.error('AI generation error:', aiError);
       
-      // Check for quota exceeded error
       const errorMessage = aiError?.message || '';
+      
+      // Check for quota exceeded error
       if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('Too Many Requests')) {
         return {
           confirmationText: `I've hit my API rate limit for the moment. Please wait about 30 seconds and try again. If this keeps happening, check your Google AI billing at ai.google.dev.`
+        };
+      }
+      
+      // Check for content safety filter / blocked content
+      if (errorMessage.includes('SAFETY') || errorMessage.includes('blocked') || errorMessage.includes('safety') || errorMessage.includes('HARM') || errorMessage.includes('finish_reason')) {
+        return {
+          confirmationText: `I can only help with pickleball scheduling! Let me know who you'd like to play with, when, and where, and I'll get it set up.`
         };
       }
       

@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NewGameSheet } from '@/components/new-game-sheet';
 import { EditGameSessionSheet } from '@/components/edit-game-session-sheet';
 import { GameSessionCard } from '@/components/game-session-card';
@@ -373,8 +374,28 @@ export default function GameSessionsPage() {
       return dateB.getTime() - dateA.getTime();
     });
   }, [hydratedSessions, confirmedInvites]);
-  
-  const userSessions = myGames;
+
+  // Split into upcoming and past sessions
+  const now = new Date();
+  const upcomingSessions = useMemo(() => {
+    return myGames.filter(s => {
+      const sessionDate = new Date(`${s.date} ${s.time}`);
+      return sessionDate >= now || isNaN(sessionDate.getTime());
+    }).sort((a, b) => {
+      // Upcoming: soonest first
+      const dateA = new Date(`${a.date} ${a.time}`);
+      const dateB = new Date(`${b.date} ${b.time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+  }, [myGames]);
+
+  const pastSessions = useMemo(() => {
+    return myGames.filter(s => {
+      const sessionDate = new Date(`${s.date} ${s.time}`);
+      return sessionDate < now && !isNaN(sessionDate.getTime());
+    });
+    // Already sorted newest-first from myGames
+  }, [myGames]);
 
   return (
     <div className="space-y-6">
@@ -417,7 +438,7 @@ export default function GameSessionsPage() {
         </div>
       )}
 
-      {!isLoadingSessions && !isHydrating && !error && userSessions.length === 0 && (
+      {!isLoadingSessions && !isHydrating && !error && myGames.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed rounded-lg">
           <h3 className="text-xl font-medium text-muted-foreground">No Sessions Organized Yet</h3>
           <p className="text-muted-foreground mt-2">Create a new session to start organizing games.</p>
@@ -428,14 +449,49 @@ export default function GameSessionsPage() {
         </div>
       )}
 
-      {!isLoadingSessions && !isHydrating && !error && userSessions.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {userSessions.map((session) => (
-            <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
-              <GameSessionCard session={session} />
-            </div>
-          ))}
-        </div>
+      {!isLoadingSessions && !isHydrating && !error && myGames.length > 0 && (
+        <Tabs defaultValue="upcoming">
+          <TabsList className="grid w-full grid-cols-2 max-w-xs">
+            <TabsTrigger value="upcoming">
+              Upcoming{upcomingSessions.length > 0 ? ` (${upcomingSessions.length})` : ''}
+            </TabsTrigger>
+            <TabsTrigger value="past">
+              Past{pastSessions.length > 0 ? ` (${pastSessions.length})` : ''}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="upcoming" className="mt-4">
+            {upcomingSessions.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {upcomingSessions.map((session) => (
+                  <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
+                    <GameSessionCard session={session} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                <p className="text-muted-foreground">No upcoming sessions. Schedule one with Robin or tap New Session!</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="past" className="mt-4">
+            {pastSessions.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {pastSessions.map((session) => (
+                  <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
+                    <GameSessionCard session={session} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                <p className="text-muted-foreground">No past sessions yet.</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
 
       {/* Pending Invites Section - Only shows invites awaiting response */}

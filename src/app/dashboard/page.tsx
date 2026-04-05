@@ -460,9 +460,14 @@ export default function RobinChatPage() {
         setPendingRecentSession(null);
       }
         
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in chat action:", error);
-      setMessages(prev => [...prev, { sender: 'robin', text: "Sorry, I'm having trouble connecting right now." }]);
+      const errorText = error?.message || '';
+      let friendlyMessage = "Sorry, I'm having trouble connecting right now. Please try again.";
+      if (errorText.includes('SAFETY') || errorText.includes('blocked') || errorText.includes('safety')) {
+        friendlyMessage = "I can only help with pickleball scheduling! Tell me who you'd like to play with, when, and where.";
+      }
+      setMessages(prev => [...prev, { sender: 'robin', text: friendlyMessage }]);
     } finally {
       setIsLoading(false);
     }
