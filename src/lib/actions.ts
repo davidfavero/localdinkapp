@@ -249,6 +249,32 @@ export async function undoRecentSessionAction(
  * This lets other users who already added this person as a contact immediately
  * message them in-app.
  */
+
+async function updateUserProfileNameFromPlayer(
+    adminDb: FirebaseFirestore.Firestore,
+    userId: string,
+    playerData: { firstName?: string; lastName?: string }
+) {
+    try {
+        const userDoc = await adminDb.collection('users').doc(userId).get();
+        if (!userDoc.exists) return;
+        const userData = userDoc.data()!;
+        const currentName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim();
+        if (!currentName || currentName === 'New User') {
+            const playerName = `${playerData.firstName || ''} ${playerData.lastName || ''}`.trim();
+            if (playerName) {
+                await userDoc.ref.update({
+                    firstName: playerData.firstName || '',
+                    lastName: playerData.lastName || '',
+                });
+                console.log(`[linkPlayerContacts] Updated user ${userId} profile name to "${playerName}"`);
+            }
+        }
+    } catch (e) {
+        console.warn('[linkPlayerContacts] Could not update user profile name:', e);
+    }
+}
+
 export async function linkPlayerContactsAction(
     userId: string,
     phone?: string | null,
@@ -292,7 +318,8 @@ export async function linkPlayerContactsAction(
                         await doc.ref.update({ linkedUserId: userId, phone: normalizedPhone });
                         linkedCount++;
                         console.log(`[linkPlayerContacts] ✓ Linked player ${doc.id} to user ${userId}`);
-                    } else {
+                        // If user profile has empty/default name, update it from the player contact
+                        await updateUserProfileNameFromPlayer(adminDb, userId, data);                    } else {
                         console.log(`[linkPlayerContacts] ✗ Skipped: linkedUserId=${data.linkedUserId || 'none'}, ownerId=${data.ownerId}, targetUserId=${userId}`);
                     }
                 }
@@ -309,6 +336,9 @@ export async function linkPlayerContactsAction(
                 if (!data.linkedUserId && data.ownerId !== userId) {
                     await doc.ref.update({ linkedUserId: userId });
                     linkedCount++;
+
+                    // If user profile has empty/default name, update it from the player contact
+                    await updateUserProfileNameFromPlayer(adminDb, userId, data);
                 }
             }
         }
@@ -587,7 +617,19 @@ export async function createConversationAction(params: {
             const userDoc = await adminDb.collection('users').doc(uid).get();
             if (userDoc.exists) {
                 const data = userDoc.data()!;
-                participantNames[uid] = `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Unknown';
+                let name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+                // If profile name is empty or still the default, try linked player contacts
+                if (!name || name === 'New User') {
+                    const linkedPlayers = await adminDb.collection('players')
+                        .where('linkedUserId', '==', uid)
+                        .limit(1)
+                        .get();
+                    if (!linkedPlayers.empty) {
+                        const pd = linkedPlayers.docs[0].data();
+                        name = `${pd.firstName || ''} ${pd.lastName || ''}`.trim();
+                    }
+                }
+                participantNames[uid] = name || 'Unknown';
                 participantAvatars[uid] = data.avatarUrl || '';
             }
         }

@@ -170,7 +170,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         
         setIsCreatingProfile(true);
         try {
-          const [firstName, ...lastName] = (user.displayName || 'New User').split(' ');
+          const [firstName, ...lastName] = (user.displayName || '').split(' ');
           const userEmail = user.email?.toLowerCase().trim() || '';
           const detectedTimezone =
             typeof Intl !== 'undefined'
