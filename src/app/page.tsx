@@ -92,6 +92,9 @@ export default function LandingPage() {
             <Link href="/sms-terms" className="underline underline-offset-4">
               SMS Terms
             </Link>
+            <Link href="/made-in-charleston" className="underline underline-offset-4">
+              Made in Charleston
+            </Link>
           </div>
         </div>
       </footer>
