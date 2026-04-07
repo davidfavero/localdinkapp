@@ -85,6 +85,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const { toast } = useToast();
   const { user: currentUser, profile: currentUserProfile } = useUser();
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isAccepting, setIsAccepting] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [allCourts, setAllCourts] = useState<Court[]>([]);
   const [availableEditPlayers, setAvailableEditPlayers] = useState<Player[]>([]);
@@ -311,6 +312,36 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  const onAccept = async () => {
+    if (!session || !currentUser || !firestore) return;
+    setIsAccepting(true);
+    try {
+      // Update status in playerStatuses on the game session doc
+      const sessionRef = doc(firestore, 'game-sessions', session.id);
+      await updateDoc(sessionRef, {
+        [`playerStatuses.${currentUser.uid}`]: 'CONFIRMED',
+      });
+
+      // Also update subcollection doc if it exists
+      const playerStatusRef = doc(firestore, 'game-sessions', session.id, 'players', currentUser.uid);
+      await setDoc(playerStatusRef, { status: 'CONFIRMED' }, { merge: true });
+
+      toast({
+        title: 'RSVP Confirmed!',
+        description: 'You have accepted the game invite.',
+      });
+    } catch (error: any) {
+      console.error('Error accepting invite:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not update your RSVP status.',
+      });
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
   // Show skeleton while:
   // - sessionId is not set (params Promise hasn't resolved)
   // - firestore is not ready (Firebase not initialized)
@@ -441,7 +472,50 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                   Edit Session
                 </Button>
               )}
-              {currentUserInGame && currentUserInGame.status !== 'DECLINED' ? (
+              {/* RSVP buttons for pending invites */}
+              {currentUserInGame && currentUserInGame.status === 'PENDING' && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-center text-muted-foreground mb-2">You're invited!</p>
+                  <Button
+                    className="w-full"
+                    onClick={onAccept}
+                    disabled={isAccepting}
+                  >
+                    {isAccepting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <UserCheck className="mr-2 h-4 w-4" />
+                    )}
+                    {isAccepting ? 'Accepting...' : 'Accept Invite'}
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="w-full text-red-600 hover:text-red-700" disabled={isCancelling}>
+                        {isCancelling ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserX className="mr-2 h-4 w-4" />
+                        )}
+                        {isCancelling ? 'Declining...' : 'Decline Invite'}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Decline this invite?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          The organizer will be notified that you can't make it.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Nevermind</AlertDialogCancel>
+                        <AlertDialogAction onClick={onCancel}>Yes, Decline</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              )}
+              {/* Cancel button for confirmed players */}
+              {currentUserInGame && currentUserInGame.status === 'CONFIRMED' && !isOrganizer && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full" disabled={isCancelling}>
@@ -466,8 +540,12 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-              ) : !isOrganizer && (
-                  <p className="text-sm text-muted-foreground">You are not in this game or have already declined.</p>
+              )}
+              {!currentUserInGame && !isOrganizer && (
+                  <p className="text-sm text-muted-foreground">You are not in this game.</p>
+              )}
+              {currentUserInGame && currentUserInGame.status === 'DECLINED' && (
+                  <p className="text-sm text-muted-foreground">You have declined this invite.</p>
               )}
             </CardContent>
           </Card>
