@@ -151,6 +151,7 @@ export type GameSession = {
   organizer: Player;
   date: string;
   time: string;
+  startDate: Date;
   type: 'Singles' | 'Doubles' | 'Custom';
   players: {
     player: Player;

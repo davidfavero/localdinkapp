@@ -243,8 +243,9 @@ export default function GameSessionsPage() {
           ...organizerRecord,
           isCurrentUser: organizerRecord.id === currentUserId,
         },
-        date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+        date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
         time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        startDate: sessionDate,
         type: s.isDoubles ? 'Doubles' : 'Singles',
         players: dedupedPlayers,
         alternates,
@@ -418,32 +419,19 @@ export default function GameSessionsPage() {
   const myGames = useMemo(() => {
     const combined = [...hydratedSessions, ...hydratedInvites];
     // Sort by date (most recent first)
-    return combined.sort((a, b) => {
-      const dateA = new Date(`${a.date} ${a.time}`);
-      const dateB = new Date(`${b.date} ${b.time}`);
-      return dateB.getTime() - dateA.getTime();
-    });
+    return combined.sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
   }, [hydratedSessions, hydratedInvites]);
 
   // Split into upcoming and past sessions
   const now = new Date();
   const upcomingSessions = useMemo(() => {
-    return myGames.filter(s => {
-      const sessionDate = new Date(`${s.date} ${s.time}`);
-      return sessionDate >= now || isNaN(sessionDate.getTime());
-    }).sort((a, b) => {
-      // Upcoming: soonest first
-      const dateA = new Date(`${a.date} ${a.time}`);
-      const dateB = new Date(`${b.date} ${b.time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
+    return myGames
+      .filter(s => s.startDate >= now)
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()); // soonest first
   }, [myGames]);
 
   const pastSessions = useMemo(() => {
-    return myGames.filter(s => {
-      const sessionDate = new Date(`${s.date} ${s.time}`);
-      return sessionDate < now && !isNaN(sessionDate.getTime());
-    });
+    return myGames.filter(s => s.startDate < now);
     // Already sorted newest-first from myGames
   }, [myGames]);
 

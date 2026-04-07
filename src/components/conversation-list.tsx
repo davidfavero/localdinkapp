@@ -32,52 +32,89 @@ function SwipeableConversationItem({
   onArchive: () => void;
   onDelete: () => void;
 }) {
-  const touchStartX = useRef(0);
-  const touchCurrentX = useRef(0);
+  const startX = useRef(0);
+  const currentX = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isRevealed, setIsRevealed] = useState(false);
   const isDragging = useRef(false);
+  const isMouseDown = useRef(false);
 
   const ACTION_THRESHOLD = 80;
   const MAX_SWIPE = 160;
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchCurrentX.current = e.touches[0].clientX;
+  // Unified start
+  const onDragStart = useCallback((clientX: number) => {
+    startX.current = clientX;
+    currentX.current = clientX;
     isDragging.current = false;
   }, []);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    touchCurrentX.current = e.touches[0].clientX;
-    const diff = touchStartX.current - touchCurrentX.current;
+  // Unified move
+  const onDragMove = useCallback((clientX: number) => {
+    currentX.current = clientX;
+    const diff = startX.current - currentX.current;
     
     if (Math.abs(diff) > 10) {
       isDragging.current = true;
     }
     
-    // Only allow left swipe (positive diff = swiping left to reveal actions)
     if (diff > 0) {
-      const clamped = Math.min(diff, MAX_SWIPE);
-      setSwipeOffset(clamped);
+      setSwipeOffset(Math.min(diff, MAX_SWIPE));
     } else if (isRevealed) {
-      // Allow swiping back to close
-      const clamped = Math.max(MAX_SWIPE + diff, 0);
-      setSwipeOffset(clamped);
+      setSwipeOffset(Math.max(MAX_SWIPE + diff, 0));
     }
   }, [isRevealed]);
 
-  const handleTouchEnd = useCallback(() => {
+  // Unified end
+  const onDragEnd = useCallback(() => {
     if (swipeOffset > ACTION_THRESHOLD) {
-      // Snap open
       setSwipeOffset(MAX_SWIPE);
       setIsRevealed(true);
     } else {
-      // Snap closed
       setSwipeOffset(0);
       setIsRevealed(false);
     }
   }, [swipeOffset]);
+
+  // Touch handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    onDragStart(e.touches[0].clientX);
+  }, [onDragStart]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    onDragMove(e.touches[0].clientX);
+  }, [onDragMove]);
+
+  const handleTouchEnd = useCallback(() => {
+    onDragEnd();
+  }, [onDragEnd]);
+
+  // Mouse handlers (desktop drag)
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return; // left click only
+    isMouseDown.current = true;
+    onDragStart(e.clientX);
+  }, [onDragStart]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isMouseDown.current) return;
+    e.preventDefault();
+    onDragMove(e.clientX);
+  }, [onDragMove]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!isMouseDown.current) return;
+    isMouseDown.current = false;
+    onDragEnd();
+  }, [onDragEnd]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (isMouseDown.current) {
+      isMouseDown.current = false;
+      onDragEnd();
+    }
+  }, [onDragEnd]);
 
   const handleClick = useCallback(() => {
     if (isDragging.current) return;
@@ -171,6 +208,10 @@ function SwipeableConversationItem({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         onClick={handleClick}
       >
         <div
