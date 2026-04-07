@@ -190,8 +190,11 @@ export default function AdminAnalyticsPage() {
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
 
       const succeeded = body.results.filter((r: any) => r.deleted).length;
-      const failed = body.results.filter((r: any) => !r.deleted).length;
-      setDeleteResult(`Deleted ${succeeded} user(s)${failed > 0 ? `, ${failed} failed` : ''}`);
+      const failedResults = body.results.filter((r: any) => !r.deleted);
+      const failedMsg = failedResults.length > 0
+        ? `, ${failedResults.length} failed: ${failedResults.map((r: any) => r.error || 'unknown').join('; ')}`
+        : '';
+      setDeleteResult(`Deleted ${succeeded} user(s)${failedMsg}`);
 
       // Remove deleted users from local data
       if (data) {

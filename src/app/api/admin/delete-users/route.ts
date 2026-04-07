@@ -17,9 +17,6 @@ function isAdmin(email?: string): boolean {
   return allowlist.includes(email.toLowerCase());
 }
 
-// Collections where a user's UID can appear as either the doc ID or a field
-const USER_OWNED_COLLECTIONS = ['players', 'groups', 'courts', 'game-sessions', 'conversations', 'notifications'];
-
 export async function POST(request: NextRequest) {
   try {
     // Auth check
@@ -79,37 +76,32 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Clean up owned data in other collections
-        for (const collName of USER_OWNED_COLLECTIONS) {
-          // Try ownerId field
-          const ownerSnap = await db.collection(collName)
-            .where('ownerId', '==', uid)
-            .get();
-          for (const doc of ownerSnap.docs) {
-            await doc.ref.delete();
-          }
+        // Define which fields to query per collection
+        const fieldsByCollection: Record<string, string[]> = {
+          players: ['ownerId'],
+          groups: ['ownerId'],
+          courts: ['ownerId'],
+          'game-sessions': ['organizerId'],
+          conversations: [],  // conversations use participantIds array, skip for now
+          notifications: ['userId'],
+        };
 
-          // Try organizerId field (game-sessions)
-          if (collName === 'game-sessions') {
-            const organizerSnap = await db.collection(collName)
-              .where('organizerId', '==', uid)
-              .get();
-            for (const doc of organizerSnap.docs) {
-              await doc.ref.delete();
+        for (const [collName, fields] of Object.entries(fieldsByCollection)) {
+          for (const field of fields) {
+            try {
+              const snap = await db.collection(collName)
+                .where(field, '==', uid)
+                .get();
+              for (const doc of snap.docs) {
+                await doc.ref.delete();
+              }
+              if (snap.size > 0) {
+                cleanedCollections.push(`${collName}(${snap.size})`);
+              }
+            } catch (queryErr: any) {
+              // Log but don't fail the whole user deletion for a cleanup query error
+              console.warn(`Cleanup query failed for ${collName}.${field}:`, queryErr.message);
             }
-          }
-
-          // Try userId field (notifications)
-          if (collName === 'notifications') {
-            const notifSnap = await db.collection(collName)
-              .where('userId', '==', uid)
-              .get();
-            for (const doc of notifSnap.docs) {
-              await doc.ref.delete();
-            }
-          }
-
-          if (ownerSnap.size > 0) {
-            cleanedCollections.push(`${collName}(${ownerSnap.size})`);
           }
         }
 
