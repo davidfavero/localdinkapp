@@ -22,7 +22,7 @@ import { addPlayerAction } from '@/lib/actions';
 const playerSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
   lastName: z.string().min(1, 'Last name is required.'),
-  email: z.string().email('Invalid email address.'),
+  email: z.string().email('Invalid email address.').or(z.literal('')).optional(),
   phone: z.string().optional(),
 });
 
@@ -139,7 +139,7 @@ export function AddPlayerSheet({ open, onOpenChange }: AddPlayerSheetProps) {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Email <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="john.doe@example.com" {...field} />
                     </FormControl>

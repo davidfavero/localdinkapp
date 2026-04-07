@@ -33,7 +33,22 @@ export async function GET() {
 
     const auth = await getAdminAuth();
     const decoded = await auth.verifyIdToken(idToken);
-    if (!isAdmin(decoded.email)) {
+    
+    // Check admin by auth token email first
+    let adminEmail = decoded.email;
+    
+    // For phone auth users, look up their profile email in Firestore
+    if (!adminEmail) {
+      const db = await getAdminDb();
+      if (db) {
+        const userDoc = await db.collection('users').doc(decoded.uid).get();
+        if (userDoc.exists) {
+          adminEmail = userDoc.data()?.email;
+        }
+      }
+    }
+    
+    if (!isAdmin(adminEmail)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

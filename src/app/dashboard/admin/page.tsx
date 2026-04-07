@@ -117,7 +117,15 @@ export default function AdminAnalyticsPage() {
   );
 
   useEffect(() => {
-    if (!user || !isAdmin) {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    // Wait for profile to load (phone auth users have email in profile, not auth token)
+    if (!profile && !user.email) return;
+    
+    const email = (profile?.email || user?.email || '').toLowerCase();
+    if (!getAllowedEmails().includes(email)) {
       setIsLoading(false);
       return;
     }
@@ -133,7 +141,7 @@ export default function AdminAnalyticsPage() {
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setIsLoading(false));
-  }, [user, isAdmin]);
+  }, [user, profile]);
 
   if (!isAdmin) {
     return (
