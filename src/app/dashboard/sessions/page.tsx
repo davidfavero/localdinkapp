@@ -316,7 +316,9 @@ export default function GameSessionsPage() {
     if (!firestore || !user) return;
     (async () => {
       try {
-        const courtsSnap = await getDocs(collection(firestore, 'courts'));
+        const courtsSnap = await getDocs(
+          query(collection(firestore, 'courts'), where('ownerId', '==', user.uid))
+        );
         const courts = courtsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Court));
         setAllCourts(courts);
       } catch (e) {
