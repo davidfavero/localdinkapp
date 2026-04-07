@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,9 +9,10 @@ import { NewGameSheet } from '@/components/new-game-sheet';
 import { EditGameSessionSheet } from '@/components/edit-game-session-sheet';
 import { GameSessionCard } from '@/components/game-session-card';
 import { useCollection, useFirestore, useUser, useMemoFirebase } from '@/firebase';
-import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query, where, doc, updateDoc, setDoc } from 'firebase/firestore';
 import type { GameSession, Player, Court, RsvpStatus } from '@/lib/types';
 import { normalizeAttendees, partitionAttendees } from '@/lib/session-attendees';
+import { useToast } from '@/hooks/use-toast';
 
 /**
  * This is the improved "Game Sessions" page (formerly GamesPage).
@@ -363,16 +364,64 @@ export default function GameSessionsPage() {
     }
   };
 
-  // Combine organized sessions with confirmed invites for "My Games"
+  // Build a map of session ID → current user's invite status (from raw data)
+  const inviteStatusMap = useMemo(() => {
+    const map = new Map<string, RsvpStatus>();
+    if (!rawInvites || !user) return map;
+    (rawInvites as any[]).forEach((raw: any) => {
+      if (raw.organizerId !== user.uid) {
+        const status = raw.playerStatuses?.[user.uid] as RsvpStatus | undefined;
+        if (status) map.set(raw.id, status);
+        else map.set(raw.id, 'PENDING');
+      }
+    });
+    return map;
+  }, [rawInvites, user]);
+
+  const { toast } = useToast();
+
+  const handleAcceptInvite = useCallback(async (sessionId: string) => {
+    if (!firestore || !user) return;
+    try {
+      const sessionRef = doc(firestore, 'game-sessions', sessionId);
+      await updateDoc(sessionRef, {
+        [`playerStatuses.${user.uid}`]: 'CONFIRMED',
+      });
+      const playerStatusRef = doc(firestore, 'game-sessions', sessionId, 'players', user.uid);
+      await setDoc(playerStatusRef, { status: 'CONFIRMED' }, { merge: true });
+      toast({ title: 'RSVP Confirmed!', description: 'You have accepted the game invite.' });
+    } catch (error) {
+      console.error('Error accepting invite:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not accept the invite.' });
+    }
+  }, [firestore, user, toast]);
+
+  const handleDeclineInvite = useCallback(async (sessionId: string) => {
+    if (!firestore || !user) return;
+    try {
+      const sessionRef = doc(firestore, 'game-sessions', sessionId);
+      await updateDoc(sessionRef, {
+        [`playerStatuses.${user.uid}`]: 'DECLINED',
+      });
+      const playerStatusRef = doc(firestore, 'game-sessions', sessionId, 'players', user.uid);
+      await setDoc(playerStatusRef, { status: 'DECLINED' }, { merge: true });
+      toast({ title: 'Invite Declined', description: 'You have declined the game invite.' });
+    } catch (error) {
+      console.error('Error declining invite:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not decline the invite.' });
+    }
+  }, [firestore, user, toast]);
+
+  // Combine organized sessions with ALL invites for "My Games"
   const myGames = useMemo(() => {
-    const combined = [...hydratedSessions, ...confirmedInvites];
+    const combined = [...hydratedSessions, ...hydratedInvites];
     // Sort by date (most recent first)
     return combined.sort((a, b) => {
       const dateA = new Date(`${a.date} ${a.time}`);
       const dateB = new Date(`${b.date} ${b.time}`);
       return dateB.getTime() - dateA.getTime();
     });
-  }, [hydratedSessions, confirmedInvites]);
+  }, [hydratedSessions, hydratedInvites]);
 
   // Split into upcoming and past sessions
   const now = new Date();
@@ -462,11 +511,19 @@ export default function GameSessionsPage() {
           <TabsContent value="upcoming" className="mt-4">
             {upcomingSessions.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {upcomingSessions.map((session) => (
-                  <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
-                    <GameSessionCard session={session} />
-                  </div>
-                ))}
+                {upcomingSessions.map((session) => {
+                  const status = inviteStatusMap.get(session.id);
+                  return (
+                    <div key={session.id} onClick={status !== 'PENDING' ? () => handleSessionClick(session) : undefined} className={status !== 'PENDING' ? 'cursor-pointer' : ''}>
+                      <GameSessionCard
+                        session={session}
+                        currentUserStatus={status}
+                        onAccept={status === 'PENDING' ? () => handleAcceptInvite(session.id) : undefined}
+                        onDecline={status === 'PENDING' ? () => handleDeclineInvite(session.id) : undefined}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12 border-2 border-dashed rounded-lg">
@@ -478,11 +535,14 @@ export default function GameSessionsPage() {
           <TabsContent value="past" className="mt-4">
             {pastSessions.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {pastSessions.map((session) => (
-                  <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
-                    <GameSessionCard session={session} />
-                  </div>
-                ))}
+                {pastSessions.map((session) => {
+                  const status = inviteStatusMap.get(session.id);
+                  return (
+                    <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
+                      <GameSessionCard session={session} currentUserStatus={status} />
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12 border-2 border-dashed rounded-lg">
@@ -491,34 +551,6 @@ export default function GameSessionsPage() {
             )}
           </TabsContent>
         </Tabs>
-      )}
-
-      {/* Pending Invites Section - Only shows invites awaiting response */}
-      {!isLoadingInvites && !isHydratingInvites && pendingInvites.length > 0 && (
-        <>
-          <div className="flex justify-between items-center mt-8">
-            <h2 className="text-xl font-semibold">Pending Invites</h2>
-            <span className="text-sm text-muted-foreground">{pendingInvites.length} awaiting response</span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {pendingInvites.map((session) => (
-              <div key={session.id} onClick={() => handleSessionClick(session)} className="cursor-pointer">
-                <GameSessionCard session={session} />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {(isLoadingInvites || isHydratingInvites) && hydratedSessions.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Pending Invites</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 2 }).map((_, i) => (
-              <LoadingSessionCard key={`invite-loading-${i}`} />
-            ))}
-          </div>
-        </div>
       )}
     </div>
   );

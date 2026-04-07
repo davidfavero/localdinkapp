@@ -274,32 +274,34 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             gameTime: `${session.date} at ${session.time}`,
         });
 
-        // Now, update the player's status in Firestore
-        // Use setDoc with merge to create if it doesn't exist, or update if it does
+        // Update both the parent doc playerStatuses map AND the subcollection doc
+        const sessionRef = doc(firestore, 'game-sessions', session.id);
         const playerStatusRef = doc(firestore, 'game-sessions', session.id, 'players', currentUser.uid);
         const payload = { status: 'DECLINED' };
         
-        setDoc(playerStatusRef, payload, { merge: true })
-          .then(() => {
-              toast({
-                title: 'Cancellation Processed',
-                description: result.message,
-              });
-          })
-          .catch((error) => {
-              console.error('Error updating player status:', error);
-              const permissionError = new FirestorePermissionError({
-                path: playerStatusRef.path,
-                operation: 'set',
-                requestResourceData: payload,
-              });
-              errorEmitter.emit('permission-error', permissionError);
-              toast({
-                  variant: 'destructive',
-                  title: 'Update Failed',
-                  description: 'Could not update your RSVP status. Check permissions.',
-              });
+        try {
+          await updateDoc(sessionRef, {
+            [`playerStatuses.${currentUser.uid}`]: 'DECLINED',
           });
+          await setDoc(playerStatusRef, payload, { merge: true });
+          toast({
+            title: 'Cancellation Processed',
+            description: result.message,
+          });
+        } catch (error) {
+          console.error('Error updating player status:', error);
+          const permissionError = new FirestorePermissionError({
+            path: playerStatusRef.path,
+            operation: 'set',
+            requestResourceData: payload,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+          toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+            description: 'Could not update your RSVP status. Check permissions.',
+          });
+        }
 
     } catch (error) {
        toast({
