@@ -260,8 +260,8 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       organizerId: user.uid,
       startTime: startTime.toISOString(),
       startTimeDisplay: format(startTime, "EEEE, MMMM d 'at' h:mm a"),
-      courtName: selectedCourt?.name,
-      courtLocation: selectedCourt?.location,
+      courtName: selectedCourt?.name || '',
+      courtLocation: selectedCourt?.location || '',
       isDoubles: data.isDoubles === 'true',
       durationMinutes: 120, // Default duration
       status: 'open',  // Must be: 'open' | 'full' | 'cancelled' | 'completed'
