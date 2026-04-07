@@ -177,17 +177,19 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
               ? Intl.DateTimeFormat().resolvedOptions().timeZone
               : 'America/New_York';
           
-          const newUserProfile: Omit<Player, 'id'> & { ownerId: string } = {
-            firstName,
-            lastName: lastName.join(' '),
-            email: userEmail,
-            avatarUrl: user.photoURL || '',
+          // Only set fields that have values — never overwrite with empty strings
+          const newUserProfile: Record<string, any> = {
             ownerId: user.uid,
             timezone: detectedTimezone || 'America/New_York',
-            // Include phone number if user signed in with phone auth
-            ...(user.phoneNumber && { phone: user.phoneNumber }),
           };
-          await setDoc(userDocRef, newUserProfile);
+          if (firstName) newUserProfile.firstName = firstName;
+          if (lastName.join(' ')) newUserProfile.lastName = lastName.join(' ');
+          if (userEmail) newUserProfile.email = userEmail;
+          if (user.photoURL) newUserProfile.avatarUrl = user.photoURL;
+          if (user.phoneNumber) newUserProfile.phone = user.phoneNumber;
+          
+          // merge: true ensures we don't overwrite existing profile data
+          await setDoc(userDocRef, newUserProfile, { merge: true });
           
           // Link any existing player contacts by phone AND email (server-side)
           linkPlayerContactsAction(user.uid, user.phoneNumber, user.email).catch(console.error);

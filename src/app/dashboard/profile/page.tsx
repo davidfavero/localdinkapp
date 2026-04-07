@@ -33,6 +33,7 @@ import { getClientApp } from '@/firebase/app';
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
   lastName: z.string().min(1, 'Last name is required.'),
+  email: z.string().email('Invalid email address.').or(z.literal('')).optional(),
   phone: z.string().optional(),
   dinkRating: z.string().optional(),
   doublesPreference: z.boolean().default(true),
@@ -77,6 +78,7 @@ export default function ProfilePage() {
     defaultValues: {
       firstName: '',
       lastName: '',
+      email: '',
       phone: '',
       dinkRating: '4.25',
       doublesPreference: true,
@@ -90,6 +92,7 @@ export default function ProfilePage() {
       form.reset({
         firstName: currentUser.firstName || '',
         lastName: currentUser.lastName || '',
+        email: currentUser.email || '',
         phone: currentUser.phone || '',
         dinkRating: currentUser.dinkRating || '4.25',
         doublesPreference: currentUser.doublesPreference ?? true,
@@ -233,6 +236,7 @@ export default function ProfilePage() {
     const payload = {
       firstName: data.firstName,
       lastName: data.lastName,
+      email: data.email || '',
       phone: data.phone,
       dinkRating: data.dinkRating,
       doublesPreference: data.doublesPreference,
@@ -374,6 +378,19 @@ export default function ProfilePage() {
                     <FormLabel>Last Name</FormLabel>
                     <FormControl>
                       <Input placeholder="Last Name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="your@email.com" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
