@@ -39,3 +39,8 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Duplicate files (macOS)
+package-lock 2.json
+tsconfig.tsbuildinfo
+dev.log
