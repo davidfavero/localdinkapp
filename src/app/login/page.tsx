@@ -207,6 +207,18 @@ export default function LoginPage() {
       }, 500);
     } catch (error: any) {
       console.error('Verification error:', error);
+
+      // Handle stale deployment — server action ID mismatch
+      if (error.message?.includes('was not found on the server') ||
+          error.message?.includes('Server Action')) {
+        toast({
+          title: 'App Updated',
+          description: 'A new version is available. Reloading...',
+        });
+        window.location.reload();
+        return;
+      }
+
       let errorMessage = 'Invalid code. Please try again.';
 
       if (error.code === 'auth/invalid-verification-code') {

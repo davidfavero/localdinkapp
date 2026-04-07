@@ -13,8 +13,12 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log the error to console for debugging
     console.error('Application error:', error);
+    // Auto-reload on stale deployment (server action ID mismatch)
+    if (error.message?.includes('was not found on the server') ||
+        error.message?.includes('Server Action')) {
+      window.location.reload();
+    }
   }, [error]);
 
   return (
