@@ -12,7 +12,7 @@ function getAllowedEmails(): string[] {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   if (fromEnv.length > 0) return fromEnv;
-  return ['davidfavero@gmail.com', 'david@localdink.com'];
+  return ['davidfavero@gmail.com', 'mdfavero@gmail.com', 'david@localdink.com'];
 }
 
 export default function AdminDebugPage() {

@@ -39,7 +39,7 @@ function canViewAdminDebug(email?: string): boolean {
     .split(',')
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
-  const allowlist = fromEnv.length > 0 ? fromEnv : ['davidfavero@gmail.com', 'david@localdink.com'];
+  const allowlist = fromEnv.length > 0 ? fromEnv : ['davidfavero@gmail.com', 'mdfavero@gmail.com', 'david@localdink.com'];
   return allowlist.includes(normalized);
 }
 
