@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { UserAvatar } from '@/components/user-avatar';
 import { useUser } from '@/firebase/provider';
 import {
   Users, UserCheck, Calendar, MessageCircle, MapPin, UsersRound, Bell,
-  TrendingUp, Activity, BarChart3,
+  TrendingUp, Activity, BarChart3, Trash2,
 } from 'lucide-react';
 
 interface AnalyticsData {
@@ -111,6 +113,9 @@ export default function AdminAnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteResult, setDeleteResult] = useState<string | null>(null);
 
   const isAdmin = getAllowedEmails().includes(
     (profile?.email || user?.email || '').toLowerCase()
@@ -142,6 +147,68 @@ export default function AdminAnalyticsPage() {
       .catch((e) => setError(e.message))
       .finally(() => setIsLoading(false));
   }, [user, profile]);
+
+  const toggleUser = (uid: string) => {
+    setSelectedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (!data) return;
+    // Exclude current user from select-all
+    const selectable = data.users.filter((u) => u.id !== user?.uid);
+    if (selectedUsers.size === selectable.length) {
+      setSelectedUsers(new Set());
+    } else {
+      setSelectedUsers(new Set(selectable.map((u) => u.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedUsers.size === 0) return;
+    const names = data?.users
+      .filter((u) => selectedUsers.has(u.id))
+      .map((u) => `${u.firstName} ${u.lastName}`.trim() || u.id);
+    if (!confirm(`Delete ${selectedUsers.size} user(s)?\n\n${names?.join('\n')}\n\nThis will also delete their owned data (players, groups, courts, sessions, notifications) and their Firebase Auth account. This cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteResult(null);
+    try {
+      const res = await fetch('/api/admin/delete-users', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: Array.from(selectedUsers) }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+
+      const succeeded = body.results.filter((r: any) => r.deleted).length;
+      const failed = body.results.filter((r: any) => !r.deleted).length;
+      setDeleteResult(`Deleted ${succeeded} user(s)${failed > 0 ? `, ${failed} failed` : ''}`);
+
+      // Remove deleted users from local data
+      if (data) {
+        const deletedIds = new Set(body.results.filter((r: any) => r.deleted).map((r: any) => r.uid));
+        setData({
+          ...data,
+          users: data.users.filter((u) => !deletedIds.has(u.id)),
+          counts: { ...data.counts, users: data.counts.users - succeeded },
+        });
+      }
+      setSelectedUsers(new Set());
+    } catch (err: any) {
+      setDeleteResult(`Error: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (!isAdmin) {
     return (
@@ -238,36 +305,72 @@ export default function AdminAnalyticsPage() {
       {/* User Directory */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            All Users ({data.users.length})
-          </CardTitle>
-          <CardDescription>Registered accounts on LocalDink</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                All Users ({data.users.length})
+              </CardTitle>
+              <CardDescription>Registered accounts on LocalDink</CardDescription>
+            </div>
+            {selectedUsers.size > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDeleteSelected}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                {isDeleting ? 'Deleting...' : `Delete ${selectedUsers.size}`}
+              </Button>
+            )}
+          </div>
+          {deleteResult && (
+            <p className={`text-sm mt-2 ${deleteResult.startsWith('Error') ? 'text-destructive' : 'text-green-600'}`}>
+              {deleteResult}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
+          <div className="flex items-center gap-2 pb-3 border-b mb-1">
+            <Checkbox
+              checked={data.users.filter((u) => u.id !== user?.uid).length > 0 && selectedUsers.size === data.users.filter((u) => u.id !== user?.uid).length}
+              onCheckedChange={toggleAll}
+            />
+            <span className="text-xs text-muted-foreground">Select all</span>
+          </div>
           <div className="divide-y">
-            {data.users.map((u) => (
-              <div key={u.id} className="flex items-center gap-3 py-3">
-                <UserAvatar
-                  player={{ id: u.id, firstName: u.firstName, lastName: u.lastName, avatarUrl: u.avatarUrl, email: u.email } as any}
-                  className="h-10 w-10"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {u.firstName} {u.lastName}
-                    {!u.firstName && !u.lastName && <span className="text-muted-foreground italic">No name</span>}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {[u.email, u.phone].filter(Boolean).join(' · ') || u.id}
-                  </p>
+            {data.users.map((u) => {
+              const isCurrentUser = u.id === user?.uid;
+              return (
+                <div key={u.id} className={`flex items-center gap-3 py-3 ${selectedUsers.has(u.id) ? 'bg-red-50 dark:bg-red-950/20 -mx-4 px-4 rounded' : ''}`}>
+                  <Checkbox
+                    checked={selectedUsers.has(u.id)}
+                    onCheckedChange={() => toggleUser(u.id)}
+                    disabled={isCurrentUser}
+                  />
+                  <UserAvatar
+                    player={{ id: u.id, firstName: u.firstName, lastName: u.lastName, avatarUrl: u.avatarUrl, email: u.email } as any}
+                    className="h-10 w-10"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {u.firstName} {u.lastName}
+                      {!u.firstName && !u.lastName && <span className="text-muted-foreground italic">No name</span>}
+                      {isCurrentUser && <Badge variant="outline" className="ml-2 text-[10px]">You</Badge>}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[u.email, u.phone].filter(Boolean).join(' · ') || u.id}
+                    </p>
+                  </div>
+                  {u.createdAt && (
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      Joined {new Date(u.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  )}
                 </div>
-                {u.createdAt && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    Joined {new Date(u.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
