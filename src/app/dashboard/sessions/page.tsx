@@ -94,6 +94,8 @@ export default function GameSessionsPage() {
 
   const [hydratedSessions, setHydratedSessions] = useState<GameSession[]>([]);
   const [hydratedInvites, setHydratedInvites] = useState<GameSession[]>([]);
+  const [confirmedInvites, setConfirmedInvites] = useState<GameSession[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<GameSession[]>([]);
   const [isHydrating, setIsHydrating] = useState(true);
   const [isHydratingInvites, setIsHydratingInvites] = useState(true);
 
@@ -251,61 +253,58 @@ export default function GameSessionsPage() {
 
   useEffect(() => {
     if (!firestore) return;
-    if (!rawSessions) {
-      if (!isLoadingSessions) setIsHydrating(false);
+    
+    // Wait for both queries to finish loading before hydrating
+    if (isLoadingSessions || isLoadingInvites) return;
+    
+    const allRaw = [
+      ...(rawSessions || []),
+      ...((rawInvites || []) as any[]).filter((s: any) => s.organizerId !== user?.uid),
+    ];
+    
+    if (allRaw.length === 0) {
+      setIsHydrating(false);
+      setIsHydratingInvites(false);
       return;
     }
 
     setIsHydrating(true);
+    setIsHydratingInvites(true);
     (async () => {
       try {
-        const hydrated = await batchHydrate(firestore, rawSessions as any[], user?.uid ?? null);
-        setHydratedSessions(hydrated);
+        // Single hydration pass for all sessions (organized + invites)
+        const hydratedAll = await batchHydrate(firestore, allRaw as any[], user?.uid ?? null);
+        
+        // Split back into organized vs invites
+        const organizedIds = new Set((rawSessions || []).map((s: any) => s.id));
+        const organized = hydratedAll.filter(s => organizedIds.has(s.id));
+        const invites = hydratedAll.filter(s => !organizedIds.has(s.id));
+        
+        setHydratedSessions(organized);
+        
+        // Split invites by status
+        const confirmed = invites.filter(s => {
+          const raw = (rawInvites as any[])?.find((r: any) => r.id === s.id);
+          return raw?.playerStatuses?.[user?.uid!] === 'CONFIRMED';
+        });
+        const pending = invites.filter(s => {
+          const raw = (rawInvites as any[])?.find((r: any) => r.id === s.id);
+          return raw?.playerStatuses?.[user?.uid!] === 'PENDING';
+        });
+        
+        setConfirmedInvites(confirmed);
+        setPendingInvites(pending);
+        setHydratedInvites(invites);
         setError(null);
       } catch (e: any) {
         console.error(e);
         setError(e?.message ?? "Failed to load sessions");
       } finally {
         setIsHydrating(false);
-      }
-    })();
-  }, [firestore, rawSessions, isLoadingSessions, user?.uid]);
-
-  // Hydrate invites - separate into CONFIRMED (show in My Games) and PENDING (show in Invites)
-  const [confirmedInvites, setConfirmedInvites] = useState<GameSession[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<GameSession[]>([]);
-  
-  useEffect(() => {
-    if (!firestore) return;
-    if (!rawInvites) {
-      if (!isLoadingInvites) setIsHydratingInvites(false);
-      return;
-    }
-
-    setIsHydratingInvites(true);
-    (async () => {
-      try {
-        // Filter out sessions where user is the organizer (those appear in "My Sessions")
-        const invitesOnly = (rawInvites as any[]).filter(s => s.organizerId !== user?.uid);
-        
-        // Separate into confirmed and pending based on user's status
-        const confirmed = invitesOnly.filter(s => s.playerStatuses?.[user?.uid!] === 'CONFIRMED');
-        const pending = invitesOnly.filter(s => s.playerStatuses?.[user?.uid!] === 'PENDING');
-        
-        const hydratedConfirmed = await batchHydrate(firestore, confirmed, user?.uid ?? null);
-        const hydratedPending = await batchHydrate(firestore, pending, user?.uid ?? null);
-        
-        setConfirmedInvites(hydratedConfirmed);
-        setPendingInvites(hydratedPending);
-        // Keep hydratedInvites for backward compatibility (all non-organizer invites)
-        setHydratedInvites([...hydratedConfirmed, ...hydratedPending]);
-      } catch (e: any) {
-        console.error('Error hydrating invites:', e);
-      } finally {
         setIsHydratingInvites(false);
       }
     })();
-  }, [firestore, rawInvites, isLoadingInvites, user?.uid]);
+  }, [firestore, rawSessions, rawInvites, isLoadingSessions, isLoadingInvites, user?.uid]);
 
   // Fetch all courts for both new and edit sheets
   // Note: Courts have public read access, but we still wait for user auth

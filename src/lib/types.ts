@@ -285,6 +285,8 @@ export type Conversation = {
   lastReadAt: Record<string, Timestamp>;
   createdAt: Timestamp;
   createdBy: string;
+  archivedBy?: string[];
+  deletedBy?: string[];
 };
 
 export type ConversationMessage = {
