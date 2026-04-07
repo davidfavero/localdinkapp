@@ -8,7 +8,6 @@ import { collection, query, where } from 'firebase/firestore';
 import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -79,6 +78,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
   const firestore = useFirestore();
   const { user } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   // Fetch only players owned by current user
   const playersQuery = useMemoFirebase(() => {
@@ -373,31 +373,34 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Date</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={'outline'}
-                            className={cn(
-                              'w-full justify-start text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                    <FormControl>
+                      <Button
+                        type="button"
+                        variant={'outline'}
+                        className={cn(
+                          'w-full justify-start text-left font-normal',
+                          !field.value && 'text-muted-foreground'
+                        )}
+                        onClick={() => setShowCalendar(v => !v)}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                      </Button>
+                    </FormControl>
+                    {showCalendar && (
+                      <div className="border rounded-md p-0 mt-1">
                         <Calendar
                           mode="single"
                           selected={field.value}
-                          onSelect={field.onChange}
+                          onSelect={(date) => {
+                            field.onChange(date);
+                            setShowCalendar(false);
+                          }}
                           disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
                           initialFocus
                         />
-                      </PopoverContent>
-                    </Popover>
+                      </div>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
