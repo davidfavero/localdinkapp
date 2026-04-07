@@ -262,12 +262,20 @@ export default function DashboardLayout({
                     </Link>
                   </DropdownMenuItem>
                   {canViewAdminDebug(currentUser?.email || user?.email || undefined) && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/dashboard/admin-debug" className="flex items-center gap-2 cursor-pointer">
-                        <User className="h-4 w-4" />
-                        Admin Debug
-                      </Link>
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard/admin" className="flex items-center gap-2 cursor-pointer">
+                          <User className="h-4 w-4" />
+                          Admin Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard/admin-debug" className="flex items-center gap-2 cursor-pointer">
+                          <User className="h-4 w-4" />
+                          Admin Debug
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
