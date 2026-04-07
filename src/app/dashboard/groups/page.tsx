@@ -13,6 +13,7 @@ import { AddPlayerSheet } from '@/components/add-player-sheet';
 import { AddGroupSheet } from '@/components/add-group-sheet';
 import { EditGroupSheet } from '@/components/edit-group-sheet';
 import { EditPlayerSheet } from '@/components/edit-player-sheet';
+import { ImportContactsButton } from '@/components/import-contacts-button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 
@@ -158,10 +159,13 @@ export default function GroupsAndPlayersPage() {
       <section>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold font-headline">All Players</h2>
-          <Button onClick={() => setIsPlayerSheetOpen(true)} variant="outline">
-            <Plus className="-ml-1 mr-2 h-4 w-4" />
-            Add Player
-          </Button>
+          <div className="flex gap-2">
+            <ImportContactsButton />
+            <Button onClick={() => setIsPlayerSheetOpen(true)} variant="outline">
+              <Plus className="-ml-1 mr-2 h-4 w-4" />
+              Add Player
+            </Button>
+          </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {(isLoadingPlayers || !authUser) &&

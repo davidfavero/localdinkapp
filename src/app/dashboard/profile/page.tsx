@@ -31,7 +31,8 @@ import { getClientApp } from '@/firebase/app';
 
 
 const profileSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters.'),
+  firstName: z.string().min(1, 'First name is required.'),
+  lastName: z.string().min(1, 'Last name is required.'),
   phone: z.string().optional(),
   dinkRating: z.string().optional(),
   doublesPreference: z.boolean().default(true),
@@ -74,7 +75,8 @@ export default function ProfilePage() {
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: '',
+      firstName: '',
+      lastName: '',
       phone: '',
       dinkRating: '4.25',
       doublesPreference: true,
@@ -86,7 +88,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (currentUser) {
       form.reset({
-        name: `${currentUser.firstName} ${currentUser.lastName}`,
+        firstName: currentUser.firstName || '',
+        lastName: currentUser.lastName || '',
         phone: currentUser.phone || '',
         dinkRating: currentUser.dinkRating || '4.25',
         doublesPreference: currentUser.doublesPreference ?? true,
@@ -226,12 +229,10 @@ export default function ProfilePage() {
     }
     const userId = user.uid;
     const userRef = doc(firestore, 'users', userId);
-    const [firstName, ...lastNameParts] = data.name.split(' ');
-    const lastName = lastNameParts.join(' ');
     
     const payload = {
-      firstName,
-      lastName,
+      firstName: data.firstName,
+      lastName: data.lastName,
       phone: data.phone,
       dinkRating: data.dinkRating,
       doublesPreference: data.doublesPreference,
@@ -354,12 +355,25 @@ export default function ProfilePage() {
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="name"
+                name="firstName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Display Name</FormLabel>
+                    <FormLabel>First Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="Your Name" {...field} />
+                      <Input placeholder="First Name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Last Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Last Name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
