@@ -192,8 +192,23 @@ export default function GameSessionsPage() {
         let player: Player;
 
         if (baseRecord) {
-          // Preserve all fields from the base record, including linkedUserId
-          player = { ...baseRecord, id };
+          // If this is a player contact linked to a registered user, prefer the user's
+          // live profile for name and avatar so updates propagate immediately.
+          const linkedUser = source === 'player' && baseRecord.linkedUserId
+            ? usersMap.get(baseRecord.linkedUserId)
+            : null;
+          if (linkedUser) {
+            player = {
+              ...baseRecord,
+              id,
+              firstName: linkedUser.firstName || baseRecord.firstName,
+              lastName: linkedUser.lastName || baseRecord.lastName,
+              avatarUrl: linkedUser.avatarUrl || baseRecord.avatarUrl,
+            };
+          } else {
+            // Preserve all fields from the base record, including linkedUserId
+            player = { ...baseRecord, id };
+          }
         } else {
           player = {
             id,

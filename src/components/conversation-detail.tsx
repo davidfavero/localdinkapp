@@ -10,7 +10,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import { collection, query, orderBy, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, doc, addDoc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { sendMessageNotificationAction } from '@/lib/actions';
 import type { Conversation, ConversationMessage } from '@/lib/types';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -47,6 +47,50 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
 
   const { data: messages, isLoading } = useCollection<ConversationMessage>(messagesQuery);
 
+  // Fetch live user profiles for participants so names/avatars stay current
+  const [liveProfiles, setLiveProfiles] = useState<Record<string, { firstName: string; lastName: string; avatarUrl: string }>>({});
+  useEffect(() => {
+    if (!firestore || !conversation?.participantIds) return;
+    const otherIds = conversation.participantIds.filter(id => id !== user?.uid);
+    if (otherIds.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const profiles: typeof liveProfiles = {};
+      for (const uid of otherIds) {
+        try {
+          const snap = await getDoc(doc(firestore, 'users', uid));
+          if (snap.exists() && !cancelled) {
+            const d = snap.data() as any;
+            const name = `${d.firstName || ''} ${d.lastName || ''}`.trim();
+            if (name) {
+              profiles[uid] = { firstName: d.firstName || '', lastName: d.lastName || '', avatarUrl: d.avatarUrl || '' };
+            }
+          }
+        } catch { /* fall back to denormalized data */ }
+      }
+      if (!cancelled) setLiveProfiles(profiles);
+
+      // Fire-and-forget: sync stale denormalized names/avatars on the conversation doc
+      if (firestore && conversationId && Object.keys(profiles).length > 0) {
+        const updates: Record<string, string> = {};
+        for (const [uid, p] of Object.entries(profiles)) {
+          const liveName = `${p.firstName} ${p.lastName}`.trim();
+          if (liveName && liveName !== conversation?.participantNames?.[uid]) {
+            updates[`participantNames.${uid}`] = liveName;
+          }
+          if (p.avatarUrl !== (conversation?.participantAvatars?.[uid] || '')) {
+            updates[`participantAvatars.${uid}`] = p.avatarUrl;
+          }
+        }
+        if (Object.keys(updates).length > 0) {
+          updateDoc(doc(firestore, 'conversations', conversationId), updates).catch(() => {});
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [firestore, conversation?.participantIds, user?.uid]);
+
   // Display name for header
   const displayName = useMemo(() => {
     if (!conversation || !user) return '';
@@ -54,8 +98,12 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
       return conversation.groupName;
     }
     const otherIds = conversation.participantIds.filter(id => id !== user.uid);
-    return otherIds.map(id => conversation.participantNames?.[id] || 'Unknown').join(', ');
-  }, [conversation, user]);
+    return otherIds.map(id => {
+      const live = liveProfiles[id];
+      if (live) return `${live.firstName} ${live.lastName}`.trim();
+      return conversation.participantNames?.[id] || 'Unknown';
+    }).join(', ');
+  }, [conversation, user, liveProfiles]);
 
   // Mark as read when viewing
   const markAsRead = useCallback(async () => {
@@ -131,16 +179,23 @@ export function ConversationDetail({ conversationId, onBack }: ConversationDetai
   // Build avatar lookup for message senders
   const getAvatarPlayer = useCallback((senderId: string) => {
     if (!conversation) return null;
+    const live = liveProfiles[senderId];
+    const firstName = live?.firstName || '';
+    const lastName = live?.lastName || '';
+    const avatarUrl = live?.avatarUrl || '';
+    if (live) {
+      return { id: senderId, firstName, lastName, avatarUrl, email: '' };
+    }
     const name = conversation.participantNames?.[senderId] || 'Unknown';
-    const [firstName = '', lastName = ''] = name.split(' ');
+    const [fn = '', ln = ''] = name.split(' ');
     return {
       id: senderId,
-      firstName,
-      lastName,
+      firstName: fn,
+      lastName: ln,
       avatarUrl: conversation.participantAvatars?.[senderId] || '',
       email: '',
     };
-  }, [conversation]);
+  }, [conversation, liveProfiles]);
 
   // Header avatar for the other participant (1:1)
   const headerAvatar = useMemo(() => {

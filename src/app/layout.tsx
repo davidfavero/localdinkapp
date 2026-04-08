@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: 'LocalDink: AI Pickleball Scheduler',
   description: 'An AI-powered scheduler for local pickleball games.',
   icons: {
+    icon: '/favicon.ico',
     apple: '/apple-touch-icon.png',
   },
 };

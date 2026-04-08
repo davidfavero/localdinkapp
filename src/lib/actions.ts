@@ -275,6 +275,60 @@ async function updateUserProfileNameFromPlayer(
     }
 }
 
+/**
+ * When a player contact is linked to a registered user, update any existing
+ * game sessions that reference the old player-contact doc ID so the user's
+ * auth UID is added to `playerIds` (making the session visible on their dashboard)
+ * and the `attendees` array reflects the correct source.
+ */
+async function migrateGameSessionsForLinkedPlayer(
+    adminDb: FirebaseFirestore.Firestore,
+    playerDocIds: string[],
+    userId: string,
+) {
+    for (const playerDocId of playerDocIds) {
+        try {
+            const sessionsSnap = await adminDb.collection('game-sessions')
+                .where('playerIds', 'array-contains', playerDocId)
+                .get();
+
+            for (const sessionDoc of sessionsSnap.docs) {
+                const data = sessionDoc.data();
+                const updates: Record<string, any> = {};
+
+                // Add the user's UID to playerIds if not already present
+                const currentPlayerIds: string[] = data.playerIds || [];
+                if (!currentPlayerIds.includes(userId)) {
+                    updates.playerIds = [...currentPlayerIds.filter(id => id !== playerDocId), userId];
+                }
+
+                // Update attendees array: swap player-source entry to user-source
+                if (Array.isArray(data.attendees)) {
+                    updates.attendees = data.attendees.map((a: any) => {
+                        if (a.id === playerDocId && a.source === 'player') {
+                            return { id: userId, source: 'user' };
+                        }
+                        return a;
+                    });
+                }
+
+                // Migrate playerStatuses key from old ID to user UID
+                if (data.playerStatuses?.[playerDocId] && !data.playerStatuses?.[userId]) {
+                    updates[`playerStatuses.${userId}`] = data.playerStatuses[playerDocId];
+                    updates[`playerStatuses.${playerDocId}`] = FieldValue.delete();
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await sessionDoc.ref.update(updates);
+                    console.log(`[linkPlayerContacts] Migrated session ${sessionDoc.id}: swapped player ${playerDocId} -> user ${userId}`);
+                }
+            }
+        } catch (e) {
+            console.warn(`[linkPlayerContacts] Could not migrate sessions for player ${playerDocId}:`, e);
+        }
+    }
+}
+
 export async function linkPlayerContactsAction(
     userId: string,
     phone?: string | null,
@@ -287,6 +341,7 @@ export async function linkPlayerContactsAction(
         const normalizedPhone = normalizeToE164(phone ?? undefined);
         const normalizedEmail = email?.toLowerCase().trim();
         let linkedCount = 0;
+        const linkedPlayerDocIds: string[] = [];
 
         console.log(`[linkPlayerContacts] Attempting to link for user ${userId}`);
         console.log(`[linkPlayerContacts] Phone: ${phone} -> normalized: ${normalizedPhone}`);
@@ -317,9 +372,15 @@ export async function linkPlayerContactsAction(
                         // Link AND normalize the stored phone for future matches
                         await doc.ref.update({ linkedUserId: userId, phone: normalizedPhone });
                         linkedCount++;
+                        linkedPlayerDocIds.push(doc.id);
                         console.log(`[linkPlayerContacts] ✓ Linked player ${doc.id} to user ${userId}`);
                         // If user profile has empty/default name, update it from the player contact
-                        await updateUserProfileNameFromPlayer(adminDb, userId, data);                    } else {
+                        await updateUserProfileNameFromPlayer(adminDb, userId, data);
+                    } else if (data.linkedUserId === userId && data.ownerId !== userId) {
+                        // Already linked — still collect for session migration in case
+                        // prior linking happened before migration logic was added
+                        linkedPlayerDocIds.push(doc.id);
+                    } else {
                         console.log(`[linkPlayerContacts] ✗ Skipped: linkedUserId=${data.linkedUserId || 'none'}, ownerId=${data.ownerId}, targetUserId=${userId}`);
                     }
                 }
@@ -336,11 +397,21 @@ export async function linkPlayerContactsAction(
                 if (!data.linkedUserId && data.ownerId !== userId) {
                     await doc.ref.update({ linkedUserId: userId });
                     linkedCount++;
+                    linkedPlayerDocIds.push(doc.id);
 
                     // If user profile has empty/default name, update it from the player contact
                     await updateUserProfileNameFromPlayer(adminDb, userId, data);
+                } else if (data.linkedUserId === userId && data.ownerId !== userId) {
+                    // Already linked — still collect for session migration
+                    linkedPlayerDocIds.push(doc.id);
                 }
             }
+        }
+
+        // Migrate existing game sessions that reference the old player contact IDs
+        // so the linked user can see them in their dashboard
+        if (linkedPlayerDocIds.length > 0) {
+            await migrateGameSessionsForLinkedPlayer(adminDb, linkedPlayerDocIds, userId);
         }
 
         if (linkedCount > 0) {

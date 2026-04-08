@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { MessageCircle, Plus, Archive, Trash2, ArchiveRestore } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, where, orderBy, doc, updateDoc, arrayUnion, arrayRemove, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, getDoc } from 'firebase/firestore';
 import type { Conversation } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -19,15 +19,19 @@ interface ConversationListProps {
   onNewConversation: () => void;
 }
 
+type LiveProfile = { firstName: string; lastName: string; avatarUrl: string };
+
 function SwipeableConversationItem({
   conversation,
   currentUserId,
+  liveProfiles,
   onClick,
   onArchive,
   onDelete,
 }: {
   conversation: Conversation;
   currentUserId: string;
+  liveProfiles: Record<string, LiveProfile>;
   onClick: () => void;
   onArchive: () => void;
   onDelete: () => void;
@@ -150,13 +154,27 @@ function SwipeableConversationItem({
       return conversation.groupName;
     }
     const otherIds = conversation.participantIds.filter(id => id !== currentUserId);
-    return otherIds.map(id => conversation.participantNames?.[id] || 'Unknown').join(', ');
-  }, [conversation, currentUserId]);
+    return otherIds.map(id => {
+      const live = liveProfiles[id];
+      if (live) return `${live.firstName} ${live.lastName}`.trim();
+      return conversation.participantNames?.[id] || 'Unknown';
+    }).join(', ');
+  }, [conversation, currentUserId, liveProfiles]);
 
   const avatarPlayer = useMemo(() => {
     if (conversation.type === '1:1') {
       const otherId = conversation.participantIds.find(id => id !== currentUserId);
       if (otherId) {
+        const live = liveProfiles[otherId];
+        if (live) {
+          return {
+            id: otherId,
+            firstName: live.firstName,
+            lastName: live.lastName,
+            avatarUrl: live.avatarUrl,
+            email: '',
+          };
+        }
         const name = conversation.participantNames?.[otherId] || 'Unknown';
         const [firstName = '', lastName = ''] = name.split(' ');
         return {
@@ -169,7 +187,7 @@ function SwipeableConversationItem({
       }
     }
     return null;
-  }, [conversation, currentUserId]);
+  }, [conversation, currentUserId, liveProfiles]);
 
   return (
     <div ref={containerRef} className="relative overflow-hidden border-b">
@@ -274,6 +292,36 @@ export function ConversationList({ onSelectConversation, onNewConversation }: Co
   }, [firestore, user]);
 
   const { data: allConversations, isLoading } = useCollection<Conversation>(conversationsQuery);
+
+  // Fetch live user profiles for all conversation participants
+  const [liveProfiles, setLiveProfiles] = useState<Record<string, LiveProfile>>({});
+  useEffect(() => {
+    if (!firestore || !user || !allConversations?.length) return;
+    const otherIds = new Set<string>();
+    allConversations.forEach(c => {
+      c.participantIds?.forEach(id => { if (id !== user.uid) otherIds.add(id); });
+    });
+    if (otherIds.size === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const profiles: Record<string, LiveProfile> = {};
+      for (const uid of otherIds) {
+        try {
+          const snap = await getDoc(doc(firestore, 'users', uid));
+          if (snap.exists() && !cancelled) {
+            const d = snap.data() as any;
+            const name = `${d.firstName || ''} ${d.lastName || ''}`.trim();
+            if (name) {
+              profiles[uid] = { firstName: d.firstName || '', lastName: d.lastName || '', avatarUrl: d.avatarUrl || '' };
+            }
+          }
+        } catch { /* fall back to denormalized data */ }
+      }
+      if (!cancelled) setLiveProfiles(profiles);
+    })();
+    return () => { cancelled = true; };
+  }, [firestore, user, allConversations]);
 
   // Filter out deleted and optionally archived conversations
   const conversations = useMemo(() => {
@@ -406,6 +454,7 @@ export function ConversationList({ onSelectConversation, onNewConversation }: Co
                 key={conversation.id}
                 conversation={conversation}
                 currentUserId={user!.uid}
+                liveProfiles={liveProfiles}
                 onClick={() => onSelectConversation(conversation.id)}
                 onArchive={() => handleUnarchive(conversation.id)}
                 onDelete={() => handleDelete(conversation.id)}
@@ -423,6 +472,7 @@ export function ConversationList({ onSelectConversation, onNewConversation }: Co
               key={conversation.id}
               conversation={conversation}
               currentUserId={user!.uid}
+              liveProfiles={liveProfiles}
               onClick={() => onSelectConversation(conversation.id)}
               onArchive={() => handleArchive(conversation.id)}
               onDelete={() => handleDelete(conversation.id)}
