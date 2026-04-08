@@ -1,12 +1,6 @@
----
-title: LocalDink SMS Terms
-description: LocalDink SMS opt-in, help, and stop policy.
-lastUpdated: February 27, 2026
----
-
 ## 1. Program Name
 
-This messaging program is called **LocalDink Alerts**.
+This messaging program is called **LocalDink Alerts**.
 
 ## 2. What Messages You Receive
 
@@ -16,7 +10,7 @@ Messages are transactional and service-related, including game invites, RSVP upd
 
 Message frequency varies based on your game activity and notification settings.
 
-## 4. Opt-In Flow
+## 4. Opt-In Flow (Web-Visible Verification)
 
 1. User enters phone number during LocalDink account setup.
 2. User verifies phone ownership with a one-time SMS code.
@@ -30,6 +24,6 @@ Users can disable SMS notifications at any time in LocalDink settings.
 
 ## 6. Help and Opt-Out
 
-**Reply HELP for help.** **Reply STOP to cancel.**
+**Reply HELP for help.** **Reply STOP to cancel.**
 
-You may also contact support at support@localdink.com.
+You may also contact support at [support@localdink.com](mailto:support@localdink.com).

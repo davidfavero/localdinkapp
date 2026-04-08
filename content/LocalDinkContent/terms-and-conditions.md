@@ -1,9 +1,3 @@
----
-title: Terms and Conditions
-description: Terms governing your use of LocalDink.
-lastUpdated: February 27, 2026
----
-
 These Terms and Conditions ("Terms") govern your access to and use of LocalDink. By using LocalDink, you agree to these Terms.
 
 ## 1. Use of the Service
@@ -18,15 +12,15 @@ You are responsible for maintaining the security of your account and phone-based
 
 LocalDink may send SMS and in-app notifications related to scheduling and game activity. By providing your phone number, you consent to receive transactional messages.
 
-- Program name: **LocalDink Alerts**.
+- Program name: **LocalDink Alerts**.
 - Message types: invites, reminders, RSVP updates, and session changes.
 - Message frequency: varies by account activity.
 - **Message and data rates may apply.**
 - **Reply HELP for help.**
 - **Reply STOP to cancel.**
-- Support contact: support@localdink.com.
+- Support contact: [support@localdink.com](mailto:support@localdink.com).
 
-Full SMS terms are available at localdink.com/sms-terms.
+Full SMS terms are available at [localdink.com/sms-terms](https://localdink.com/sms-terms).
 
 ## 4. User Content and Data
 

@@ -1,9 +1,3 @@
----
-title: Privacy Policy
-description: How LocalDink collects, uses, and protects personal information.
-lastUpdated: February 27, 2026
----
-
 LocalDink ("we", "us", and "our") respects your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use LocalDink.
 
 ## 1. Information We Collect
@@ -23,9 +17,9 @@ We use information to:
 
 If you provide a phone number, you agree to receive transactional messages related to your LocalDink account and game activity. Message and data rates may apply. Message frequency varies based on your activity and notification settings. You can disable SMS notifications in-app.
 
-To opt out by text, reply STOP. For support, reply HELP or contact support@localdink.com.
+To opt out by text, reply STOP. For support, reply HELP or contact [support@localdink.com](mailto:support@localdink.com).
 
-See full messaging terms at localdink.com/sms-terms.
+See full messaging terms at [localdink.com/sms-terms](https://localdink.com/sms-terms).
 
 ## 4. Sharing of Information
 
