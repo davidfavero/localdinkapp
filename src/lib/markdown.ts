@@ -4,7 +4,7 @@ import matter from 'gray-matter';
 import { remark } from 'remark';
 import remarkHtml from 'remark-html';
 
-const VAULT_PATH = '/Users/davidfavero/Desktop/ObsidianVault';
+const VAULT_PATH = process.cwd() + '/content/LocalDinkContent';
 
 export type MarkdownContent = {
   title: string;
