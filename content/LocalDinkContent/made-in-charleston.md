@@ -4,10 +4,10 @@ I kept running into the same problem in Charleston, in Atlanta, and at Lake Ocon
 
 Shouldn't there be a frictionless solution that doesn't require an assistant to manage something simple, like my pickleball sessions?
 
-So I started to build something - something that doesn't disrupt anyone's normal flow; something that does utilize an assistant, but in a different way. A better way to organize groups, coordinate games, and cut through the noise. 
+So I started to build something - something that doesn't disrupt other people's flow; something that does utilize an assistant, but in a different way; something designed around the way people actually play. A better way to organize groups, coordinate games, and cut through the noise. 
 
 Something simple, social, and built specifically for pickleball.
 
-LocalDink is a hometown idea, made in Charleston, South Carolina by David Favero, a lifelong technologist and builder with a passion for pickleball since 2020 - it's born from a problem that players everywhere recognize immediately.
+LocalDink is a hometown idea, made in Charleston by David Favero, a longtime technologist and passionate pickleball player since 2020. LocalDink comes from a problem that players everywhere recognize immediately.
 
-The game is fun. Scheduling it should be easy.
+The game is fun. Scheduling it should be too.
