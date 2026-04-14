@@ -44,3 +44,4 @@ yarn-error.log*
 package-lock 2.json
 tsconfig.tsbuildinfo
 dev.log
+firebase-debug.log
