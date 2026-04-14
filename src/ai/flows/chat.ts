@@ -476,7 +476,12 @@ function parseDateTime(dateStr: string, timeStr: string, timeZone: string = APP_
     
     console.log(`[parseDateTime] Parsed "${dateStr}" + "${timeStr}" => ${isoString}`);
     
-    return new Date(isoString);
+    const result = new Date(isoString);
+    if (isNaN(result.getTime())) {
+      console.error(`[parseDateTime] Invalid Date from isoString: ${isoString}`);
+      return null;
+    }
+    return result;
   } catch (error) {
     console.error('Error parsing date/time:', error);
     return null;
@@ -932,7 +937,7 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       try {
         // Parse date and time into ISO string
         const dateTime = parseDateTime(date, time, resolvedTimezone);
-        if (!dateTime) {
+        if (!dateTime || isNaN(dateTime.getTime())) {
           return { 
             confirmationText: "I'm sorry, I had trouble parsing the date and time. Could you try again with a clearer format?" 
           };
