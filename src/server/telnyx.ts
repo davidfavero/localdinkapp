@@ -15,8 +15,8 @@ function resolveTelnyxConfig(): TelnyxConfig {
     return cachedConfig;
   }
 
-  const apiKey = process.env.TELNYX_API_KEY;
-  const fromNumber = process.env.TELNYX_PHONE_NUMBER;
+  const apiKey = process.env.TELNYX_API_KEY?.trim();
+  const fromNumber = process.env.TELNYX_PHONE_NUMBER?.trim();
 
   const missing: string[] = [];
   if (!apiKey) missing.push('TELNYX_API_KEY');
