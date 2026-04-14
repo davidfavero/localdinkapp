@@ -10,46 +10,27 @@ import {
   handleCancel,
 } from '@/lib/rsvp-handler';
 import { handleSmsOptOut, handleSmsHelp } from '@/lib/sms-compliance';
-import { sendSmsMessage, normalizeToE164 } from '@/server/twilio';
-import Twilio from 'twilio';
+import { sendSmsMessage, normalizeToE164 } from '@/server/telnyx';
 
-// Twilio webhook validation (strict in production)
-function validateTwilioRequest(req: NextRequest, body: string): boolean {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const signature = req.headers.get('x-twilio-signature');
-  
-  if (!authToken) {
-    console.warn('[sms-inbound] Missing TWILIO_AUTH_TOKEN');
-    return process.env.NODE_ENV !== 'production';
-  }
-
-  if (!signature) {
-    console.warn('[sms-inbound] Missing x-twilio-signature header');
-    return process.env.NODE_ENV !== 'production';
-  }
-  
-  const url = req.url;
-  const params = Object.fromEntries(new URLSearchParams(body));
-  
-  return Twilio.validateRequest(authToken, signature, url, params);
-}
+// Telnyx sends webhooks from this IP range: 192.76.120.192/27
+// In production, validate via IP allowlisting or webhook signatures.
 
 export async function POST(req: NextRequest) {
   console.log('[sms-inbound] Received webhook');
   
   try {
-    const rawBody = await req.text();
-    const isValid = validateTwilioRequest(req, rawBody);
+    const payload = await req.json();
+    const eventType = payload?.data?.event_type;
 
-    if (!isValid) {
-      console.warn('[sms-inbound] Invalid Twilio signature');
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+    // Only process inbound messages
+    if (eventType !== 'message.received') {
+      console.log('[sms-inbound] Ignoring event type:', eventType);
+      return NextResponse.json({ status: 'ignored' });
     }
 
-    // Parse form data payload from Twilio
-    const params = new URLSearchParams(rawBody);
-    const from = params.get('From') || '';
-    const body = params.get('Body') || '';
+    const messagePayload = payload.data.payload;
+    const from = messagePayload?.from?.phone_number || '';
+    const body = messagePayload?.text || '';
     
     console.log('[sms-inbound] From:', from, 'Body:', body);
     
@@ -65,12 +46,12 @@ export async function POST(req: NextRequest) {
     if (complianceKeyword === 'stop') {
       const result = await handleSmsOptOut(from);
       await sendSmsReply(from, result.message);
-      return createTwimlResponse(result.message);
+      return NextResponse.json({ status: 'ok' });
     }
     if (complianceKeyword === 'help') {
       const result = await handleSmsHelp(from);
       await sendSmsReply(from, result.message);
-      return createTwimlResponse(result.message);
+      return NextResponse.json({ status: 'ok' });
     }
     
     // Find player by phone number
@@ -79,7 +60,7 @@ export async function POST(req: NextRequest) {
       console.log('[sms-inbound] Unknown phone number:', from);
       // Send helpful response
       await sendSmsReply(from, "I don't recognize this number. Please make sure your phone is registered in LocalDink.");
-      return createTwimlResponse("Unknown number");
+      return NextResponse.json({ status: 'ok' });
     }
     
     console.log('[sms-inbound] Player found:', player.firstName, player.lastName);
@@ -144,8 +125,7 @@ export async function POST(req: NextRequest) {
     // Log the interaction
     console.log('[sms-inbound] Sent response:', responseMessage);
     
-    // Return TwiML response
-    return createTwimlResponse(responseMessage);
+    return NextResponse.json({ status: 'ok' });
     
   } catch (error) {
     console.error('[sms-inbound] Error processing webhook:', error);
@@ -167,36 +147,8 @@ async function sendSmsReply(to: string, message: string): Promise<void> {
   }
 }
 
-/**
- * Create TwiML response (Twilio expects this format)
- */
-function createTwimlResponse(message: string): NextResponse {
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${escapeXml(message)}</Message>
-</Response>`;
-  
-  return new NextResponse(twiml, {
-    headers: {
-      'Content-Type': 'text/xml',
-    },
-  });
-}
-
-/**
- * Escape XML special characters
- */
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-// Also handle GET for Twilio webhook verification
-export async function GET(req: NextRequest) {
+// Health check
+export async function GET() {
   return NextResponse.json({ status: 'SMS webhook endpoint ready' });
 }
 

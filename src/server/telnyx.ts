@@ -1,52 +1,49 @@
 import 'server-only';
 
-import Twilio from 'twilio';
+import Telnyx from 'telnyx';
 
-type TwilioConfig = {
-  accountSid: string;
-  authToken: string;
+type TelnyxConfig = {
+  apiKey: string;
   fromNumber: string;
 };
 
-let cachedClient: Twilio.Twilio | null = null;
-let cachedConfig: TwilioConfig | null = null;
+let cachedClient: Telnyx | null = null;
+let cachedConfig: TelnyxConfig | null = null;
 
-function resolveTwilioConfig(): TwilioConfig {
+function resolveTelnyxConfig(): TelnyxConfig {
   if (cachedConfig) {
     return cachedConfig;
   }
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+  const apiKey = process.env.TELNYX_API_KEY;
+  const fromNumber = process.env.TELNYX_PHONE_NUMBER;
 
   const missing: string[] = [];
-  if (!accountSid) missing.push('TWILIO_ACCOUNT_SID');
-  if (!authToken) missing.push('TWILIO_AUTH_TOKEN');
-  if (!fromNumber) missing.push('TWILIO_PHONE_NUMBER');
+  if (!apiKey) missing.push('TELNYX_API_KEY');
+  if (!fromNumber) missing.push('TELNYX_PHONE_NUMBER');
 
   if (missing.length > 0) {
     throw new Error(
-      `Twilio configuration is missing. Please set the following environment variables: ${missing.join(
+      `Telnyx configuration is missing. Please set the following environment variables: ${missing.join(
         ', '
       )}`
     );
   }
 
-  cachedConfig = { accountSid, authToken, fromNumber };
+  cachedConfig = { apiKey: apiKey!, fromNumber: fromNumber! };
   return cachedConfig;
 }
 
-function getTwilioClient(config: TwilioConfig): Twilio.Twilio {
+function getTelnyxClient(config: TelnyxConfig): Telnyx {
   if (!cachedClient) {
-    cachedClient = Twilio(config.accountSid, config.authToken);
+    cachedClient = new Telnyx({ apiKey: config.apiKey });
   }
   return cachedClient;
 }
 
-export function isTwilioConfigured(): boolean {
+export function isTelnyxConfigured(): boolean {
   try {
-    resolveTwilioConfig();
+    resolveTelnyxConfig();
     return true;
   } catch {
     return false;
@@ -91,19 +88,20 @@ export async function sendSmsMessage({
   from?: string;
   maxRetries?: number;
 }) {
-  const config = resolveTwilioConfig();
-  const client = getTwilioClient(config);
+  const config = resolveTelnyxConfig();
+  const client = getTelnyxClient(config);
 
   const sender = from ?? config.fromNumber;
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await client.messages.create({
+      const response = await client.messages.send({
         to,
         from: sender,
-        body,
+        text: body,
       });
+      return response.data;
     } catch (error: any) {
       lastError = error;
       const status = error?.status ?? error?.code;
@@ -114,12 +112,11 @@ export async function sendSmsMessage({
       if (attempt < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 4000);
         await new Promise(resolve => setTimeout(resolve, delay));
-        console.warn(`[twilio] Retry ${attempt + 1}/${maxRetries} for SMS to ${to}`);
+        console.warn(`[telnyx] Retry ${attempt + 1}/${maxRetries} for SMS to ${to}`);
       }
     }
   }
   throw lastError;
 }
 
-export type TwilioMessageResult = Awaited<ReturnType<typeof sendSmsMessage>>;
-
+export type TelnyxMessageResult = Awaited<ReturnType<typeof sendSmsMessage>>;

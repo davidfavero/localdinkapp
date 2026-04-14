@@ -8,7 +8,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { getAdminDb } from '@/firebase/admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
+import { normalizeToE164, sendSmsMessage, isTelnyxConfigured } from '@/server/telnyx';
 import { sendGameInviteNotifications } from '@/lib/notifications';
 
 const CreateGameSessionToolSchema = z.object({
@@ -128,7 +128,7 @@ export const createGameSessionTool = ai.defineTool(
       const notifiedPlayers: Array<{ playerId: string; phone: string; messageSid: string }> = [];
       const skippedPlayers: Array<{ playerId: string; reason: string }> = [];
       const seenPhones = new Set<string>();
-      const twilioConfigured = isTwilioConfigured();
+      const smsConfigured = isTelnyxConfigured();
 
       for (const candidate of smsCandidates) {
         const primaryCollection = candidate.source === 'user' ? 'users' : 'players';
@@ -165,16 +165,16 @@ export const createGameSessionTool = ai.defineTool(
           `Reply STOP to opt out`,
         ];
 
-        if (!twilioConfigured) {
-          skippedPlayers.push({ playerId: snap.id, reason: 'Twilio is not configured' });
+        if (!smsConfigured) {
+          skippedPlayers.push({ playerId: snap.id, reason: 'Telnyx is not configured' });
           continue;
         }
 
         try {
           const message = await sendSmsMessage({ to: phone, body: bodyParts.join(' ') });
-          notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message.sid });
+          notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message?.id ?? 'unknown' });
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Twilio failed to send';
+          const errorMessage = error instanceof Error ? error.message : 'SMS send failed';
           skippedPlayers.push({ playerId: candidate.id, reason: errorMessage });
         }
       }

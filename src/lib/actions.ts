@@ -11,7 +11,7 @@ import type {
 import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
 import type { ChatInput, ChatOutput, Player, Group, Court } from "./types";
-import { normalizeToE164 } from "@/server/twilio";
+import { normalizeToE164 } from "@/server/telnyx";
 import { FieldValue } from 'firebase-admin/firestore';
 
 export async function extractPreferencesAction(
@@ -795,8 +795,8 @@ export async function sendMessageNotificationAction(params: {
                         const playerData = playerDoc.data()!;
                         const phone = normalizeToE164(playerData.phone);
                         if (phone) {
-                            const { sendSmsMessage, isTwilioConfigured } = await import('@/server/twilio');
-                            if (isTwilioConfigured()) {
+                            const { sendSmsMessage, isTelnyxConfigured } = await import('@/server/telnyx');
+                            if (isTelnyxConfigured()) {
                                 await sendSmsMessage({
                                     to: phone,
                                     body: `${senderName}: ${text}`,
@@ -843,9 +843,9 @@ export async function sendDirectSmsAction(params: {
     text: string;
 }): Promise<{ success: boolean; message: string }> {
     try {
-        const { sendSmsMessage, normalizeToE164, isTwilioConfigured } = await import('@/server/twilio');
+        const { sendSmsMessage, normalizeToE164, isTelnyxConfigured } = await import('@/server/telnyx');
 
-        if (!isTwilioConfigured()) {
+        if (!isTelnyxConfigured()) {
             return { success: false, message: 'SMS is not configured.' };
         }
 

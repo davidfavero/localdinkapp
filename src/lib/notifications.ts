@@ -191,14 +191,14 @@ export async function sendNotification(options: SendNotificationOptions): Promis
     }
   }
   
-  // Send SMS notification when user enabled SMS and Twilio is configured
+  // Send SMS notification when user enabled SMS and Telnyx is configured
   if (prefs.channels.sms && template.smsBody && userData.phone) {
     try {
-      // Dynamic import to avoid issues when Twilio isn't configured
-      const { sendSmsMessage, normalizeToE164, isTwilioConfigured } = await import('@/server/twilio');
+      // Dynamic import to avoid issues when Telnyx isn't configured
+      const { sendSmsMessage, normalizeToE164, isTelnyxConfigured } = await import('@/server/telnyx');
       
-      if (!isTwilioConfigured()) {
-        console.warn('Twilio not configured, skipping SMS');
+      if (!isTelnyxConfigured()) {
+        console.warn('Telnyx not configured, skipping SMS');
       } else {
         const normalizedPhone = normalizeToE164(userData.phone);
         if (normalizedPhone) {

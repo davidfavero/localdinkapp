@@ -7,7 +7,7 @@
  */
 
 import { getAdminDb } from '@/firebase/admin';
-import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
+import { normalizeToE164, sendSmsMessage, isTelnyxConfigured } from '@/server/telnyx';
 import { FieldValue } from 'firebase-admin/firestore';
 
 // ============================================
@@ -121,7 +121,7 @@ export async function handleSmsHelp(_phone: string): Promise<{ success: boolean;
  */
 export async function sendOptInConfirmation(userId: string, phone: string): Promise<boolean> {
   const normalized = normalizeToE164(phone);
-  if (!normalized || !isTwilioConfigured()) {
+  if (!normalized || !isTelnyxConfigured()) {
     return false;
   }
 
