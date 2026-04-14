@@ -6,7 +6,7 @@ import { getMarkdownContent } from '@/lib/markdown';
 
 export const metadata: Metadata = {
   title: 'Made in Charleston | LocalDink',
-  description: 'LocalDink was born out of personal frustration — a hometown idea, made in Charleston, built for pickleball players everywhere.',
+  description: 'Built by David Favero in Charleston, SC — LocalDink is a simple, social way to schedule pickleball games with friends.',
 };
 
 export default async function MadeInCharlestonPage() {
