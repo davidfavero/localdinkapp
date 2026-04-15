@@ -549,6 +549,14 @@ export default function ProfilePage() {
                 disabled={!currentUser?.phone}
               />
             </div>
+
+            {currentUser?.phone && (
+              <p className="text-[11px] leading-relaxed text-muted-foreground px-1 -mt-1">
+                By enabling SMS, you agree to receive game invitations, RSVP confirmations, reminders, and cancellation alerts from LocalDink. Msg frequency varies. Msg&amp;data rates may apply. Reply STOP to cancel, HELP for help.{' '}
+                <a href="/privacy-policy" target="_blank" className="underline">Privacy Policy</a>{' · '}
+                <a href="/sms-terms" target="_blank" className="underline">SMS Terms</a>
+              </p>
+            )}
           </div>
 
           {/* Notification Types */}

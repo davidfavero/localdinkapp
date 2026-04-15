@@ -343,6 +343,14 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
                   📱 SMS will be sent to {profile?.phone || phone}
                 </p>
               )}
+
+              {(profile?.phone || phone) && (
+                <p className="text-[11px] leading-relaxed text-muted-foreground px-1">
+                  By enabling SMS, you agree to receive game invitations, RSVP confirmations, reminders, and cancellation alerts from LocalDink. Msg frequency varies. Msg&amp;data rates may apply. Reply STOP to cancel, HELP for help.{' '}
+                  <a href="/privacy-policy" target="_blank" className="underline">Privacy Policy</a>{' · '}
+                  <a href="/sms-terms" target="_blank" className="underline">SMS Terms</a>
+                </p>
+              )}
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep('profile')}>
