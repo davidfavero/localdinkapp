@@ -11,6 +11,8 @@ import {
 } from '@/lib/rsvp-handler';
 import { handleSmsOptOut, handleSmsHelp } from '@/lib/sms-compliance';
 import { sendSmsMessage, normalizeToE164 } from '@/server/twilio';
+import { getAdminDb } from '@/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 
 // Twilio webhook signature validation
@@ -91,6 +93,11 @@ export async function POST(req: NextRequest) {
     
     console.log('[sms-inbound] Player found:', player.firstName, player.lastName);
     
+    // Build participant key for conversation lookup
+    // Player could be in conversations as "player:XXXX" (unlinked) or as their user ID (linked)
+    const playerParticipantKey = `player:${player.id}`;
+    const linkedUserId = (player as any).linkedUserId;
+    
     // Detect intent from the message
     const intentResult = await detectSmsIntent(body);
     console.log('[sms-inbound] Intent:', intentResult);
@@ -133,15 +140,23 @@ export async function POST(req: NextRequest) {
         break;
       }
       
-      case 'question': {
-        responseMessage = "For help, check the LocalDink app or contact the game organizer. Reply YES to join a game or NO to decline.";
-        break;
-      }
-      
+      case 'question':
       default: {
-        // Unknown intent - ask for clarification
-        responseMessage = intentResult.followUpQuestion || 
-          "I didn't understand. Reply YES to join a game, NO to decline, or CANCEL to back out of a confirmed game.";
+        // Not a clear RSVP intent — try to route to a conversation
+        const conversationResult = await routeToConversation({
+          playerParticipantKey,
+          linkedUserId,
+          playerName: `${player.firstName || ''} ${player.lastName || ''}`.trim() || 'Unknown',
+          text: body,
+          fromPhone: from,
+        });
+        
+        if (conversationResult) {
+          responseMessage = conversationResult;
+        } else {
+          responseMessage = intentResult.followUpQuestion || 
+            "I didn't understand. Reply YES to join a game, NO to decline, or CANCEL to back out of a confirmed game.";
+        }
       }
     }
     
@@ -151,8 +166,11 @@ export async function POST(req: NextRequest) {
     // Log the interaction
     console.log('[sms-inbound] Sent response:', responseMessage);
     
-    // Return TwiML response
-    return createTwimlResponse(responseMessage);
+    // Return empty TwiML (we already sent the reply via API)
+    return new NextResponse(
+      '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+      { headers: { 'Content-Type': 'text/xml' } }
+    );
     
   } catch (error) {
     console.error('[sms-inbound] Error processing webhook:', error);
@@ -200,6 +218,126 @@ function escapeXml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+/**
+ * Route an inbound SMS to the player's most recent active conversation.
+ * Inserts the message, updates conversation metadata, and notifies other participants.
+ * Returns a confirmation message, or null if no conversation was found.
+ */
+async function routeToConversation(params: {
+  playerParticipantKey: string; // "player:XXXX"
+  linkedUserId?: string;       // user UID if player is linked to an account
+  playerName: string;
+  text: string;
+  fromPhone: string;
+}): Promise<string | null> {
+  const { playerParticipantKey, linkedUserId, playerName, text, fromPhone } = params;
+  
+  const adminDb = await getAdminDb();
+  if (!adminDb) return null;
+  
+  // Find conversations where this player is a participant
+  // Check both the player:XXXX key and (if linked) the user UID
+  const keysToSearch = [playerParticipantKey];
+  if (linkedUserId) keysToSearch.push(linkedUserId);
+  
+  let conversation: { id: string; participantIds: string[]; participantNames: Record<string, string> } | null = null;
+  
+  for (const key of keysToSearch) {
+    const snap = await adminDb.collection('conversations')
+      .where('participantIds', 'array-contains', key)
+      .orderBy('lastActivityAt', 'desc')
+      .limit(1)
+      .get();
+    
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      const data = doc.data();
+      conversation = {
+        id: doc.id,
+        participantIds: data.participantIds || [],
+        participantNames: data.participantNames || {},
+      };
+      break;
+    }
+  }
+  
+  if (!conversation) {
+    console.log('[sms-inbound] No active conversation found for', playerParticipantKey);
+    return null;
+  }
+  
+  console.log('[sms-inbound] Routing to conversation:', conversation.id);
+  
+  // Determine the sender ID (use linked user ID if available, otherwise player key)
+  const senderId = linkedUserId || playerParticipantKey;
+  
+  // Insert the message into the conversation
+  await adminDb.collection('conversations').doc(conversation.id).collection('messages').add({
+    conversationId: conversation.id,
+    senderId,
+    senderName: playerName,
+    text,
+    sentAt: FieldValue.serverTimestamp(),
+    source: 'sms', // Mark as SMS-originated
+  });
+  
+  // Update conversation metadata
+  await adminDb.collection('conversations').doc(conversation.id).update({
+    lastMessage: {
+      text: text.substring(0, 100),
+      senderId,
+      senderName: playerName,
+      sentAt: FieldValue.serverTimestamp(),
+    },
+    lastActivityAt: FieldValue.serverTimestamp(),
+  });
+  
+  // Notify other participants
+  const otherParticipants = conversation.participantIds.filter(id => id !== senderId && id !== playerParticipantKey);
+  const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
+  
+  for (const recipientId of otherParticipants) {
+    if (recipientId.startsWith('player:')) {
+      // Another player — forward via SMS
+      const playerId = recipientId.replace('player:', '');
+      try {
+        const playerDoc = await adminDb.collection('players').doc(playerId).get();
+        if (playerDoc.exists) {
+          const playerData = playerDoc.data()!;
+          const phone = normalizeToE164(playerData.phone);
+          if (phone && phone !== normalizeToE164(fromPhone)) {
+            await sendSmsMessage({ to: phone, body: `${playerName}: ${text}` });
+          }
+        }
+      } catch (e) {
+        console.error(`[sms-inbound] Failed to forward SMS to player ${playerId}:`, e);
+      }
+    } else {
+      // App user — send in-app notification
+      try {
+        const { sendNotification } = await import('@/lib/notifications');
+        await sendNotification({
+          userId: recipientId,
+          type: 'NEW_MESSAGE',
+          data: {
+            conversationId: conversation.id,
+            senderName: playerName,
+            messagePreview: preview,
+          },
+          templateData: {
+            inviterName: playerName,
+          },
+        });
+      } catch (e) {
+        console.error(`[sms-inbound] Failed to notify user ${recipientId}:`, e);
+      }
+    }
+  }
+  
+  console.log('[sms-inbound] Message inserted into conversation', conversation.id);
+  return `Message delivered to your conversation. Reply anytime to keep chatting.`;
 }
 
 // Health check

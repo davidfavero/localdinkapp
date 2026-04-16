@@ -799,7 +799,7 @@ export async function sendMessageNotificationAction(params: {
                             if (isTwilioConfigured()) {
                                 await sendSmsMessage({
                                     to: phone,
-                                    body: `${senderName}: ${text}`,
+                                    body: `LocalDink - ${senderName}: ${text}\n\nReply to this text to respond.`,
                                 });
                                 console.log(`SMS sent to player ${playerId} at ${phone}`);
                             }
