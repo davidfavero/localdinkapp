@@ -6,7 +6,7 @@
  */
 
 import { getAdminDb } from '@/firebase/admin';
-import { sendSmsMessage, normalizeToE164, isTelnyxConfigured } from '@/server/telnyx';
+import { sendSmsMessage, normalizeToE164, isTwilioConfigured } from '@/server/twilio';
 import type { RsvpStatus, GameSessionStatus, Player } from './types';
 import { FieldValue } from 'firebase-admin/firestore';
 import { sendNotification, sendRsvpNotification } from './notifications';
@@ -163,8 +163,8 @@ async function getPlayerDetails(playerId: string): Promise<Player | null> {
  * Send SMS notification (with error handling)
  */
 async function sendSmsNotification(phone: string | undefined, message: string): Promise<boolean> {
-  if (!phone || !isTelnyxConfigured()) {
-    console.log('[rsvp] Skipping notification - no phone or Telnyx not configured');
+  if (!phone || !isTwilioConfigured()) {
+    console.log('[rsvp] Skipping notification - no phone or Twilio not configured');
     return false;
   }
   

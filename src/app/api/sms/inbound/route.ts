@@ -10,27 +10,53 @@ import {
   handleCancel,
 } from '@/lib/rsvp-handler';
 import { handleSmsOptOut, handleSmsHelp } from '@/lib/sms-compliance';
-import { sendSmsMessage, normalizeToE164 } from '@/server/telnyx';
+import { sendSmsMessage, normalizeToE164 } from '@/server/twilio';
+import crypto from 'crypto';
 
-// Telnyx sends webhooks from this IP range: 192.76.120.192/27
-// In production, validate via IP allowlisting or webhook signatures.
+// Twilio webhook signature validation
+function validateTwilioRequest(req: NextRequest, rawBody: string): boolean {
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const signature = req.headers.get('x-twilio-signature');
+  
+  if (!authToken) {
+    console.warn('[sms-inbound] Missing TWILIO_AUTH_TOKEN');
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  if (!signature) {
+    console.warn('[sms-inbound] Missing x-twilio-signature header');
+    return process.env.NODE_ENV !== 'production';
+  }
+  
+  const url = req.url;
+  const params = Object.fromEntries(new URLSearchParams(rawBody));
+
+  // Rebuild the data string: URL + sorted params concatenated
+  const data = url + Object.keys(params).sort().reduce((acc, key) => acc + key + params[key], '');
+  const computed = crypto
+    .createHmac('sha1', authToken)
+    .update(Buffer.from(data, 'utf-8'))
+    .digest('base64');
+  
+  return computed === signature;
+}
 
 export async function POST(req: NextRequest) {
   console.log('[sms-inbound] Received webhook');
   
   try {
-    const payload = await req.json();
-    const eventType = payload?.data?.event_type;
+    const rawBody = await req.text();
+    const isValid = validateTwilioRequest(req, rawBody);
 
-    // Only process inbound messages
-    if (eventType !== 'message.received') {
-      console.log('[sms-inbound] Ignoring event type:', eventType);
-      return NextResponse.json({ status: 'ignored' });
+    if (!isValid) {
+      console.warn('[sms-inbound] Invalid Twilio signature');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
     }
 
-    const messagePayload = payload.data.payload;
-    const from = messagePayload?.from?.phone_number || '';
-    const body = messagePayload?.text || '';
+    // Parse form data payload from Twilio
+    const params = new URLSearchParams(rawBody);
+    const from = params.get('From') || '';
+    const body = params.get('Body') || '';
     
     console.log('[sms-inbound] From:', from, 'Body:', body);
     
@@ -125,7 +151,8 @@ export async function POST(req: NextRequest) {
     // Log the interaction
     console.log('[sms-inbound] Sent response:', responseMessage);
     
-    return NextResponse.json({ status: 'ok' });
+    // Return TwiML response
+    return createTwimlResponse(responseMessage);
     
   } catch (error) {
     console.error('[sms-inbound] Error processing webhook:', error);
@@ -145,6 +172,34 @@ async function sendSmsReply(to: string, message: string): Promise<void> {
   } catch (error) {
     console.error('[sms-inbound] Failed to send reply:', error);
   }
+}
+
+/**
+ * Create TwiML response (Twilio expects this format)
+ */
+function createTwimlResponse(message: string): NextResponse {
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${escapeXml(message)}</Message>
+</Response>`;
+  
+  return new NextResponse(twiml, {
+    headers: {
+      'Content-Type': 'text/xml',
+    },
+  });
+}
+
+/**
+ * Escape XML special characters
+ */
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 // Health check

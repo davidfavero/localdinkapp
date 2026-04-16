@@ -1,12 +1,12 @@
 /**
- * @fileOverview A tool for sending SMS messages using Telnyx.
+ * @fileOverview A tool for sending SMS messages using Twilio.
  *
  * - sendSmsTool - A Genkit tool that sends an SMS message.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { normalizeToE164, sendSmsMessage } from '@/server/telnyx';
+import { normalizeToE164, sendSmsMessage } from '@/server/twilio';
 
 const SendSmsSchema = z.object({
   to: z.string().describe("The recipient's phone number."),
@@ -41,11 +41,11 @@ export const sendSmsTool = ai.defineTool(
         body,
         to: normalizedTo,
       });
-      console.log('SMS sent successfully, ID:', message?.id);
-      return { success: true, messageSid: message?.id ?? 'unknown' };
+      console.log('SMS sent successfully, SID:', message?.sid);
+      return { success: true, messageSid: message?.sid ?? 'unknown' };
     } catch (error: any) {
-      console.error('Failed to send SMS via Telnyx:', error.message);
-      return { success: false, error: `Telnyx Error: ${error.message}` };
+      console.error('Failed to send SMS via Twilio:', error.message);
+      return { success: false, error: `Twilio Error: ${error.message}` };
     }
   }
 );

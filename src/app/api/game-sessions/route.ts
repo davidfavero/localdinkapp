@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAdminDb, getLastInitError, getAdminAuth } from '@/firebase/admin';
-import { normalizeToE164, sendSmsMessage, isTelnyxConfigured } from '@/server/telnyx';
+import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
 import { sendGameInviteNotifications } from '@/lib/notifications';
 import { cookies } from 'next/headers';
 
@@ -195,9 +195,9 @@ export async function POST(request: Request) {
     const skippedPlayers: Array<{ playerId: string; reason: string }> = [];
     const seenPhones = new Set<string>();
 
-    const smsConfigured = isTelnyxConfigured();
+    const smsConfigured = isTwilioConfigured();
     if (!smsConfigured) {
-      console.warn('Telnyx is not configured. SMS notifications will be skipped.');
+      console.warn('Twilio is not configured. SMS notifications will be skipped.');
     }
 
     for (const candidate of smsCandidates) {
@@ -245,7 +245,7 @@ export async function POST(request: Request) {
       ];
 
       if (!smsConfigured) {
-        skippedPlayers.push({ playerId: snap.id, reason: 'Telnyx is not configured' });
+        skippedPlayers.push({ playerId: snap.id, reason: 'Twilio is not configured' });
         continue;
       }
 
@@ -253,7 +253,7 @@ export async function POST(request: Request) {
 
       try {
         const message = await sendSmsMessage({ to: phone, body: messageBody });
-        notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message?.id ?? 'unknown' });
+        notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message?.sid ?? 'unknown' });
         console.log(`SMS sent successfully to ${phone} for attendee ${candidate.id}`);
       } catch (error) {
         const errorMessage =
