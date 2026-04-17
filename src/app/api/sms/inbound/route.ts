@@ -101,12 +101,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'ok' });
     }
     
-    console.log('[sms-inbound] Player found:', player.firstName, player.lastName);
+    console.log('[sms-inbound] Player found:', player.firstName, player.lastName, 'id:', player.id, 'linkedUserId:', (player as any).linkedUserId);
+    
+    // Resolve all possible IDs for this person:
+    // - player doc ID (from players collection)
+    // - linked user UID (if the player contact is linked to a registered user)
+    // Game sessions may reference either depending on how the invite was created.
+    const linkedUserId: string | undefined = (player as any).linkedUserId;
+    const allPlayerIds = [player.id];
+    if (linkedUserId && linkedUserId !== player.id) {
+      allPlayerIds.push(linkedUserId);
+    }
+    
+    // Also check if getPlayerByPhone returned a users doc — in that case,
+    // look for player docs linked to this user
+    const adminDb = await getAdminDb();
+    if (adminDb) {
+      const linkedPlayers = await adminDb.collection('players')
+        .where('linkedUserId', '==', player.id)
+        .get();
+      for (const doc of linkedPlayers.docs) {
+        if (!allPlayerIds.includes(doc.id)) {
+          allPlayerIds.push(doc.id);
+        }
+      }
+      // Also check if there's a user with this phone
+      const normalizedFrom = normalizeToE164(from);
+      if (normalizedFrom) {
+        const userByPhone = await adminDb.collection('users')
+          .where('phone', '==', normalizedFrom)
+          .limit(1)
+          .get();
+        if (!userByPhone.empty && !allPlayerIds.includes(userByPhone.docs[0].id)) {
+          allPlayerIds.push(userByPhone.docs[0].id);
+        }
+      }
+    }
+    
+    console.log('[sms-inbound] All resolved IDs:', allPlayerIds);
     
     // Build participant key for conversation lookup
-    // Player could be in conversations as "player:XXXX" (unlinked) or as their user ID (linked)
     const playerParticipantKey = `player:${player.id}`;
-    const linkedUserId = (player as any).linkedUserId;
     
     // Detect intent from the message
     const intentResult = await detectSmsIntent(body);
@@ -116,35 +151,49 @@ export async function POST(req: NextRequest) {
     
     switch (intentResult.intent) {
       case 'accept': {
-        // Find pending game for this player
-        const pendingGame = await findPendingGameForPlayer(player.id);
+        // Try all resolved IDs to find a pending game
+        let pendingGame = null;
+        let matchedId = '';
+        for (const pid of allPlayerIds) {
+          pendingGame = await findPendingGameForPlayer(pid);
+          if (pendingGame) { matchedId = pid; break; }
+        }
         if (!pendingGame) {
           responseMessage = "You don't have any pending game invites right now.";
         } else {
-          const result = await handleAccept(player.id, pendingGame.id);
+          const result = await handleAccept(matchedId, pendingGame.id);
           responseMessage = result.message;
         }
         break;
       }
       
       case 'decline': {
-        const pendingGame = await findPendingGameForPlayer(player.id);
+        let pendingGame = null;
+        let matchedId = '';
+        for (const pid of allPlayerIds) {
+          pendingGame = await findPendingGameForPlayer(pid);
+          if (pendingGame) { matchedId = pid; break; }
+        }
         if (!pendingGame) {
           responseMessage = "You don't have any pending game invites to decline.";
         } else {
-          const result = await handleDecline(player.id, pendingGame.id);
+          const result = await handleDecline(matchedId, pendingGame.id);
           responseMessage = result.message;
         }
         break;
       }
       
       case 'cancel': {
-        // Find confirmed game for this player
-        const confirmedGame = await findConfirmedGameForPlayer(player.id);
+        let confirmedGame = null;
+        let matchedId = '';
+        for (const pid of allPlayerIds) {
+          confirmedGame = await findConfirmedGameForPlayer(pid);
+          if (confirmedGame) { matchedId = pid; break; }
+        }
         if (!confirmedGame) {
           responseMessage = "You don't have any confirmed games to cancel.";
         } else {
-          const result = await handleCancel(player.id, confirmedGame.id);
+          const result = await handleCancel(matchedId, confirmedGame.id);
           responseMessage = result.message;
         }
         break;
@@ -156,6 +205,7 @@ export async function POST(req: NextRequest) {
         const conversationResult = await routeToConversation({
           playerParticipantKey,
           linkedUserId,
+          allParticipantIds: allPlayerIds,
           playerName: `${player.firstName || ''} ${player.lastName || ''}`.trim() || 'Unknown',
           text: body,
           fromPhone: from,
@@ -238,19 +288,19 @@ function escapeXml(text: string): string {
 async function routeToConversation(params: {
   playerParticipantKey: string; // "player:XXXX"
   linkedUserId?: string;       // user UID if player is linked to an account
+  allParticipantIds: string[]; // all possible IDs for this person
   playerName: string;
   text: string;
   fromPhone: string;
 }): Promise<string | null> {
-  const { playerParticipantKey, linkedUserId, playerName, text, fromPhone } = params;
+  const { playerParticipantKey, allParticipantIds, playerName, text, fromPhone } = params;
   
   const adminDb = await getAdminDb();
   if (!adminDb) return null;
   
   // Find conversations where this player is a participant
-  // Check both the player:XXXX key and (if linked) the user UID
-  const keysToSearch = [playerParticipantKey];
-  if (linkedUserId) keysToSearch.push(linkedUserId);
+  // Check all possible IDs: player:XXXX key, user UID, linked user ID
+  const keysToSearch = [playerParticipantKey, ...allParticipantIds];
   
   let conversation: { id: string; participantIds: string[]; participantNames: Record<string, string> } | null = null;
   

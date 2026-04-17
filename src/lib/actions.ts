@@ -811,7 +811,7 @@ export async function sendMessageNotificationAction(params: {
                 continue;
             }
 
-            // Regular user participants — send in-app notification
+            // Regular user participants — send in-app notification + SMS if they have a phone
             try {
                 await sendNotification({
                     userId: recipientId,
@@ -827,6 +827,27 @@ export async function sendMessageNotificationAction(params: {
                 });
             } catch (notifError) {
                 console.error(`Failed to notify ${recipientId}:`, notifError);
+            }
+
+            // Also send SMS to registered users who have a phone number
+            try {
+                const userDoc = await adminDb.collection('users').doc(recipientId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data()!;
+                    const phone = normalizeToE164(userData.phone);
+                    if (phone) {
+                        const { sendSmsMessage, isTwilioConfigured } = await import('@/server/twilio');
+                        if (isTwilioConfigured()) {
+                            await sendSmsMessage({
+                                to: phone,
+                                body: `LocalDink - ${senderName}: ${text}\n\nReply to this text to respond.`,
+                            });
+                            console.log(`SMS sent to user ${recipientId} at ${phone}`);
+                        }
+                    }
+                }
+            } catch (smsError) {
+                console.error(`Failed to SMS user ${recipientId}:`, smsError);
             }
         }
 
