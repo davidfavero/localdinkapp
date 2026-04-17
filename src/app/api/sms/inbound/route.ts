@@ -30,16 +30,26 @@ function validateTwilioRequest(req: NextRequest, rawBody: string): boolean {
     return process.env.NODE_ENV !== 'production';
   }
   
-  const url = req.url;
+  // Use the public URL that Twilio signs against, not req.url which may be
+  // an internal proxy URL (e.g. http://localhost:8080/...) behind App Hosting.
+  // Fall back to x-forwarded-host or req.url if header is missing.
+  const forwardedProto = req.headers.get('x-forwarded-proto') || 'https';
+  const forwardedHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const pathname = new URL(req.url).pathname;
+  const publicUrl = forwardedHost
+    ? `${forwardedProto}://${forwardedHost}${pathname}`
+    : req.url;
+  
   const params = Object.fromEntries(new URLSearchParams(rawBody));
 
   // Rebuild the data string: URL + sorted params concatenated
-  const data = url + Object.keys(params).sort().reduce((acc, key) => acc + key + params[key], '');
+  const data = publicUrl + Object.keys(params).sort().reduce((acc, key) => acc + key + params[key], '');
   const computed = crypto
     .createHmac('sha1', authToken)
     .update(Buffer.from(data, 'utf-8'))
     .digest('base64');
   
+  console.log('[sms-inbound] Signature validation - publicUrl:', publicUrl, 'match:', computed === signature);
   return computed === signature;
 }
 
