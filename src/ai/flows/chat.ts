@@ -114,6 +114,22 @@ function formatDate(date: Date): string {
 function extractTimeFromText(text: string): string | null {
   const lower = text.toLowerCase();
   
+  // Detect morning/afternoon/evening context to override AM/PM assumptions
+  const hasMorning = /\b(morning|am|a\.m\.)\b/i.test(lower);
+  const hasEvening = /\b(evening|night|tonight)\b/i.test(lower);
+  // "afternoon" also implies PM
+  const hasAfternoon = /\b(afternoon)\b/i.test(lower);
+  
+  function inferPeriod(hours: number): string {
+    if (hasMorning) return 'AM';
+    if (hasEvening || hasAfternoon) return 'PM';
+    // Default heuristic: 1-6 → PM (typical game times), 7-11 → AM, 12 → PM
+    if (hours >= 13) return 'PM'; // 24h format
+    if (hours >= 1 && hours <= 6) return 'PM';
+    if (hours >= 7 && hours <= 11) return 'AM';
+    return 'PM'; // 12 → PM
+  }
+  
   // "11am", "11 am", "11:00am", "11:00 AM", "3:30pm"
   const timeMatch = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)\b/i);
   if (timeMatch) {
@@ -128,25 +144,21 @@ function extractTimeFromText(text: string): string | null {
   if (bareTimeMatch) {
     let hours = parseInt(bareTimeMatch[1]);
     const minutes = parseInt(bareTimeMatch[2]);
-    // Assume PM for hours 1-6 (typical game times), AM for 7-11, 24h for 13+
     let period: string;
     if (hours >= 13) {
       hours -= 12;
       period = 'PM';
-    } else if (hours >= 1 && hours <= 6) {
-      period = 'PM';
     } else {
-      period = 'AM';
+      period = inferPeriod(hours);
     }
     return `${hours}:${minutes.toString().padStart(2, '0')} ${period}`;
   }
   
-  // "at 2", "at 3" - assume PM for typical game times
+  // "at 2", "at 3" - use context-aware period detection
   const atTimeMatch = lower.match(/\bat\s+(\d{1,2})(?!\d|:|\s*(am|pm))/i);
   if (atTimeMatch) {
     const hours = parseInt(atTimeMatch[1]);
-    // Assume PM for hours 1-9, AM for 10-12
-    const period = hours >= 1 && hours <= 9 ? 'PM' : (hours >= 10 && hours <= 11 ? 'AM' : 'PM');
+    const period = inferPeriod(hours);
     return `${hours}:00 ${period}`;
   }
   
@@ -527,26 +539,28 @@ export async function chat(
       currentMessagePlayers.length > 0;
 
     // ========================================================================
-    // STEP 1: Gather ALL text from conversation (current + history) for extraction
+    // STEP 1: Gather text for extraction
     // ========================================================================
-    // ALWAYS use full conversation history for date/time/location extraction.
-    // Only scope players to the current message when it explicitly names players
-    // (to avoid stale player references from earlier in long conversations).
-    const allUserMessages = [
-      ...historyToConsider.filter((h) => h.sender === 'user').map((h) => h.text),
-      currentMessageText,
-    ];
-    const combinedText = allUserMessages.join(' '); // All user text combined for regex extraction
+    // Strategy: Try the CURRENT message first for date/time/location.
+    // Only fall back to conversation history for details not found in the
+    // current message. This prevents stale values from earlier exchanges
+    // (e.g., an old "3:30") from overriding new values (e.g., "at 8").
+    const historyUserMessages = historyToConsider.filter((h) => h.sender === 'user').map((h) => h.text);
+    const combinedText = [...historyUserMessages, currentMessageText].join(' ');
     
+    console.log('[chat] Current message:', currentMessageText);
     console.log('[chat] Combined user text for extraction:', combinedText);
 
     // ========================================================================
-    // STEP 2: Run REGEX extraction FIRST (reliable, deterministic)
+    // STEP 2: Run REGEX extraction — prefer CURRENT message, fallback to history
     // ========================================================================
     const userTimezone = currentUser?.timezone || APP_TIME_ZONE;
-    const regexDate = extractDateFromText(combinedText, userTimezone);
-    const regexTime = extractTimeFromText(combinedText);
-    const regexLocation = extractLocationFromText(combinedText, knownCourts);
+    const regexDate = extractDateFromText(currentMessageText, userTimezone)
+      || extractDateFromText(combinedText, userTimezone);
+    const regexTime = extractTimeFromText(currentMessageText)
+      || extractTimeFromText(combinedText);
+    const regexLocation = extractLocationFromText(currentMessageText, knownCourts)
+      || extractLocationFromText(combinedText, knownCourts);
     const regexPlayers = shouldUseCurrentMessageForPlayers
       ? currentMessagePlayers
       : extractPlayersFromText(combinedText, knownPlayers);

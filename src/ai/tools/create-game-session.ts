@@ -60,6 +60,7 @@ export const createGameSessionTool = ai.defineTool(
       const startTimeDisplay = new Intl.DateTimeFormat('en-US', {
         dateStyle: 'full',
         timeStyle: 'short',
+        timeZone: 'America/New_York',
       }).format(startDate);
 
       // Create the game session document
@@ -97,8 +98,8 @@ export const createGameSessionTool = ai.defineTool(
         : 'the organizer';
 
       const matchType = input.isDoubles ? 'Doubles' : 'Singles';
-      const dateDisplay = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-      const timeDisplay = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const dateDisplay = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+      const timeDisplay = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
 
       // Send in-app notifications
       const invitedPlayerIds = input.playerIds.filter(id => id !== input.organizerId);
