@@ -160,7 +160,7 @@ export const createGameSessionTool = ai.defineTool(
           `Hi ${playerName}!`,
           `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ''}.`,
           `It starts ${startTimeDisplay}.`,
-          `Reply YES if you can play or NO if you need to pass.`,
+          `Reply Y if you can play or N if you need to pass.`,
           `- ${organizerName}`,
           `Reply STOP to opt out`,
         ];

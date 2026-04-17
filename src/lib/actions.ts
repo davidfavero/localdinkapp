@@ -748,8 +748,10 @@ export async function sendMessageNotificationAction(params: {
     text: string;
 }): Promise<{ success: boolean; message: string }> {
     try {
+        console.log('[sendMessageNotification] Starting for conversation:', params.conversationId, 'sender:', params.senderName);
         const adminDb = await getAdminDb();
         if (!adminDb) {
+            console.error('[sendMessageNotification] adminDb is null');
             return { success: false, message: 'Database not available' };
         }
 
@@ -784,6 +786,8 @@ export async function sendMessageNotificationAction(params: {
         const { sendNotification } = await import('./notifications');
         const recipientIds = participantIds.filter(id => id !== senderId);
         const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
+
+        console.log('[sendMessageNotification] Recipients:', recipientIds);
 
         for (const recipientId of recipientIds) {
             // Player participants (player:XXXX) — send SMS directly
@@ -832,12 +836,16 @@ export async function sendMessageNotificationAction(params: {
             // Also send SMS to registered users who have a phone number
             try {
                 const userDoc = await adminDb.collection('users').doc(recipientId).get();
+                console.log('[sendMessageNotification] User lookup for', recipientId, '- exists:', userDoc.exists);
                 if (userDoc.exists) {
                     const userData = userDoc.data()!;
                     const phone = normalizeToE164(userData.phone);
+                    console.log('[sendMessageNotification] User phone:', phone ? 'found' : 'missing/invalid', 'raw:', userData.phone);
                     if (phone) {
                         const { sendSmsMessage, isTwilioConfigured } = await import('@/server/twilio');
-                        if (isTwilioConfigured()) {
+                        const configured = isTwilioConfigured();
+                        console.log('[sendMessageNotification] Twilio configured:', configured);
+                        if (configured) {
                             await sendSmsMessage({
                                 to: phone,
                                 body: `LocalDink - ${senderName}: ${text}\n\nReply to this text to respond.`,

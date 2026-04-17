@@ -49,11 +49,11 @@ export async function detectComplianceKeyword(message: string): Promise<'stop' |
 
 // Common patterns we can detect without AI
 const ACCEPT_PATTERNS = [
-  /^(yes|yep|yeah|yea|ya|yup|sure|ok|okay|k|in|im in|i'm in|count me in|i'll be there|see you there|confirmed|accept|joining|join|down|let's go|lets go|absolutely|definitely|for sure|👍|✅|🎾|🏓)$/i,
+  /^(y|yes|yep|yeah|yea|ya|yup|sure|ok|okay|k|in|im in|i'm in|count me in|i'll be there|see you there|confirmed|accept|joining|join|down|let's go|lets go|absolutely|definitely|for sure|👍|✅|🎾|🏓)$/i,
 ];
 
 const DECLINE_PATTERNS = [
-  /^(no|nope|nah|can't|cant|cannot|pass|skip|out|i'm out|im out|not this time|maybe next time|decline|busy|unavailable|sorry|❌|👎)$/i,
+  /^(n|no|nope|nah|can't|cant|cannot|pass|skip|out|i'm out|im out|not this time|maybe next time|decline|busy|unavailable|sorry|❌|👎)$/i,
 ];
 
 const CANCEL_PATTERNS = [

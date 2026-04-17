@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
           responseMessage = conversationResult;
         } else {
           responseMessage = intentResult.followUpQuestion || 
-            "I didn't understand. Reply YES to join a game, NO to decline, or CANCEL to back out of a confirmed game.";
+            "I didn't understand. Reply Y to join a game, N to decline, or CANCEL to back out of a confirmed game.";
         }
       }
     }

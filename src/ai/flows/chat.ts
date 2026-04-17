@@ -529,12 +529,13 @@ export async function chat(
     // ========================================================================
     // STEP 1: Gather ALL text from conversation (current + history) for extraction
     // ========================================================================
-    const allUserMessages = shouldUseCurrentMessageForPlayers
-      ? [currentMessageText]
-      : [
-          ...historyToConsider.filter((h) => h.sender === 'user').map((h) => h.text),
-          currentMessageText,
-        ];
+    // ALWAYS use full conversation history for date/time/location extraction.
+    // Only scope players to the current message when it explicitly names players
+    // (to avoid stale player references from earlier in long conversations).
+    const allUserMessages = [
+      ...historyToConsider.filter((h) => h.sender === 'user').map((h) => h.text),
+      currentMessageText,
+    ];
     const combinedText = allUserMessages.join(' '); // All user text combined for regex extraction
     
     console.log('[chat] Combined user text for extraction:', combinedText);
