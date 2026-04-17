@@ -227,25 +227,37 @@ function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] 
     const fullName = `${player.firstName} ${player.lastName}`.toLowerCase();
     const firstName = player.firstName.toLowerCase();
     
+    // Skip very short first names that could match common words
+    if (firstName.length < 2) continue;
+    
     // Check for full name
     if (lower.includes(fullName)) {
       players.push(`${player.firstName} ${player.lastName}`);
       continue;
     }
     
-    // Check for first name in common invite phrasing.
+    // Check for first name in common invite phrasing (with typo tolerance).
     // Examples:
-    // - "schedule with Melissa"
-    // - "invite Melissa to play"
+    // - "schedule with Melissa", "schedule wtih Melissa"
+    // - "invite Melissa to play"  
     // - "add Melissa"
+    // - "game with melissa at 3pm"
     const firstNamePattern = new RegExp(
-      `\\b(with|and|invite|inviting|add|include)\\s+${firstName}\\b`,
+      `\\b(w[it]{2}h|wi[th]{2}|wit[h]?|and|invite|inviting|add|include|,)\\s+${firstName}\\b`,
       'i'
     );
     if (firstNamePattern.test(lower)) {
-      // Keep first-name mention as-is so disambiguation can ask clarifying questions
-      // when multiple contacts share that first name.
       firstNameMentions.add(player.firstName);
+      continue;
+    }
+    
+    // Fallback: if this is a scheduling message, check if the first name appears
+    // anywhere as a standalone word (not part of another word)
+    if (isScheduling && firstName.length >= 3) {
+      const standalonePattern = new RegExp(`\\b${firstName}\\b`, 'i');
+      if (standalonePattern.test(lower)) {
+        firstNameMentions.add(player.firstName);
+      }
     }
   }
 
