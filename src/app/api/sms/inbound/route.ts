@@ -147,7 +147,39 @@ export async function POST(req: NextRequest) {
     const intentResult = await detectSmsIntent(body);
     console.log('[sms-inbound] Intent:', intentResult);
     
+    // Determine if this is a short, clear-cut RSVP response vs a conversational message.
+    // Short replies like "Y", "YES", "N", "NO", "CANCEL" should always go to RSVP.
+    // Longer messages (even if AI detects "accept" intent) should try conversation
+    // routing first — they're likely replies to Player Messages, not game invites.
+    const trimmedBody = body.trim();
+    const isShortReply = trimmedBody.split(/\s+/).length <= 3;
+    const isHighConfidenceRsvp = intentResult.confidence === 'high' && isShortReply;
+    
     let responseMessage: string;
+    
+    // For longer messages or low-confidence intents, try conversation routing FIRST
+    if (!isHighConfidenceRsvp && intentResult.intent !== 'cancel') {
+      const conversationResult = await routeToConversation({
+        playerParticipantKey,
+        linkedUserId,
+        allParticipantIds: allPlayerIds,
+        playerName: `${player.firstName || ''} ${player.lastName || ''}`.trim() || 'Unknown',
+        text: body,
+        fromPhone: from,
+      });
+      
+      if (conversationResult) {
+        responseMessage = conversationResult;
+        // Send response and return early — this was a conversation reply
+        await sendSmsReply(from, responseMessage);
+        console.log('[sms-inbound] Routed to conversation:', responseMessage);
+        return new NextResponse(
+          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+          { headers: { 'Content-Type': 'text/xml' } }
+        );
+      }
+      // No conversation found — fall through to RSVP handling
+    }
     
     switch (intentResult.intent) {
       case 'accept': {
