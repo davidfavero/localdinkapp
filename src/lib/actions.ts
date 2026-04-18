@@ -11,7 +11,7 @@ import type {
 import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
 import type { ChatInput, ChatOutput, Player, Group, Court } from "./types";
-import { normalizeToE164 } from "@/server/twilio";
+import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from "@/server/twilio";
 import { FieldValue } from 'firebase-admin/firestore';
 
 export async function extractPreferencesAction(
@@ -486,6 +486,31 @@ export async function addPlayerAction(
             ...newPlayer,
             ...(linkedUserId && { linkedUserId }),
         });
+
+        // Send invite SMS to new contacts who aren't registered users yet
+        if (normalizedPhone && !linkedUserId && isTwilioConfigured()) {
+            try {
+                // Look up who's adding them
+                const adderDoc = await adminDb.collection('users').doc(userId).get();
+                const adderData = adderDoc.exists ? adderDoc.data() : null;
+                const adderName = adderData
+                    ? `${adderData.firstName || ''} ${adderData.lastName || ''}`.trim() || 'A friend'
+                    : 'A friend';
+
+                const inviteBody = [
+                    `Hi ${playerData.firstName}! ${adderName} added you on LocalDink, the easiest way to schedule pickleball games.`,
+                    `When ${adderName} invites you to a game, you'll get a text — just reply Y to join.`,
+                    `Want to schedule your own games? Sign up: https://localdink.com/login`,
+                    `Reply STOP to opt out`,
+                ].join(' ');
+
+                await sendSmsMessage({ to: normalizedPhone, body: inviteBody });
+                console.log(`[add-player] Sent invite SMS to ${normalizedPhone} for ${playerData.firstName}`);
+            } catch (smsError) {
+                // Don't fail the player creation if SMS fails
+                console.warn('[add-player] Failed to send invite SMS:', smsError);
+            }
+        }
         
         return { 
             success: true, 

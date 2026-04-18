@@ -157,12 +157,15 @@ export const createGameSessionTool = ai.defineTool(
         seenPhones.add(phone);
 
         const playerName = (typeof playerData?.firstName === 'string' ? playerData.firstName : '') || 'there';
+        const isRegisteredUser = candidate.source === 'user' || !!playerData?.linkedUserId;
         const bodyParts = [
           `Hi ${playerName}!`,
           `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ''}.`,
           `It starts ${startTimeDisplay}.`,
           `Reply Y if you can play or N if you need to pass.`,
           `- ${organizerName}`,
+          // Add signup CTA for unregistered players
+          ...(!isRegisteredUser ? [`Schedule your own games at localdink.com/login`] : []),
           `Reply STOP to opt out`,
         ];
 
