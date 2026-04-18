@@ -180,18 +180,22 @@ export async function POST(req: NextRequest) {
         );
       }
       // No conversation found — check if this looks like a scheduling request
-      // and route to Robin before falling through to RSVP
-      const schedulingKeywords = ['schedule', 'book', 'setup', 'set up', 'game', 'play', 'session', 'match', 'tomorrow', 'tonight', 'morning', 'afternoon'];
-      const lowerBody = body.toLowerCase();
-      const looksLikeScheduling = schedulingKeywords.some(k => lowerBody.includes(k));
-      if (looksLikeScheduling) {
-        const robinResult = await handleSmsChatWithRobin(player.id, body);
-        await sendSmsReply(from, robinResult);
-        console.log('[sms-inbound] Routed to Robin (scheduling):', robinResult);
-        return new NextResponse(
-          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-          { headers: { 'Content-Type': 'text/xml' } }
-        );
+      // and route to Robin. Only do this if intent is NOT accept/decline (those
+      // should always fall through to RSVP handling).
+      if (intentResult.intent === 'question') {
+        const schedulingKeywords = ['schedule', 'book', 'setup', 'set up', 'tomorrow', 'tonight', 'morning', 'afternoon', 'this weekend', 'next week'];
+        const lowerBody = body.toLowerCase();
+        const looksLikeScheduling = schedulingKeywords.some(k => lowerBody.includes(k));
+        if (looksLikeScheduling) {
+          const resolvedUserId = linkedUserId || player.id;
+          const robinResult = await handleSmsChatWithRobin(resolvedUserId, body);
+          await sendSmsReply(from, robinResult);
+          console.log('[sms-inbound] Routed to Robin (scheduling):', robinResult);
+          return new NextResponse(
+            '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+            { headers: { 'Content-Type': 'text/xml' } }
+          );
+        }
       }
       // Not scheduling, not a conversation — fall through to RSVP handling
     }
@@ -262,7 +266,8 @@ export async function POST(req: NextRequest) {
           responseMessage = conversationResult;
         } else {
           // No RSVP match, no conversation — route to Robin AI
-          const robinResult = await handleSmsChatWithRobin(player.id, body);
+          const resolvedUserId = linkedUserId || player.id;
+          const robinResult = await handleSmsChatWithRobin(resolvedUserId, body);
           responseMessage = robinResult;
         }
       }
@@ -341,7 +346,7 @@ async function routeToConversation(params: {
   text: string;
   fromPhone: string;
 }): Promise<string | null> {
-  const { playerParticipantKey, allParticipantIds, playerName, text, fromPhone } = params;
+  const { playerParticipantKey, linkedUserId, allParticipantIds, playerName, text, fromPhone } = params;
   
   const adminDb = await getAdminDb();
   if (!adminDb) return null;
@@ -464,14 +469,34 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
   }
 
   try {
-    // Load user profile
+    // Load user profile — userId might be a user doc ID or a player doc ID
+    let userData: Record<string, any> | undefined;
+    let resolvedUserId = userId;
+    
     const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
+    if (userDoc.exists) {
+      userData = userDoc.data()!;
+    } else {
+      // userId is a player doc ID — check for linkedUserId
+      const playerDoc = await adminDb.collection('players').doc(userId).get();
+      if (playerDoc.exists) {
+        const playerData = playerDoc.data()!;
+        if (playerData.linkedUserId) {
+          resolvedUserId = playerData.linkedUserId;
+          const linkedUserDoc = await adminDb.collection('users').doc(resolvedUserId).get();
+          if (linkedUserDoc.exists) {
+            userData = linkedUserDoc.data()!;
+          }
+        }
+      }
+    }
+
+    if (!userData) {
       return "I don't have your profile set up yet. Please open the LocalDink app to get started.";
     }
-    const userData = userDoc.data()!;
+
     const currentUser: Player = {
-      id: userId,
+      id: resolvedUserId,
       firstName: userData.firstName || '',
       lastName: userData.lastName || '',
       phone: userData.phone || '',
@@ -479,12 +504,12 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
       avatarUrl: userData.avatarUrl || '',
       isCurrentUser: true,
       timezone: userData.timezone,
-      ownerId: userId,
+      ownerId: resolvedUserId,
     };
 
     // Load user's players (contacts)
     const playersSnap = await adminDb.collection('players')
-      .where('ownerId', '==', userId)
+      .where('ownerId', '==', resolvedUserId)
       .get();
     const players: Player[] = [
       currentUser,
@@ -496,7 +521,7 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
 
     // Load user's courts
     const courtsSnap = await adminDb.collection('courts')
-      .where('ownerId', '==', userId)
+      .where('ownerId', '==', resolvedUserId)
       .get();
     const courts: Court[] = courtsSnap.docs.map(doc => ({
       id: doc.id,
@@ -505,7 +530,7 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
 
     // Load user's groups
     const groupsSnap = await adminDb.collection('groups')
-      .where('ownerId', '==', userId)
+      .where('ownerId', '==', resolvedUserId)
       .get();
     const groups: (Group & { id: string })[] = groupsSnap.docs.map(doc => ({
       id: doc.id,
@@ -513,7 +538,7 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
     } as Group & { id: string }));
 
     // Load or create SMS Robin session for conversation continuity
-    const sessionRef = adminDb.collection('sms-robin-sessions').doc(userId);
+    const sessionRef = adminDb.collection('sms-robin-sessions').doc(resolvedUserId);
     const sessionDoc = await sessionRef.get();
     let history: ChatHistory[] = [];
 
@@ -552,7 +577,7 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
     ].slice(-10);
 
     await sessionRef.set({
-      userId,
+      userId: resolvedUserId,
       history: updatedHistory,
       lastActivityAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -561,7 +586,7 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
     // Persist disambiguation memory updates
     if (response.disambiguationMemoryUpdates && Object.keys(response.disambiguationMemoryUpdates).length > 0) {
       const mergedMemory = { ...disambiguationMemory, ...response.disambiguationMemoryUpdates };
-      await adminDb.collection('users').doc(userId).set(
+      await adminDb.collection('users').doc(resolvedUserId).set(
         { nameDisambiguationMemory: mergedMemory },
         { merge: true }
       );
@@ -569,7 +594,7 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
 
     // Log the Robin action
     await adminDb.collection('robin-actions').add({
-      userId,
+      userId: resolvedUserId,
       source: 'sms',
       inputMessage: message,
       extractedPlayers: response.players || [],
