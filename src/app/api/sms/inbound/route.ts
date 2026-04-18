@@ -14,6 +14,7 @@ import { sendSmsMessage, normalizeToE164 } from '@/server/twilio';
 import { getAdminDb } from '@/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
+import type { Player, Group, Court, ChatHistory } from '@/lib/types';
 
 // Twilio webhook signature validation
 function validateTwilioRequest(req: NextRequest, rawBody: string): boolean {
@@ -178,7 +179,21 @@ export async function POST(req: NextRequest) {
           { headers: { 'Content-Type': 'text/xml' } }
         );
       }
-      // No conversation found — fall through to RSVP handling
+      // No conversation found — check if this looks like a scheduling request
+      // and route to Robin before falling through to RSVP
+      const schedulingKeywords = ['schedule', 'book', 'setup', 'set up', 'game', 'play', 'session', 'match', 'tomorrow', 'tonight', 'morning', 'afternoon'];
+      const lowerBody = body.toLowerCase();
+      const looksLikeScheduling = schedulingKeywords.some(k => lowerBody.includes(k));
+      if (looksLikeScheduling) {
+        const robinResult = await handleSmsChatWithRobin(player.id, body);
+        await sendSmsReply(from, robinResult);
+        console.log('[sms-inbound] Routed to Robin (scheduling):', robinResult);
+        return new NextResponse(
+          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+          { headers: { 'Content-Type': 'text/xml' } }
+        );
+      }
+      // Not scheduling, not a conversation — fall through to RSVP handling
     }
     
     switch (intentResult.intent) {
@@ -246,8 +261,9 @@ export async function POST(req: NextRequest) {
         if (conversationResult) {
           responseMessage = conversationResult;
         } else {
-          responseMessage = intentResult.followUpQuestion || 
-            "I didn't understand. Reply Y to join a game, N to decline, or CANCEL to back out of a confirmed game.";
+          // No RSVP match, no conversation — route to Robin AI
+          const robinResult = await handleSmsChatWithRobin(player.id, body);
+          responseMessage = robinResult;
         }
       }
     }
@@ -430,6 +446,149 @@ async function routeToConversation(params: {
   
   console.log('[sms-inbound] Message inserted into conversation', conversation.id);
   return `Message delivered to your conversation. Reply anytime to keep chatting.`;
+}
+
+/**
+ * Handle an SMS message by routing it through Robin AI.
+ * Loads the user's players/courts/groups, maintains conversation history
+ * in Firestore, and returns Robin's text response.
+ */
+const SMS_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes — sessions expire after inactivity
+
+async function handleSmsChatWithRobin(userId: string, message: string): Promise<string> {
+  console.log('[sms-robin] Starting for user:', userId, 'message:', message.substring(0, 80));
+  
+  const adminDb = await getAdminDb();
+  if (!adminDb) {
+    return "Sorry, I'm having trouble right now. Please try again in a moment.";
+  }
+
+  try {
+    // Load user profile
+    const userDoc = await adminDb.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return "I don't have your profile set up yet. Please open the LocalDink app to get started.";
+    }
+    const userData = userDoc.data()!;
+    const currentUser: Player = {
+      id: userId,
+      firstName: userData.firstName || '',
+      lastName: userData.lastName || '',
+      phone: userData.phone || '',
+      email: userData.email || '',
+      avatarUrl: userData.avatarUrl || '',
+      isCurrentUser: true,
+      timezone: userData.timezone,
+      ownerId: userId,
+    };
+
+    // Load user's players (contacts)
+    const playersSnap = await adminDb.collection('players')
+      .where('ownerId', '==', userId)
+      .get();
+    const players: Player[] = [
+      currentUser,
+      ...playersSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      } as Player)),
+    ];
+
+    // Load user's courts
+    const courtsSnap = await adminDb.collection('courts')
+      .where('ownerId', '==', userId)
+      .get();
+    const courts: Court[] = courtsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as Court));
+
+    // Load user's groups
+    const groupsSnap = await adminDb.collection('groups')
+      .where('ownerId', '==', userId)
+      .get();
+    const groups: (Group & { id: string })[] = groupsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as Group & { id: string }));
+
+    // Load or create SMS Robin session for conversation continuity
+    const sessionRef = adminDb.collection('sms-robin-sessions').doc(userId);
+    const sessionDoc = await sessionRef.get();
+    let history: ChatHistory[] = [];
+
+    if (sessionDoc.exists) {
+      const sessionData = sessionDoc.data()!;
+      const lastActivity = sessionData.lastActivityAt?.toMillis?.() || 0;
+      // Session still active?
+      if (Date.now() - lastActivity < SMS_SESSION_TTL_MS) {
+        history = sessionData.history || [];
+      } else {
+        console.log('[sms-robin] Session expired, starting fresh');
+      }
+    }
+
+    // Call Robin
+    const { chat } = await import('@/ai/flows/chat');
+    const disambiguationMemory = userData.nameDisambiguationMemory || {};
+    
+    const response = await chat(
+      players,
+      { message, history },
+      groups,
+      courts,
+      disambiguationMemory,
+      {} // playFrequency — skip for SMS to keep it fast
+    );
+
+    // Build Robin's reply text
+    const robinReply = response.confirmationText || "I'm not sure what you'd like to do. Try: 'Schedule a game with [name] tomorrow at 3pm at [court]'";
+
+    // Update session history (keep last 10 messages to stay within SMS context)
+    const updatedHistory: ChatHistory[] = [
+      ...history,
+      { sender: 'user' as const, text: message },
+      { sender: 'robin' as const, text: robinReply },
+    ].slice(-10);
+
+    await sessionRef.set({
+      userId,
+      history: updatedHistory,
+      lastActivityAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Persist disambiguation memory updates
+    if (response.disambiguationMemoryUpdates && Object.keys(response.disambiguationMemoryUpdates).length > 0) {
+      const mergedMemory = { ...disambiguationMemory, ...response.disambiguationMemoryUpdates };
+      await adminDb.collection('users').doc(userId).set(
+        { nameDisambiguationMemory: mergedMemory },
+        { merge: true }
+      );
+    }
+
+    // Log the Robin action
+    await adminDb.collection('robin-actions').add({
+      userId,
+      source: 'sms',
+      inputMessage: message,
+      extractedPlayers: response.players || [],
+      extractedDate: response.date || null,
+      extractedTime: response.time || null,
+      extractedLocation: response.location || null,
+      invitedPlayers: (response.invitedPlayers || []).map(p => ({ id: p.id || null, name: p.name })),
+      createdSessionId: response.createdSessionId || null,
+      notifiedCount: response.notifiedCount || 0,
+      skippedPlayers: response.skippedPlayers || [],
+      createdAt: new Date().toISOString(),
+    }).catch(e => console.error('[sms-robin] Failed to log action:', e));
+
+    console.log('[sms-robin] Response:', robinReply.substring(0, 80));
+    return robinReply;
+  } catch (error) {
+    console.error('[sms-robin] Error:', error);
+    return "Sorry, I ran into an issue. Please try again or use the LocalDink app.";
+  }
 }
 
 // Health check
