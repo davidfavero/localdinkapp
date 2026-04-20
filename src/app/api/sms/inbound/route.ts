@@ -148,6 +148,22 @@ export async function POST(req: NextRequest) {
     const intentResult = await detectSmsIntent(body);
     console.log('[sms-inbound] Intent:', intentResult);
     
+    // ==========================================
+    // SCHEDULING: Route to Robin AI immediately
+    // This is the primary SMS-to-Robin path — user texts something like
+    // "Set up a game with David Thompson tomorrow at 2pm at ION"
+    // ==========================================
+    if (intentResult.intent === 'scheduling') {
+      const resolvedUserId = linkedUserId || player.id;
+      const robinResult = await handleSmsChatWithRobin(resolvedUserId, body);
+      await sendSmsReply(from, robinResult);
+      console.log('[sms-inbound] Routed to Robin (scheduling):', robinResult);
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { headers: { 'Content-Type': 'text/xml' } }
+      );
+    }
+
     // Determine if this is a short, clear-cut RSVP response vs a conversational message.
     // Short replies like "Y", "YES", "N", "NO", "CANCEL" should always go to RSVP.
     // Longer messages (even if AI detects "accept" intent) should try conversation
@@ -179,25 +195,7 @@ export async function POST(req: NextRequest) {
           { headers: { 'Content-Type': 'text/xml' } }
         );
       }
-      // No conversation found — check if this looks like a scheduling request
-      // and route to Robin. Only do this if intent is NOT accept/decline (those
-      // should always fall through to RSVP handling).
-      if (intentResult.intent === 'question') {
-        const schedulingKeywords = ['schedule', 'book', 'setup', 'set up', 'tomorrow', 'tonight', 'morning', 'afternoon', 'this weekend', 'next week'];
-        const lowerBody = body.toLowerCase();
-        const looksLikeScheduling = schedulingKeywords.some(k => lowerBody.includes(k));
-        if (looksLikeScheduling) {
-          const resolvedUserId = linkedUserId || player.id;
-          const robinResult = await handleSmsChatWithRobin(resolvedUserId, body);
-          await sendSmsReply(from, robinResult);
-          console.log('[sms-inbound] Routed to Robin (scheduling):', robinResult);
-          return new NextResponse(
-            '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-            { headers: { 'Content-Type': 'text/xml' } }
-          );
-        }
-      }
-      // Not scheduling, not a conversation — fall through to RSVP handling
+      // No conversation found — fall through to RSVP handling
     }
     
     switch (intentResult.intent) {

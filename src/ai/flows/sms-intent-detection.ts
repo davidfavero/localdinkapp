@@ -13,6 +13,7 @@ export type SmsIntent =
   | 'accept'      // Player wants to join
   | 'decline'     // Player doesn't want to join
   | 'cancel'      // Player was confirmed but wants out
+  | 'scheduling'  // Player wants to schedule/set up a game
   | 'question'    // Player is asking a question
   | 'unknown';    // Can't determine intent
 
@@ -84,6 +85,24 @@ function quickPatternMatch(message: string): SmsIntentResult | null {
     }
   }
   
+  // Scheduling patterns — detect game scheduling requests
+  // These are longer messages that mention setting up / scheduling a game
+  const SCHEDULING_INDICATORS = [
+    /\b(set\s*up|schedule|book|organize|arrange|plan)\b.*\b(game|match|session|pickleball)\b/i,
+    /\b(game|match|session|pickleball)\b.*\b(with|at|tomorrow|tonight|today|this|next)\b/i,
+    /\b(schedule|set\s*up|book)\b.*\b(with|for|at)\b/i,
+    /\b(play|game)\b.*\bwith\b.*\b(tomorrow|tonight|today|at\s+\d|this|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+    /\b(invite|send\s+invite|get\s+a\s+game)\b/i,
+  ];
+  
+  if (trimmed.length > 15) { // Scheduling messages are always longer than single-word RSVP replies
+    for (const pattern of SCHEDULING_INDICATORS) {
+      if (pattern.test(trimmed)) {
+        return { intent: 'scheduling', confidence: 'high' };
+      }
+    }
+  }
+  
   // Check for game codes (format: 4-6 alphanumeric)
   const codeMatch = trimmed.match(/\b([a-z0-9]{4,6})\b/i);
   if (codeMatch) {
@@ -112,29 +131,30 @@ async function aiIntentDetection(message: string): Promise<SmsIntentResult> {
   try {
     const result = await ai.generate({
       model: geminiFlash,
-      prompt: `You are analyzing an SMS reply to a pickleball game invitation.
+      prompt: `You are analyzing an SMS message sent to LocalDink, a pickleball game scheduling service.
       
-The player received an invite to play pickleball and replied with this message:
+The person texted this message:
 "${message}"
 
 Determine their intent. Options:
-- "accept" = They want to join the game
-- "decline" = They don't want to join
+- "scheduling" = They want to schedule, set up, book, or organize a game
+- "accept" = They want to join/accept an existing game invitation
+- "decline" = They don't want to join an existing game invitation
 - "cancel" = They previously accepted but now want to back out
-- "question" = They're asking for more information
+- "question" = They're asking for more information or chatting
 - "unknown" = Can't determine what they want
 
 Also determine confidence (high/medium/low) and if we need to ask a follow-up question.
 
 Respond in JSON format only:
 {
-  "intent": "accept|decline|cancel|question|unknown",
+  "intent": "scheduling|accept|decline|cancel|question|unknown",
   "confidence": "high|medium|low",
   "followUpQuestion": "optional question if intent is unclear"
 }`,
       output: {
         schema: z.object({
-          intent: z.enum(['accept', 'decline', 'cancel', 'question', 'unknown']),
+          intent: z.enum(['scheduling', 'accept', 'decline', 'cancel', 'question', 'unknown']),
           confidence: z.enum(['high', 'medium', 'low']),
           followUpQuestion: z.string().optional(),
         }),
