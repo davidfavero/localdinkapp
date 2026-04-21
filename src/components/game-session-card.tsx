@@ -53,25 +53,29 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
     try { await onDecline(); } finally { setIsDeclining(false); }
   };
 
-  // Status indicator for the card
-  const statusIndicator = currentUserStatus === 'CONFIRMED' ? (
-    <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-      <Check className="h-4 w-4" strokeWidth={3} />
-      <span className="text-xs font-semibold">Accepted</span>
-    </div>
-  ) : currentUserStatus === 'DECLINED' ? (
-    <div className="flex items-center gap-1 text-red-500 dark:text-red-400">
-      <X className="h-4 w-4" strokeWidth={3} />
-      <span className="text-xs font-semibold">Declined</span>
-    </div>
-  ) : null;
+  // Overall game confirmation status
+  const allConfirmed = session.players.length > 0 && session.players.every(p => p.status === 'CONFIRMED');
+  const hasPending = session.players.some(p => p.status === 'PENDING');
+  const pendingCount = session.players.filter(p => p.status === 'PENDING').length;
 
   const cardContent = (
     <Card className={cn(
-      'hover:shadow-lg transition-shadow duration-300 h-full flex flex-col',
+      'hover:shadow-lg transition-shadow duration-300 h-full flex flex-col overflow-hidden',
       currentUserStatus === 'DECLINED' && 'opacity-60',
       currentUserStatus === 'PENDING' && 'ring-2 ring-yellow-400/50',
     )}>
+      {/* Confirmation status banner */}
+      {allConfirmed ? (
+        <div className="flex items-center justify-center gap-1.5 bg-green-600 text-white text-xs font-semibold py-1.5 px-3">
+          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+          All Players Confirmed
+        </div>
+      ) : hasPending ? (
+        <div className="flex items-center justify-center gap-1.5 bg-yellow-500 text-white text-xs font-semibold py-1.5 px-3">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Awaiting Response ({pendingCount})
+        </div>
+      ) : null}
       <CardHeader>
         <div className="flex justify-between items-start">
           <div>
@@ -82,7 +86,6 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
           </div>
           <div className="flex flex-col items-end gap-1">
             <Badge variant="secondary">{session.type}</Badge>
-            {statusIndicator}
           </div>
         </div>
       </CardHeader>
