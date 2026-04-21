@@ -54,6 +54,25 @@ function validateTwilioRequest(req: NextRequest, rawBody: string): boolean {
   return computed === signature;
 }
 
+// In-memory dedup cache to prevent Twilio retry storms.
+// Twilio retries webhooks after ~15s if no response, causing duplicate processing.
+const recentMessageSids = new Map<string, number>();
+const DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function isDuplicate(messageSid: string): boolean {
+  // Clean old entries
+  const now = Date.now();
+  for (const [sid, ts] of recentMessageSids) {
+    if (now - ts > DEDUP_TTL_MS) recentMessageSids.delete(sid);
+  }
+  if (recentMessageSids.has(messageSid)) {
+    console.log('[sms-inbound] Duplicate MessageSid, skipping:', messageSid);
+    return true;
+  }
+  recentMessageSids.set(messageSid, now);
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   console.log('[sms-inbound] Received webhook');
   
@@ -70,8 +89,21 @@ export async function POST(req: NextRequest) {
     const params = new URLSearchParams(rawBody);
     const from = params.get('From') || '';
     const body = params.get('Body') || '';
+    const messageSid = params.get('MessageSid') || '';
     
-    console.log('[sms-inbound] From:', from, 'Body:', body);
+    console.log('[sms-inbound] From:', from, 'Body:', body, 'SID:', messageSid);
+    
+    if (!from || !body) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Deduplicate — Twilio retries if we take >15s, causing cascading API calls
+    if (messageSid && isDuplicate(messageSid)) {
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { headers: { 'Content-Type': 'text/xml' } }
+      );
+    }
     
     if (!from || !body) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -152,12 +184,21 @@ export async function POST(req: NextRequest) {
     // SCHEDULING: Route to Robin AI immediately
     // This is the primary SMS-to-Robin path — user texts something like
     // "Set up a game with David Thompson tomorrow at 2pm at ION"
+    // Return 200 to Twilio immediately, process Robin in background.
     // ==========================================
     if (intentResult.intent === 'scheduling') {
       const resolvedUserId = linkedUserId || player.id;
-      const robinResult = await handleSmsChatWithRobin(resolvedUserId, body);
-      await sendSmsReply(from, robinResult);
-      console.log('[sms-inbound] Routed to Robin (scheduling):', robinResult);
+      // Fire and forget — process Robin async, reply via API when done
+      handleSmsChatWithRobin(resolvedUserId, body)
+        .then(async (robinResult) => {
+          await sendSmsReply(from, robinResult);
+          console.log('[sms-inbound] Robin scheduling reply sent:', robinResult.substring(0, 80));
+        })
+        .catch((err) => {
+          console.error('[sms-inbound] Robin scheduling failed:', err);
+          sendSmsReply(from, "Sorry, I ran into an issue scheduling that. Please try again.").catch(() => {});
+        });
+      // Return immediately so Twilio doesn't retry
       return new NextResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         { headers: { 'Content-Type': 'text/xml' } }
@@ -263,10 +304,22 @@ export async function POST(req: NextRequest) {
         if (conversationResult) {
           responseMessage = conversationResult;
         } else {
-          // No RSVP match, no conversation — route to Robin AI
+          // No RSVP match, no conversation — route to Robin AI (async)
           const resolvedUserId = linkedUserId || player.id;
-          const robinResult = await handleSmsChatWithRobin(resolvedUserId, body);
-          responseMessage = robinResult;
+          handleSmsChatWithRobin(resolvedUserId, body)
+            .then(async (robinResult) => {
+              await sendSmsReply(from, robinResult);
+              console.log('[sms-inbound] Robin fallback reply sent:', robinResult.substring(0, 80));
+            })
+            .catch((err) => {
+              console.error('[sms-inbound] Robin fallback failed:', err);
+              sendSmsReply(from, "Sorry, I didn't understand that. Reply Y to join a game, N to decline, or CANCEL.").catch(() => {});
+            });
+          // Return immediately
+          return new NextResponse(
+            '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+            { headers: { 'Content-Type': 'text/xml' } }
+          );
         }
       }
     }
