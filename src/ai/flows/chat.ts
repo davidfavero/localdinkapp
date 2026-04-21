@@ -696,23 +696,38 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       
       const errorMessage = aiError?.message || '';
       
-      // Check for quota exceeded error — retry once after a delay
-      if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('Too Many Requests')) {
-        console.log('[chat] Rate limited, retrying in 3 seconds...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      // Check for quota exceeded error — retry once after a longer delay
+      if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('Too Many Requests') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+        console.log('[chat] Rate limited, retrying in 10 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
         try {
           const retryResult = await ai.generate({
             prompt: processedInput,
+            system: ROBIN_SYSTEM_PROMPT,
             model: geminiFlash!,
             output: { schema: ChatOutputSchema },
-            config: { temperature: 0.05 },
+            config: {
+              temperature: 0.05,
+              safetySettings: [
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+              ],
+            },
           });
           extractedDetails = retryResult?.output || null;
           console.log('[chat] Retry succeeded');
         } catch (retryError: any) {
           console.error('[chat] Retry also failed:', retryError?.message);
-          return {
-            confirmationText: `I'm a little busy right now — please try again in about 30 seconds!`
+          // Fall through to regex extraction instead of giving up
+          console.log('[chat] Using regex fallback after rate limit');
+          extractedDetails = {
+            players: regexPlayers.length > 0 ? regexPlayers : null,
+            date: regexDate,
+            time: regexTime,
+            location: regexLocation?.location || null,
+            confirmationText: null,
           };
         }
       }

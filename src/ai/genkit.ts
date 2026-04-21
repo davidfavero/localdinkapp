@@ -14,7 +14,8 @@ if (!apiKey) {
 }
 
 // Create the model reference using googleAI.model()
-export const geminiFlash = apiKey ? googleAI.model('gemini-2.0-flash') : null;
+// gemini-2.0-flash is deprecated (shutdown June 1, 2026) — using gemini-2.5-flash as recommended replacement
+export const geminiFlash = apiKey ? googleAI.model('gemini-2.5-flash') : null;
 
 // Configure Genkit with Google AI
 export const ai = apiKey ? genkit({
