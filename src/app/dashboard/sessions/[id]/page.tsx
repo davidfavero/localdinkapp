@@ -5,7 +5,7 @@ import { useDoc, useFirestore, useUser, useCollection, useMemoFirebase } from '@
 import { errorEmitter } from '@/firebase/error-emitter';
 import { doc, getDoc, updateDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import type { GameSession_Firestore as RawGameSession, Player, RsvpStatus, Court, GameSession } from '@/lib/types';
-import { handleCancellationAction } from '@/lib/actions';
+import { handleCancellationAction, updateRsvpStatusAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/user-avatar';
-import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut, Loader2, Edit } from 'lucide-react';
+import { Calendar, MapPin, Users, UserCheck, UserX, Clock, LogOut, Loader2, Edit, Ban, ListEnd, TimerOff } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,10 +36,16 @@ const statusInfo: { [key in RsvpStatus]: { icon: React.ElementType, text: string
   CONFIRMED: { icon: UserCheck, text: 'Confirmed', color: 'text-green-500' },
   PENDING: { icon: Clock, text: 'Pending', color: 'text-yellow-500' },
   DECLINED: { icon: UserX, text: 'Declined', color: 'text-red-500' },
+  CANCELLED: { icon: Ban, text: 'Cancelled', color: 'text-red-400' },
+  WAITLIST: { icon: ListEnd, text: 'Waitlist', color: 'text-blue-500' },
+  EXPIRED: { icon: TimerOff, text: 'Expired', color: 'text-gray-400' },
 };
 
 const RSVP_PRIORITY: Record<RsvpStatus, number> = {
   DECLINED: 1,
+  EXPIRED: 1,
+  CANCELLED: 1,
+  WAITLIST: 2,
   PENDING: 2,
   CONFIRMED: 3,
 };
@@ -318,15 +324,10 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     if (!session || !currentUser || !firestore) return;
     setIsAccepting(true);
     try {
-      // Update status in playerStatuses on the game session doc
-      const sessionRef = doc(firestore, 'game-sessions', session.id);
-      await updateDoc(sessionRef, {
-        [`playerStatuses.${currentUser.uid}`]: 'CONFIRMED',
-      });
-
-      // Also update subcollection doc if it exists
-      const playerStatusRef = doc(firestore, 'game-sessions', session.id, 'players', currentUser.uid);
-      await setDoc(playerStatusRef, { status: 'CONFIRMED' }, { merge: true });
+      const result = await updateRsvpStatusAction(session.id, currentUser.uid, 'CONFIRMED');
+      if (!result.success) {
+        throw new Error(result.message);
+      }
 
       toast({
         title: 'RSVP Confirmed!',

@@ -13,6 +13,7 @@ import { collection, getDocs, limit, orderBy, query, where, doc, updateDoc, setD
 import type { GameSession, Player, Court, RsvpStatus } from '@/lib/types';
 import { normalizeAttendees, partitionAttendees } from '@/lib/session-attendees';
 import { useToast } from '@/hooks/use-toast';
+import { updateRsvpStatusAction } from '@/lib/actions';
 
 /**
  * This is the improved "Game Sessions" page (formerly GamesPage).
@@ -399,36 +400,28 @@ export default function GameSessionsPage() {
   const { toast } = useToast();
 
   const handleAcceptInvite = useCallback(async (sessionId: string) => {
-    if (!firestore || !user) return;
+    if (!user) return;
     try {
-      const sessionRef = doc(firestore, 'game-sessions', sessionId);
-      await updateDoc(sessionRef, {
-        [`playerStatuses.${user.uid}`]: 'CONFIRMED',
-      });
-      const playerStatusRef = doc(firestore, 'game-sessions', sessionId, 'players', user.uid);
-      await setDoc(playerStatusRef, { status: 'CONFIRMED' }, { merge: true });
+      const result = await updateRsvpStatusAction(sessionId, user.uid, 'CONFIRMED');
+      if (!result.success) throw new Error(result.message);
       toast({ title: 'RSVP Confirmed!', description: 'You have accepted the game invite.' });
     } catch (error) {
       console.error('Error accepting invite:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not accept the invite.' });
     }
-  }, [firestore, user, toast]);
+  }, [user, toast]);
 
   const handleDeclineInvite = useCallback(async (sessionId: string) => {
-    if (!firestore || !user) return;
+    if (!user) return;
     try {
-      const sessionRef = doc(firestore, 'game-sessions', sessionId);
-      await updateDoc(sessionRef, {
-        [`playerStatuses.${user.uid}`]: 'DECLINED',
-      });
-      const playerStatusRef = doc(firestore, 'game-sessions', sessionId, 'players', user.uid);
-      await setDoc(playerStatusRef, { status: 'DECLINED' }, { merge: true });
+      const result = await updateRsvpStatusAction(sessionId, user.uid, 'DECLINED');
+      if (!result.success) throw new Error(result.message);
       toast({ title: 'Invite Declined', description: 'You have declined the game invite.' });
     } catch (error) {
       console.error('Error declining invite:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not decline the invite.' });
     }
-  }, [firestore, user, toast]);
+  }, [user, toast]);
 
   // Combine organized sessions with ALL invites for "My Games"
   const myGames = useMemo(() => {
