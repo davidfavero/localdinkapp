@@ -308,8 +308,11 @@ export function ConversationList({ onSelectConversation, onNewConversation }: Co
       const profiles: Record<string, LiveProfile> = {};
       for (const uid of otherIds) {
         try {
+          // Strip player: prefix for document lookups
+          const rawId = uid.startsWith('player:') ? uid.slice(7) : uid;
+          
           // Try users collection first
-          const snap = await getDoc(doc(firestore, 'users', uid));
+          const snap = await getDoc(doc(firestore, 'users', rawId));
           if (snap.exists() && !cancelled) {
             const d = snap.data() as any;
             const name = `${d.firstName || ''} ${d.lastName || ''}`.trim();
@@ -319,7 +322,7 @@ export function ConversationList({ onSelectConversation, onNewConversation }: Co
             }
           }
           // Fallback: check players collection (for contacts/roster players)
-          const playerSnap = await getDoc(doc(firestore, 'players', uid));
+          const playerSnap = await getDoc(doc(firestore, 'players', rawId));
           if (playerSnap.exists() && !cancelled) {
             const d = playerSnap.data() as any;
             const name = `${d.firstName || ''} ${d.lastName || ''}`.trim();

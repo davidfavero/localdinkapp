@@ -243,15 +243,14 @@ export async function POST(req: NextRequest) {
       case 'accept': {
         // Try all resolved IDs to find a pending game
         let pendingGame = null;
-        let matchedId = '';
         for (const pid of allPlayerIds) {
           pendingGame = await findPendingGameForPlayer(pid);
-          if (pendingGame) { matchedId = pid; break; }
+          if (pendingGame) break;
         }
         if (!pendingGame) {
           responseMessage = "You don't have any pending game invites right now.";
         } else {
-          const result = await handleAccept(matchedId, pendingGame.id);
+          const result = await handleAccept(pendingGame.matchedPlayerId, pendingGame.id);
           responseMessage = result.message;
         }
         break;
@@ -259,15 +258,14 @@ export async function POST(req: NextRequest) {
       
       case 'decline': {
         let pendingGame = null;
-        let matchedId = '';
         for (const pid of allPlayerIds) {
           pendingGame = await findPendingGameForPlayer(pid);
-          if (pendingGame) { matchedId = pid; break; }
+          if (pendingGame) break;
         }
         if (!pendingGame) {
           responseMessage = "You don't have any pending game invites to decline.";
         } else {
-          const result = await handleDecline(matchedId, pendingGame.id);
+          const result = await handleDecline(pendingGame.matchedPlayerId, pendingGame.id);
           responseMessage = result.message;
         }
         break;
@@ -275,15 +273,14 @@ export async function POST(req: NextRequest) {
       
       case 'cancel': {
         let confirmedGame = null;
-        let matchedId = '';
         for (const pid of allPlayerIds) {
           confirmedGame = await findConfirmedGameForPlayer(pid);
-          if (confirmedGame) { matchedId = pid; break; }
+          if (confirmedGame) break;
         }
         if (!confirmedGame) {
           responseMessage = "You don't have any confirmed games to cancel.";
         } else {
-          const result = await handleCancel(matchedId, confirmedGame.id);
+          const result = await handleCancel(confirmedGame.matchedPlayerId, confirmedGame.id);
           responseMessage = result.message;
         }
         break;
@@ -408,9 +405,14 @@ async function routeToConversation(params: {
   
   let conversation: { id: string; participantIds: string[]; participantNames: Record<string, string> } | null = null;
   
+  // Only route to conversations that had activity in the last 24 hours
+  // to prevent old/stale conversations from swallowing messages meant for Robin
+  const recentCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  
   for (const key of keysToSearch) {
     const snap = await adminDb.collection('conversations')
       .where('participantIds', 'array-contains', key)
+      .where('lastActivityAt', '>=', recentCutoff)
       .orderBy('lastActivityAt', 'desc')
       .limit(1)
       .get();

@@ -78,24 +78,32 @@ export async function getPlayerByPhone(phone: string): Promise<(Player & { id: s
 /**
  * Find the most recent pending game invite for a player
  */
-export async function findPendingGameForPlayer(playerId: string): Promise<{ id: string; [key: string]: any } | null> {
+export async function findPendingGameForPlayer(playerId: string): Promise<{ id: string; matchedPlayerId: string; [key: string]: any } | null> {
   const adminDb = await getAdminDb();
   if (!adminDb) return null;
   
-  // Find games where this player has PENDING status
-  const gamesSnap = await adminDb.collection('game-sessions')
-    .where('playerIds', 'array-contains', playerId)
-    .where('status', 'in', ['open', 'full'])
-    .orderBy('startTime', 'desc')
-    .limit(10)
-    .get();
+  // Try both the raw ID and player: prefixed version
+  const idsToTry = [playerId];
+  if (!playerId.startsWith('player:')) {
+    idsToTry.push(`player:${playerId}`);
+  }
   
-  // Find the most recent one where player is PENDING
-  for (const doc of gamesSnap.docs) {
-    const data = doc.data();
-    const playerStatus = data.playerStatuses?.[playerId];
-    if (playerStatus === 'PENDING') {
-      return { id: doc.id, ...data };
+  for (const searchId of idsToTry) {
+    const gamesSnap = await adminDb.collection('game-sessions')
+      .where('playerIds', 'array-contains', searchId)
+      .where('status', 'in', ['open', 'full'])
+      .orderBy('startTime', 'desc')
+      .limit(10)
+      .get();
+    
+    // Find the most recent one where player is PENDING
+    for (const doc of gamesSnap.docs) {
+      const data = doc.data();
+      // Check both raw and prefixed keys in playerStatuses
+      const playerStatus = data.playerStatuses?.[searchId] || data.playerStatuses?.[playerId];
+      if (playerStatus === 'PENDING') {
+        return { id: doc.id, matchedPlayerId: searchId, ...data };
+      }
     }
   }
   
@@ -105,22 +113,29 @@ export async function findPendingGameForPlayer(playerId: string): Promise<{ id: 
 /**
  * Find a confirmed game for a player (for cancellation)
  */
-export async function findConfirmedGameForPlayer(playerId: string): Promise<{ id: string; [key: string]: any } | null> {
+export async function findConfirmedGameForPlayer(playerId: string): Promise<{ id: string; matchedPlayerId: string; [key: string]: any } | null> {
   const adminDb = await getAdminDb();
   if (!adminDb) return null;
   
-  const gamesSnap = await adminDb.collection('game-sessions')
-    .where('playerIds', 'array-contains', playerId)
-    .where('status', 'in', ['open', 'full'])
-    .orderBy('startTime', 'asc')  // Nearest upcoming game
-    .limit(10)
-    .get();
+  const idsToTry = [playerId];
+  if (!playerId.startsWith('player:')) {
+    idsToTry.push(`player:${playerId}`);
+  }
   
-  for (const doc of gamesSnap.docs) {
-    const data = doc.data();
-    const playerStatus = data.playerStatuses?.[playerId];
-    if (playerStatus === 'CONFIRMED') {
-      return { id: doc.id, ...data };
+  for (const searchId of idsToTry) {
+    const gamesSnap = await adminDb.collection('game-sessions')
+      .where('playerIds', 'array-contains', searchId)
+      .where('status', 'in', ['open', 'full'])
+      .orderBy('startTime', 'asc')  // Nearest upcoming game
+      .limit(10)
+      .get();
+    
+    for (const doc of gamesSnap.docs) {
+      const data = doc.data();
+      const playerStatus = data.playerStatuses?.[searchId] || data.playerStatuses?.[playerId];
+      if (playerStatus === 'CONFIRMED') {
+        return { id: doc.id, matchedPlayerId: searchId, ...data };
+      }
     }
   }
   
