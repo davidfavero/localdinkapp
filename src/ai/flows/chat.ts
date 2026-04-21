@@ -696,15 +696,29 @@ Only ask a question if something is genuinely missing from ALL messages.`,
       
       const errorMessage = aiError?.message || '';
       
-      // Check for quota exceeded error
+      // Check for quota exceeded error — retry once after a delay
       if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('Too Many Requests')) {
-        return {
-          confirmationText: `I've hit my API rate limit for the moment. Please wait about 30 seconds and try again. If this keeps happening, check your Google AI billing at ai.google.dev.`
-        };
+        console.log('[chat] Rate limited, retrying in 3 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        try {
+          const retryResult = await ai.generate({
+            prompt: processedInput,
+            model: geminiFlash!,
+            output: { schema: ChatOutputSchema },
+            config: { temperature: 0.05 },
+          });
+          extractedDetails = retryResult?.output || null;
+          console.log('[chat] Retry succeeded');
+        } catch (retryError: any) {
+          console.error('[chat] Retry also failed:', retryError?.message);
+          return {
+            confirmationText: `I'm a little busy right now — please try again in about 30 seconds!`
+          };
+        }
       }
       
       // Check for content safety filter / blocked content
-      if (errorMessage.includes('SAFETY') || errorMessage.includes('blocked') || errorMessage.includes('safety') || errorMessage.includes('HARM') || errorMessage.includes('finish_reason')) {
+      else if (errorMessage.includes('SAFETY') || errorMessage.includes('blocked') || errorMessage.includes('safety') || errorMessage.includes('HARM') || errorMessage.includes('finish_reason')) {
         return {
           confirmationText: `I can only help with pickleball scheduling! Let me know who you'd like to play with, when, and where, and I'll get it set up.`
         };
