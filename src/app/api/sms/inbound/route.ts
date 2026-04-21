@@ -313,7 +313,7 @@ export async function POST(req: NextRequest) {
             })
             .catch((err) => {
               console.error('[sms-inbound] Robin fallback failed:', err);
-              sendSmsReply(from, "Sorry, I didn't understand that. Reply Y to join a game, N to decline, or CANCEL.").catch(() => {});
+              sendSmsReply(from, "Sorry, I didn't understand that. Reply Y to join a game, N to decline, or OUT to cancel.").catch(() => {});
             });
           // Return immediately
           return new NextResponse(

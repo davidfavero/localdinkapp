@@ -26,7 +26,7 @@ export type SmsIntentResult = {
 
 // TCPA compliance keywords — must be handled BEFORE any other intent detection
 const STOP_PATTERNS = [
-  /^(stop|stopall|unsubscribe|cancel|end|quit)$/i,
+  /^(stop|stopall|unsubscribe|end|quit)$/i,
 ];
 
 const HELP_PATTERNS = [
@@ -54,11 +54,11 @@ const ACCEPT_PATTERNS = [
 ];
 
 const DECLINE_PATTERNS = [
-  /^(n|no|nope|nah|can't|cant|cannot|pass|skip|out|i'm out|im out|not this time|maybe next time|decline|busy|unavailable|sorry|❌|👎)$/i,
+  /^(n|no|nope|nah|can't|cant|cannot|pass|skip|not this time|maybe next time|decline|busy|unavailable|sorry|❌|👎)$/i,
 ];
 
 const CANCEL_PATTERNS = [
-  /^(cancel|canceling|cancelling|back out|backing out|pull out|pulling out|drop|dropping|remove me|take me out|something came up|can't make it anymore|cant make it)$/i,
+  /^(out|i'm out|im out|cancel|canceling|cancelling|back out|backing out|pull out|pulling out|drop|dropping|remove me|take me out|something came up|can't make it anymore|cant make it)$/i,
 ];
 
 /**

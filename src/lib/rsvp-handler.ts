@@ -481,7 +481,7 @@ async function notifyGameFull(
 📅 ${session.startTimeDisplay || 'Check the app for time'}
 👥 Players: ${confirmedNames}
 
-Reply CANCEL if you can no longer make it.\nReply STOP to opt out`;
+Reply OUT if you can no longer make it.\nReply STOP to opt out`;
 
   // Notify confirmed players
   for (const player of confirmedPlayers) {
