@@ -55,8 +55,7 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
 
   // Overall game confirmation status
   const allConfirmed = session.players.length > 0 && session.players.every(p => p.status === 'CONFIRMED');
-  const hasPending = session.players.some(p => p.status === 'PENDING');
-  const pendingCount = session.players.filter(p => p.status === 'PENDING').length;
+  const unconfirmedCount = session.players.filter(p => p.status !== 'CONFIRMED' && p.status !== 'DECLINED').length;
 
   const cardContent = (
     <Card className={cn(
@@ -70,10 +69,10 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
           <Check className="h-3.5 w-3.5" strokeWidth={3} />
           All Players Confirmed
         </div>
-      ) : hasPending ? (
+      ) : unconfirmedCount > 0 ? (
         <div className="flex items-center justify-center gap-1.5 bg-yellow-500 text-white text-xs font-semibold py-1.5 px-3">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Awaiting Response ({pendingCount})
+          Awaiting Response ({unconfirmedCount})
         </div>
       ) : null}
       <CardHeader>
