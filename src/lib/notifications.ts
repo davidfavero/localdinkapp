@@ -48,12 +48,14 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
       return {
         title: `${data.inviteeName || 'Someone'} is in!`,
         body: `Accepted your ${data.matchType || 'game'} invite for ${data.date || 'the game'}`,
+        smsBody: `✅ ${data.inviteeName || 'Someone'} confirmed for your ${data.matchType || 'game'} on ${data.date || 'upcoming'}! Tap for details: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_INVITE_DECLINED':
       return {
         title: `${data.inviteeName || 'Someone'} can't make it`,
         body: `Declined your ${data.matchType || 'game'} invite for ${data.date || 'the game'}`,
+        smsBody: `${data.inviteeName || 'Someone'} can't make your ${data.matchType || 'game'} on ${data.date || 'upcoming'}. Tap to find a replacement: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_REMINDER':

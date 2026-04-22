@@ -262,17 +262,14 @@ export async function handleAccept(
   
   await sessionRef.update(updates);
   
-  // Get player and organizer details for notifications
-  const [player, organizer] = await Promise.all([
-    getPlayerDetails(playerId),
-    getPlayerDetails(session.organizerId),
-  ]);
+  // Get player details for notifications
+  const player = await getPlayerDetails(playerId);
   
   const playerName = player ? `${player.firstName} ${player.lastName}`.trim() : 'A player';
   const matchType = session.isDoubles ? 'Doubles' : 'Singles';
   const gameDate = session.startTimeDisplay || 'upcoming game';
   
-  // Send in-app notification to organizer
+  // Send in-app + SMS notification to organizer (via notification system)
   if (session.organizerId !== playerId) {
     try {
       await sendRsvpNotification({
@@ -285,16 +282,8 @@ export async function handleAccept(
         accepted: true,
       });
     } catch (notifError) {
-      console.error('[rsvp] Error sending in-app notification:', notifError);
+      console.error('[rsvp] Error sending RSVP notification:', notifError);
     }
-  }
-  
-  // Legacy SMS notification to organizer (keeping for now)
-  if (organizer?.phone && organizer.id !== playerId) {
-    await sendSmsNotification(
-      organizer.phone, 
-      `✅ ${playerName} confirmed for your pickleball game on ${session.startTimeDisplay || 'upcoming'}!`
-    );
   }
   
   // If game is now full, notify everyone
@@ -341,16 +330,13 @@ export async function handleDecline(
   });
   
   // Notify organizer
-  const [player, organizer] = await Promise.all([
-    getPlayerDetails(playerId),
-    getPlayerDetails(session.organizerId),
-  ]);
+  const player = await getPlayerDetails(playerId);
   
   const playerName = player ? `${player.firstName} ${player.lastName}`.trim() : 'A player';
   const matchType = session.isDoubles ? 'Doubles' : 'Singles';
   const gameDate = session.startTimeDisplay || 'upcoming game';
   
-  // Send in-app notification to organizer
+  // Send in-app + SMS notification to organizer (via notification system)
   if (session.organizerId !== playerId) {
     try {
       await sendRsvpNotification({
@@ -363,16 +349,8 @@ export async function handleDecline(
         accepted: false,
       });
     } catch (notifError) {
-      console.error('[rsvp] Error sending in-app notification:', notifError);
+      console.error('[rsvp] Error sending RSVP notification:', notifError);
     }
-  }
-  
-  // Legacy SMS notification
-  if (organizer?.phone && organizer.id !== playerId) {
-    await sendSmsNotification(
-      organizer.phone, 
-      `${playerName} can't make your pickleball game on ${session.startTimeDisplay || 'upcoming'}.\nReply STOP to opt out`
-    );
   }
   
   return { 
