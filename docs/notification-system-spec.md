@@ -89,7 +89,9 @@ INVITED → ACCEPTED → CONFIRMED
 #### A1: Invite Sent
 **In-App Title:** Game invite from [inviterName]
 **In-App Body:** [matchType] on [date] at [time] • [courtName]
-**SMS:** 🏓 [inviterName] invited you to play [matchType] on [date] at [time] at [courtName]. Reply Y to accept, N to decline, or tap: [webLinkView]
+**SMS:** 🏓 [inviterName] invited you to play [matchType] on [date] at [time] at [courtName]. 
+
+Reply Y to accept, N to decline, or tap: [webLinkView]
 **Actions:** Accept | Decline | View Details
 
 #### A2: Accepted (to Invitee)

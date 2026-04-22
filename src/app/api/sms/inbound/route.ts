@@ -188,6 +188,10 @@ export async function POST(req: NextRequest) {
     // ==========================================
     if (intentResult.intent === 'scheduling') {
       const resolvedUserId = linkedUserId || player.id;
+      
+      // Send immediate acknowledgment so the organizer knows we're on it
+      sendSmsReply(from, "Got it! 🏓 Working on that invite for you...").catch(() => {});
+      
       // Fire and forget — process Robin async, reply via API when done
       handleSmsChatWithRobin(resolvedUserId, body)
         .then(async (robinResult) => {
