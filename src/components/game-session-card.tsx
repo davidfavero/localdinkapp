@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Calendar, MapPin, Check, X, Loader2 } from 'lucide-react';
+import { Calendar, MapPin, Check, X, Loader2, Repeat } from 'lucide-react';
 import type { GameSession, RsvpStatus } from '@/lib/types';
 import { UserAvatar } from '@/components/user-avatar';
 import { cn } from '@/lib/utils';
@@ -85,6 +85,12 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
           </div>
           <div className="flex flex-col items-end gap-1">
             <Badge variant="secondary">{session.type}</Badge>
+            {session.recurring?.enabled && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <Repeat className="h-3 w-3" />
+                {session.recurring.frequency === 'weekly' ? 'Weekly' : 'Biweekly'}
+              </Badge>
+            )}
           </div>
         </div>
       </CardHeader>

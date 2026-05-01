@@ -10,6 +10,7 @@ import { sendSmsMessage, normalizeToE164, isTwilioConfigured } from '@/server/tw
 import type { RsvpStatus, GameSessionStatus, Player } from './types';
 import { FieldValue } from 'firebase-admin/firestore';
 import { sendNotification, sendRsvpNotification } from './notifications';
+import { generateRobinSms, appendStopFooter } from '@/ai/flows/robin-sms';
 
 export type RsvpActionResult = {
   success: boolean;
@@ -416,10 +417,16 @@ export async function handleCancel(
   
   // Notify organizer
   if (organizer?.phone && organizer.id !== playerId) {
-    await sendSmsNotification(
-      organizer.phone, 
-      `⚠️ ${playerName} cancelled for your pickleball game on ${session.startTimeDisplay || 'upcoming'}. Spot reopened!\nReply STOP to opt out`
-    );
+    const organizerMsg = await generateRobinSms({
+      messageType: 'player_cancelled',
+      details: {
+        recipientName: organizer.firstName || 'there',
+        playerName,
+        matchType: session.isDoubles ? 'Doubles' : 'Singles',
+        date: session.startTimeDisplay || 'upcoming',
+      },
+    });
+    await sendSmsNotification(organizer.phone, appendStopFooter(organizerMsg));
   }
   
   // Notify other confirmed players
@@ -430,10 +437,16 @@ export async function handleCancel(
   for (const confirmedId of confirmedPlayerIds) {
     const confirmedPlayer = await getPlayerDetails(confirmedId);
     if (confirmedPlayer?.phone) {
-      await sendSmsNotification(
-        confirmedPlayer.phone,
-        `${playerName} dropped out of the pickleball game. Looking for a replacement!\nReply STOP to opt out`
-      );
+      const playerMsg = await generateRobinSms({
+        messageType: 'player_cancelled',
+        details: {
+          recipientName: confirmedPlayer.firstName || 'there',
+          playerName,
+          matchType: session.isDoubles ? 'Doubles' : 'Singles',
+          date: session.startTimeDisplay || 'upcoming',
+        },
+      });
+      await sendSmsNotification(confirmedPlayer.phone, appendStopFooter(playerMsg));
     }
   }
   
@@ -466,20 +479,22 @@ async function notifyGameFull(
   const confirmedPlayers = await Promise.all(confirmedIds.map(getPlayerDetails));
   const confirmedNames = confirmedPlayers
     .filter(p => p)
-    .map(p => `${p!.firstName} ${p!.lastName}`.trim())
-    .join(', ');
-  
-  const gameFullMessage = `🎉 Game on! Your pickleball game is confirmed.
-📍 ${session.courtName || 'Court'}
-📅 ${session.startTimeDisplay || 'Check the app for time'}
-👥 Players: ${confirmedNames}
+    .map(p => `${p!.firstName} ${p!.lastName}`.trim());
 
-Reply OUT if you can no longer make it.\nReply STOP to opt out`;
-
-  // Notify confirmed players
+  // Notify confirmed players with Robin-voiced "game on!" message
   for (const player of confirmedPlayers) {
     if (player?.phone) {
-      await sendSmsNotification(player.phone, gameFullMessage);
+      const gameFullMsg = await generateRobinSms({
+        messageType: 'game_full',
+        details: {
+          recipientName: player.firstName || 'there',
+          matchType: session.isDoubles ? 'Doubles' : 'Singles',
+          date: session.startTimeDisplay || 'upcoming',
+          courtName: session.courtName,
+          confirmedPlayers: confirmedNames,
+        },
+      });
+      await sendSmsNotification(player.phone, appendStopFooter(gameFullMsg));
     }
   }
   
@@ -488,13 +503,17 @@ Reply OUT if you can no longer make it.\nReply STOP to opt out`;
     .filter(([_, status]) => status === 'PENDING' || status === 'DECLINED')
     .map(([id]) => id);
   
-  for (const playerId of otherIds) {
-    const player = await getPlayerDetails(playerId);
+  for (const pendingId of otherIds) {
+    const player = await getPlayerDetails(pendingId);
     if (player?.phone) {
-      await sendSmsNotification(
-        player.phone,
-        `The pickleball game on ${session.startTimeDisplay || 'upcoming'} is now full. We'll let you know if a spot opens!\nReply STOP to opt out`
-      );
+      const waitlistMsg = await generateRobinSms({
+        messageType: 'spot_available_pending',
+        details: {
+          recipientName: player.firstName || 'there',
+          date: session.startTimeDisplay || 'upcoming',
+        },
+      });
+      await sendSmsNotification(player.phone, appendStopFooter(waitlistMsg));
     }
   }
 }
@@ -533,10 +552,16 @@ async function promoteFromWaitlistOrNotify(
     
     // Notify the promoted player
     if (promoted?.phone) {
-      await sendSmsNotification(
-        promoted.phone,
-        `🎉 Great news! A spot opened up and you're now confirmed for pickleball on ${session.startTimeDisplay || 'upcoming'}! See you there!\nReply STOP to opt out`
-      );
+      const promoMsg = await generateRobinSms({
+        messageType: 'spot_opened',
+        details: {
+          recipientName: promoted.firstName || 'there',
+          matchType: session.isDoubles ? 'Doubles' : 'Singles',
+          date: session.startTimeDisplay || 'upcoming',
+          courtName: session.courtName,
+        },
+      });
+      await sendSmsNotification(promoted.phone, appendStopFooter(promoMsg));
     }
     
     // Send in-app notification for the promotion
@@ -587,7 +612,7 @@ async function promoteFromWaitlistOrNotify(
     if (player?.phone) {
       await sendSmsNotification(
         player.phone,
-        `🏓 Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to join!\nReply STOP to opt out`
+        `� Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to join!\nReply STOP to opt out`
       );
     }
   }
@@ -616,7 +641,7 @@ export async function sendGameInvites(
       continue;
     }
     
-    const message = `🏓 ${organizerName} invited you to play pickleball!
+    const message = `� ${organizerName} invited you to play pickleball!
 📍 ${courtName}
 📅 ${dateTime}
 

@@ -138,6 +138,14 @@ export type GameSession_Firestore = {
   // Group support
   groupIds?: string[];
   
+  // Recurring game support
+  recurring?: {
+    enabled: boolean;
+    frequency: 'weekly' | 'biweekly';
+    dayOfWeek: number;  // 0=Sunday, 1=Monday, ... 6=Saturday
+    parentSessionId?: string;  // Links recurring instances to the original
+  };
+  
   // Notification tracking
   invitesSentAt?: Timestamp;
   lastReminderAt?: Timestamp;
@@ -158,6 +166,11 @@ export type GameSession = {
     status: RsvpStatus;
   }[];
   alternates: Player[];
+  recurring?: {
+    enabled: boolean;
+    frequency: 'weekly' | 'biweekly';
+    dayOfWeek: number;
+  };
 };
 
 export interface Message {
@@ -214,6 +227,15 @@ export const ChatOutputSchema = z.object({
     reason: z.string(),
   })).nullish(),
   disambiguationMemoryUpdates: z.record(z.string()).nullish(),
+  // Relay message fields — Robin populates these when the user wants to
+  // send a message to their game group (e.g. "tell everyone I'm running late")
+  relayMessage: z.string().nullish().describe('Message to relay to other players in the game group'),
+  relayTargetGame: z.enum(['nearest', 'specific']).nullish().describe('Which game to relay to: nearest upcoming, or a specific one'),
+  // Recurring game support
+  recurring: z.object({
+    enabled: z.boolean(),
+    frequency: z.enum(['weekly', 'biweekly']),
+  }).nullish().describe('If the user wants this to be a recurring game (e.g. "every Thursday", "weekly game")'),
 })
 export type ChatOutput = z.infer<typeof ChatOutputSchema>
 

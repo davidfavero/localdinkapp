@@ -15,6 +15,7 @@ import { getAdminDb } from '@/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import type { Player, Group, Court, ChatHistory } from '@/lib/types';
+import { relayMessage as relayMessageFn } from '@/ai/tools/relay-message';
 
 // Twilio webhook signature validation
 function validateTwilioRequest(req: NextRequest, rawBody: string): boolean {
@@ -116,12 +117,12 @@ export async function POST(req: NextRequest) {
     const complianceKeyword = await detectComplianceKeyword(body);
     if (complianceKeyword === 'stop') {
       const result = await handleSmsOptOut(from);
-      await sendSmsReply(from, result.message);
+      await sendSmsReply(from, result.message, true); // Compliance response — no footer
       return NextResponse.json({ status: 'ok' });
     }
     if (complianceKeyword === 'help') {
       const result = await handleSmsHelp(from);
-      await sendSmsReply(from, result.message);
+      await sendSmsReply(from, result.message, true); // Compliance response — no footer
       return NextResponse.json({ status: 'ok' });
     }
     
@@ -173,27 +174,27 @@ export async function POST(req: NextRequest) {
     
     console.log('[sms-inbound] All resolved IDs:', allPlayerIds);
     
-    // Build participant key for conversation lookup
-    const playerParticipantKey = `player:${player.id}`;
-    
     // Detect intent from the message
     const intentResult = await detectSmsIntent(body);
     console.log('[sms-inbound] Intent:', intentResult);
     
     // ==========================================
-    // SCHEDULING: Route to Robin AI immediately
-    // This is the primary SMS-to-Robin path — user texts something like
-    // "Set up a game with David Thompson tomorrow at 2pm at ION"
+    // SCHEDULING or RELAY: Route to Robin AI immediately
+    // Scheduling: "Set up a game with David Thompson tomorrow at 2pm at ION"
+    // Relay: "Tell everyone I'm running late"
     // Return 200 to Twilio immediately, process Robin in background.
     // ==========================================
-    if (intentResult.intent === 'scheduling') {
+    if (intentResult.intent === 'scheduling' || intentResult.intent === 'relay') {
       const resolvedUserId = linkedUserId || player.id;
       
-      // Send immediate acknowledgment so the organizer knows we're on it
-      sendSmsReply(from, "Got it! 🏓 Working on that invite for you...").catch(() => {});
+      // Send immediate acknowledgment so the user knows we're on it
+      const ackMessage = intentResult.intent === 'relay'
+        ? "On it! 🏓 Sending your message now..."
+        : "Got it! 🎾 Working on that invite for you...";
+      sendSmsReply(from, ackMessage).catch(() => {});
       
       // Fire and forget — process Robin async, reply via API when done
-      handleSmsChatWithRobin(resolvedUserId, body)
+      handleSmsChatWithRobin(resolvedUserId, body, from)
         .then(async (robinResult) => {
           await sendSmsReply(from, robinResult);
           console.log('[sms-inbound] Robin scheduling reply sent:', robinResult.substring(0, 80));
@@ -209,38 +210,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine if this is a short, clear-cut RSVP response vs a conversational message.
-    // Short replies like "Y", "YES", "N", "NO", "CANCEL" should always go to RSVP.
-    // Longer messages (even if AI detects "accept" intent) should try conversation
-    // routing first — they're likely replies to Player Messages, not game invites.
+    // Determine if this is a short, clear-cut RSVP response.
+    // Short replies like "Y", "YES", "N", "NO", "CANCEL" go to RSVP.
+    // Everything else goes to Robin — she owns the SMS channel.
     const trimmedBody = body.trim();
     const isShortReply = trimmedBody.split(/\s+/).length <= 3;
     const isHighConfidenceRsvp = intentResult.confidence === 'high' && isShortReply;
     
     let responseMessage: string;
     
-    // For longer messages or low-confidence intents, try conversation routing FIRST
+    // If it's not a clear RSVP and not a cancel, route everything to Robin
     if (!isHighConfidenceRsvp && intentResult.intent !== 'cancel') {
-      const conversationResult = await routeToConversation({
-        playerParticipantKey,
-        linkedUserId,
-        allParticipantIds: allPlayerIds,
-        playerName: `${player.firstName || ''} ${player.lastName || ''}`.trim() || 'Unknown',
-        text: body,
-        fromPhone: from,
-      });
+      const resolvedUserId = linkedUserId || player.id;
       
-      if (conversationResult) {
-        responseMessage = conversationResult;
-        // Send response and return early — this was a conversation reply
-        await sendSmsReply(from, responseMessage);
-        console.log('[sms-inbound] Routed to conversation:', responseMessage);
-        return new NextResponse(
-          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-          { headers: { 'Content-Type': 'text/xml' } }
-        );
-      }
-      // No conversation found — fall through to RSVP handling
+      // Route to Robin — she handles scheduling, questions, relays, everything
+      handleSmsChatWithRobin(resolvedUserId, body, from)
+        .then(async (robinResult) => {
+          await sendSmsReply(from, robinResult);
+          console.log('[sms-inbound] Robin reply sent:', robinResult.substring(0, 80));
+        })
+        .catch((err) => {
+          console.error('[sms-inbound] Robin failed:', err);
+          sendSmsReply(from, "Sorry, I ran into an issue. Reply Y to join a game, N to decline, or OUT to cancel.").catch(() => {});
+        });
+      // Return immediately so Twilio doesn't retry
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { headers: { 'Content-Type': 'text/xml' } }
+      );
     }
     
     switch (intentResult.intent) {
@@ -292,36 +289,22 @@ export async function POST(req: NextRequest) {
       
       case 'question':
       default: {
-        // Not a clear RSVP intent — try to route to a conversation
-        const conversationResult = await routeToConversation({
-          playerParticipantKey,
-          linkedUserId,
-          allParticipantIds: allPlayerIds,
-          playerName: `${player.firstName || ''} ${player.lastName || ''}`.trim() || 'Unknown',
-          text: body,
-          fromPhone: from,
-        });
-        
-        if (conversationResult) {
-          responseMessage = conversationResult;
-        } else {
-          // No RSVP match, no conversation — route to Robin AI (async)
-          const resolvedUserId = linkedUserId || player.id;
-          handleSmsChatWithRobin(resolvedUserId, body)
-            .then(async (robinResult) => {
-              await sendSmsReply(from, robinResult);
-              console.log('[sms-inbound] Robin fallback reply sent:', robinResult.substring(0, 80));
-            })
-            .catch((err) => {
-              console.error('[sms-inbound] Robin fallback failed:', err);
-              sendSmsReply(from, "Sorry, I didn't understand that. Reply Y to join a game, N to decline, or OUT to cancel.").catch(() => {});
-            });
-          // Return immediately
-          return new NextResponse(
-            '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-            { headers: { 'Content-Type': 'text/xml' } }
-          );
-        }
+        // Not a clear RSVP intent — route to Robin AI (async)
+        const resolvedUserId = linkedUserId || player.id;
+        handleSmsChatWithRobin(resolvedUserId, body, from)
+          .then(async (robinResult) => {
+            await sendSmsReply(from, robinResult);
+            console.log('[sms-inbound] Robin fallback reply sent:', robinResult.substring(0, 80));
+          })
+          .catch((err) => {
+            console.error('[sms-inbound] Robin fallback failed:', err);
+            sendSmsReply(from, "Sorry, I didn't understand that. Reply Y to join a game, N to decline, or OUT to cancel.").catch(() => {});
+          });
+        // Return immediately
+        return new NextResponse(
+          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+          { headers: { 'Content-Type': 'text/xml' } }
+        );
       }
     }
     
@@ -344,14 +327,16 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Send SMS reply to player
+ * Send SMS reply to player (appends STOP footer for TCPA compliance)
  */
-async function sendSmsReply(to: string, message: string): Promise<void> {
+async function sendSmsReply(to: string, message: string, skipFooter = false): Promise<void> {
   const normalized = normalizeToE164(to);
   if (!normalized) return;
   
+  const body = skipFooter ? message : `${message}\n\nReply STOP to opt out`;
+  
   try {
-    await sendSmsMessage({ to: normalized, body: message });
+    await sendSmsMessage({ to: normalized, body });
   } catch (error) {
     console.error('[sms-inbound] Failed to send reply:', error);
   }
@@ -386,138 +371,16 @@ function escapeXml(text: string): string {
 }
 
 /**
- * Route an inbound SMS to the player's most recent active conversation.
- * Inserts the message, updates conversation metadata, and notifies other participants.
- * Returns a confirmation message, or null if no conversation was found.
- */
-async function routeToConversation(params: {
-  playerParticipantKey: string; // "player:XXXX"
-  linkedUserId?: string;       // user UID if player is linked to an account
-  allParticipantIds: string[]; // all possible IDs for this person
-  playerName: string;
-  text: string;
-  fromPhone: string;
-}): Promise<string | null> {
-  const { playerParticipantKey, linkedUserId, allParticipantIds, playerName, text, fromPhone } = params;
-  
-  const adminDb = await getAdminDb();
-  if (!adminDb) return null;
-  
-  // Find conversations where this player is a participant
-  // Check all possible IDs: player:XXXX key, user UID, linked user ID
-  const keysToSearch = [playerParticipantKey, ...allParticipantIds];
-  
-  let conversation: { id: string; participantIds: string[]; participantNames: Record<string, string> } | null = null;
-  
-  // Only route to conversations that had activity in the last 24 hours
-  // to prevent old/stale conversations from swallowing messages meant for Robin
-  const recentCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  
-  for (const key of keysToSearch) {
-    const snap = await adminDb.collection('conversations')
-      .where('participantIds', 'array-contains', key)
-      .where('lastActivityAt', '>=', recentCutoff)
-      .orderBy('lastActivityAt', 'desc')
-      .limit(1)
-      .get();
-    
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      const data = doc.data();
-      conversation = {
-        id: doc.id,
-        participantIds: data.participantIds || [],
-        participantNames: data.participantNames || {},
-      };
-      break;
-    }
-  }
-  
-  if (!conversation) {
-    console.log('[sms-inbound] No active conversation found for', playerParticipantKey);
-    return null;
-  }
-  
-  console.log('[sms-inbound] Routing to conversation:', conversation.id);
-  
-  // Determine the sender ID (use linked user ID if available, otherwise player key)
-  const senderId = linkedUserId || playerParticipantKey;
-  
-  // Insert the message into the conversation
-  await adminDb.collection('conversations').doc(conversation.id).collection('messages').add({
-    conversationId: conversation.id,
-    senderId,
-    senderName: playerName,
-    text,
-    sentAt: FieldValue.serverTimestamp(),
-    source: 'sms', // Mark as SMS-originated
-  });
-  
-  // Update conversation metadata
-  await adminDb.collection('conversations').doc(conversation.id).update({
-    lastMessage: {
-      text: text.substring(0, 100),
-      senderId,
-      senderName: playerName,
-      sentAt: FieldValue.serverTimestamp(),
-    },
-    lastActivityAt: FieldValue.serverTimestamp(),
-  });
-  
-  // Notify other participants
-  const otherParticipants = conversation.participantIds.filter(id => id !== senderId && id !== playerParticipantKey);
-  const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
-  
-  for (const recipientId of otherParticipants) {
-    if (recipientId.startsWith('player:')) {
-      // Another player — forward via SMS
-      const playerId = recipientId.replace('player:', '');
-      try {
-        const playerDoc = await adminDb.collection('players').doc(playerId).get();
-        if (playerDoc.exists) {
-          const playerData = playerDoc.data()!;
-          const phone = normalizeToE164(playerData.phone);
-          if (phone && phone !== normalizeToE164(fromPhone)) {
-            await sendSmsMessage({ to: phone, body: `${playerName}: ${text}` });
-          }
-        }
-      } catch (e) {
-        console.error(`[sms-inbound] Failed to forward SMS to player ${playerId}:`, e);
-      }
-    } else {
-      // App user — send in-app notification
-      try {
-        const { sendNotification } = await import('@/lib/notifications');
-        await sendNotification({
-          userId: recipientId,
-          type: 'NEW_MESSAGE',
-          data: {
-            conversationId: conversation.id,
-            senderName: playerName,
-            messagePreview: preview,
-          },
-          templateData: {
-            inviterName: playerName,
-          },
-        });
-      } catch (e) {
-        console.error(`[sms-inbound] Failed to notify user ${recipientId}:`, e);
-      }
-    }
-  }
-  
-  console.log('[sms-inbound] Message inserted into conversation', conversation.id);
-  return `Message delivered to your conversation. Reply anytime to keep chatting.`;
-}
-
-/**
  * Handle an SMS message by routing it through Robin AI.
+ * Robin is the sole owner of the SMS channel — she handles scheduling,
+ * questions, game queries, and message relays to other players.
+ * 
  * Loads the user's players/courts/groups, maintains conversation history
  * in Firestore, and returns Robin's text response.
  */
 const SMS_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes — sessions expire after inactivity
 
-async function handleSmsChatWithRobin(userId: string, message: string): Promise<string> {
+async function handleSmsChatWithRobin(userId: string, message: string, senderPhone: string): Promise<string> {
   console.log('[sms-robin] Starting for user:', userId, 'message:', message.substring(0, 80));
   
   const adminDb = await getAdminDb();
@@ -625,6 +488,24 @@ async function handleSmsChatWithRobin(userId: string, message: string): Promise<
 
     // Build Robin's reply text
     const robinReply = response.confirmationText || "I'm not sure what you'd like to do. Try: 'Schedule a game with [name] tomorrow at 3pm at [court]'";
+
+    // Execute relay if Robin detected a relay message
+    if (response.relayMessage) {
+      const relayResult = await relayMessageFn({
+        senderId: resolvedUserId,
+        senderName: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
+        senderPhone: senderPhone,
+        message: response.relayMessage,
+      });
+      
+      if (!relayResult.success) {
+        console.log('[sms-robin] Relay failed:', relayResult.error);
+        // Override Robin's optimistic confirmation with the actual error
+        const errorReply = relayResult.error || "I couldn't find an upcoming game to relay your message to.";
+        return errorReply;
+      }
+      console.log(`[sms-robin] Relayed message to ${relayResult.relayedTo} players`);
+    }
 
     // Update session history (keep last 10 messages to stay within SMS context)
     const updatedHistory: ChatHistory[] = [

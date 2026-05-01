@@ -497,15 +497,19 @@ export async function addPlayerAction(
                     ? `${adderData.firstName || ''} ${adderData.lastName || ''}`.trim() || 'A friend'
                     : 'A friend';
 
-                const inviteBody = [
-                    `Hi ${playerData.firstName}! ${adderName} added you on LocalDink, the easiest way to schedule pickleball games.`,
-                    `When ${adderName} invites you to a game, you'll get a text — just reply Y to join.`,
-                    `Want to schedule your own games? Sign up: https://localdink.com/login`,
-                    `Reply STOP to opt out`,
-                ].join(' ');
+                // Generate Robin-voiced welcome SMS
+                const { generateRobinSms, appendStopFooter } = await import('@/ai/flows/robin-sms');
+                const inviteBody = await generateRobinSms({
+                    messageType: 'welcome',
+                    details: {
+                        recipientName: playerData.firstName,
+                        adderName,
+                    },
+                    isFirstContact: true,
+                });
 
-                await sendSmsMessage({ to: normalizedPhone, body: inviteBody });
-                console.log(`[add-player] Sent invite SMS to ${normalizedPhone} for ${playerData.firstName}`);
+                await sendSmsMessage({ to: normalizedPhone, body: appendStopFooter(inviteBody) });
+                console.log(`[add-player] Sent Robin welcome SMS to ${normalizedPhone} for ${playerData.firstName}`);
             } catch (smsError) {
                 // Don't fail the player creation if SMS fails
                 console.warn('[add-player] Failed to send invite SMS:', smsError);
@@ -815,7 +819,7 @@ export async function sendMessageNotificationAction(params: {
         console.log('[sendMessageNotification] Recipients:', recipientIds);
 
         for (const recipientId of recipientIds) {
-            // Player participants (player:XXXX) — send SMS directly
+            // Player participants (player:XXXX) — send SMS directly via Robin
             if (recipientId.startsWith('player:')) {
                 const playerId = recipientId.replace('player:', '');
                 try {
@@ -826,11 +830,20 @@ export async function sendMessageNotificationAction(params: {
                         if (phone) {
                             const { sendSmsMessage, isTwilioConfigured } = await import('@/server/twilio');
                             if (isTwilioConfigured()) {
+                                const { generateRobinSms, appendStopFooter } = await import('@/ai/flows/robin-sms');
+                                const robinMsg = await generateRobinSms({
+                                    messageType: 'direct_message',
+                                    details: {
+                                        senderName,
+                                        recipientName: playerData.firstName || 'there',
+                                        message: text,
+                                    },
+                                });
                                 await sendSmsMessage({
                                     to: phone,
-                                    body: `LocalDink - ${senderName}: ${text}\n\nReply to this text to respond.`,
+                                    body: appendStopFooter(robinMsg),
                                 });
-                                console.log(`SMS sent to player ${playerId} at ${phone}`);
+                                console.log(`Robin SMS sent to player ${playerId} at ${phone}`);
                             }
                         }
                     }
@@ -871,11 +884,20 @@ export async function sendMessageNotificationAction(params: {
                         const configured = isTwilioConfigured();
                         console.log('[sendMessageNotification] Twilio configured:', configured);
                         if (configured) {
+                            const { generateRobinSms, appendStopFooter } = await import('@/ai/flows/robin-sms');
+                            const robinMsg = await generateRobinSms({
+                                messageType: 'direct_message',
+                                details: {
+                                    senderName,
+                                    recipientName: userData.firstName || 'there',
+                                    message: text,
+                                },
+                            });
                             await sendSmsMessage({
                                 to: phone,
-                                body: `LocalDink - ${senderName}: ${text}\n\nReply to this text to respond.`,
+                                body: appendStopFooter(robinMsg),
                             });
-                            console.log(`SMS sent to user ${recipientId} at ${phone}`);
+                            console.log(`Robin SMS sent to user ${recipientId} at ${phone}`);
                         }
                     }
                 }
@@ -908,8 +930,15 @@ export async function sendDirectSmsAction(params: {
             return { success: false, message: 'Invalid phone number.' };
         }
 
-        const body = `${params.senderName}: ${params.text}`;
-        await sendSmsMessage({ to: normalized, body });
+        const { generateRobinSms, appendStopFooter } = await import('@/ai/flows/robin-sms');
+        const robinMsg = await generateRobinSms({
+            messageType: 'direct_message',
+            details: {
+                senderName: params.senderName,
+                message: params.text,
+            },
+        });
+        await sendSmsMessage({ to: normalized, body: appendStopFooter(robinMsg) });
         return { success: true, message: 'SMS sent' };
     } catch (error: any) {
         console.error('Error sending direct SMS:', error);

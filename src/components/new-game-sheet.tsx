@@ -44,6 +44,7 @@ const gameSchema = z.object({
   isDoubles: z.string().default('true'),
   playerIds: z.array(z.string()).default([]),
   groupIds: z.array(z.string()).default([]),
+  recurring: z.enum(['none', 'weekly', 'biweekly']).default('none'),
 });
 
 // Generate time options in 30-minute increments from 6:00 AM to 10:00 PM
@@ -117,6 +118,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       time: '05:00 PM',
       playerIds: [],
       groupIds: [],
+      recurring: 'none',
     },
   });
 
@@ -269,6 +271,13 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       attendees,
       groupIds,
       playerStatuses,
+      ...(data.recurring !== 'none' && {
+        recurring: {
+          enabled: true,
+          frequency: data.recurring,
+          dayOfWeek: startTime.getDay(),
+        },
+      }),
     };
 
     try {
@@ -313,6 +322,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
         date: undefined,
         playerIds: [],
         groupIds: [],
+        recurring: 'none',
       });
       onOpenChange(false);
     } catch (error) {
@@ -449,6 +459,32 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
                             </SelectContent>
                           </Select>
                            <FormMessage />
+                      </FormItem>
+                  )}
+              />
+
+              <FormField
+                  control={form.control}
+                  name="recurring"
+                  render={({ field }) => (
+                      <FormItem>
+                          <FormLabel>Repeat</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">One-time game</SelectItem>
+                              <SelectItem value="weekly">Every week</SelectItem>
+                              <SelectItem value="biweekly">Every 2 weeks</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Recurring games auto-create the next session after each game.
+                          </FormDescription>
+                          <FormMessage />
                       </FormItem>
                   )}
               />

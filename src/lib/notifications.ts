@@ -4,6 +4,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAdminApp } from '@/firebase/admin';
 import type { NotificationType, NotificationCreate, Player, NotificationPreferences } from './types';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from './types';
+import { generateRobinSms, appendStopFooter, type RobinSmsContext } from '@/ai/flows/robin-sms';
 
 // Initialize Firestore
 async function getDb() {
@@ -41,49 +42,43 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
       return {
         title: `Game invite from ${data.inviterName || 'a friend'}`,
         body: `${data.matchType || 'Game'} on ${data.date || 'TBD'} at ${data.time || 'TBD'} • ${data.courtName || 'TBD'}`,
-        smsBody: `🏓 ${data.inviterName || 'Someone'} invited you to play ${data.matchType || 'pickleball'} on ${data.date || 'TBD'} at ${data.time || 'TBD'} at ${data.courtName || 'the courts'}. Reply Y to accept, N to decline, or tap: ${data.webLink || 'the app'}\nReply STOP to opt out`,
+        // SMS handled dynamically by Robin — see generateRobinSmsForNotification
       };
     
     case 'GAME_INVITE_ACCEPTED':
       return {
         title: `${data.inviteeName || 'Someone'} is in!`,
         body: `Accepted your ${data.matchType || 'game'} invite for ${data.date || 'the game'}`,
-        smsBody: `✅ ${data.inviteeName || 'Someone'} confirmed for your ${data.matchType || 'game'} on ${data.date || 'upcoming'}! Tap for details: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_INVITE_DECLINED':
       return {
         title: `${data.inviteeName || 'Someone'} can't make it`,
         body: `Declined your ${data.matchType || 'game'} invite for ${data.date || 'the game'}`,
-        smsBody: `${data.inviteeName || 'Someone'} can't make your ${data.matchType || 'game'} on ${data.date || 'upcoming'}. Tap to find a replacement: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_REMINDER':
       return {
         title: 'Game starting soon!',
         body: `${data.matchType || 'Your game'} in 2 hours at ${data.courtName || 'the courts'}. Still need your RSVP!`,
-        smsBody: `⏰ Reminder: ${data.matchType || 'Your game'} at ${data.courtName || 'the courts'} starts in 2 hours! Tap to view: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_CHANGED':
       return {
         title: 'Game details changed',
         body: `${data.matchType || 'Your game'} on ${data.date || 'TBD'} has been updated`,
-        smsBody: `📝 Game update: ${data.matchType || 'Your game'} on ${data.date || 'TBD'} has changed. Tap for details: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'GAME_CANCELLED':
       return {
         title: 'Game cancelled',
         body: `${data.matchType || 'The game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'} has been cancelled`,
-        smsBody: `❌ Cancelled: ${data.matchType || 'The game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'} has been cancelled.\nReply STOP to opt out`,
       };
     
     case 'SPOT_AVAILABLE':
       return {
         title: "You're in! 🎉",
         body: `A spot opened up for ${data.matchType || 'the game'} on ${data.date || 'TBD'} at ${data.courtName || 'the courts'}`,
-        smsBody: `🎉 Good news! A spot opened up for ${data.matchType || 'the game'} on ${data.date || 'TBD'}. You're now confirmed! Tap: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     case 'RSVP_EXPIRED':
@@ -96,7 +91,6 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
       return {
         title: `New message from ${data.inviterName || 'someone'}`,
         body: data.messagePreview || 'You have a new message',
-        smsBody: `💬 ${data.inviterName || 'Someone'} sent you a message on LocalDink. Open the app to reply: ${data.webLink || 'the app'}\nReply STOP to opt out`,
       };
     
     default:
@@ -104,6 +98,91 @@ function getTemplate(type: NotificationType, data: TemplateData): NotificationTe
         title: 'Notification',
         body: 'You have a new notification',
       };
+  }
+}
+
+/**
+ * Map notification type to Robin SMS context for dynamic generation.
+ */
+function mapToRobinSmsContext(type: NotificationType, data: TemplateData): RobinSmsContext | null {
+  switch (type) {
+    case 'GAME_INVITE':
+      return {
+        messageType: 'game_invite',
+        details: {
+          organizerName: data.inviterName,
+          matchType: data.matchType,
+          date: data.date,
+          time: data.time,
+          courtName: data.courtName,
+        },
+      };
+    case 'GAME_INVITE_ACCEPTED':
+      return {
+        messageType: 'rsvp_accepted',
+        details: {
+          playerName: data.inviteeName,
+          matchType: data.matchType,
+          date: data.date,
+        },
+      };
+    case 'GAME_INVITE_DECLINED':
+      return {
+        messageType: 'rsvp_declined',
+        details: {
+          playerName: data.inviteeName,
+          matchType: data.matchType,
+          date: data.date,
+        },
+      };
+    case 'GAME_REMINDER':
+      return {
+        messageType: 'game_reminder',
+        details: {
+          matchType: data.matchType,
+          courtName: data.courtName,
+          date: data.date,
+          time: data.time,
+        },
+      };
+    case 'GAME_CHANGED':
+      return {
+        messageType: 'game_changed',
+        details: {
+          matchType: data.matchType,
+          date: data.date,
+          time: data.time,
+          courtName: data.courtName,
+        },
+      };
+    case 'GAME_CANCELLED':
+      return {
+        messageType: 'game_cancelled',
+        details: {
+          matchType: data.matchType,
+          date: data.date,
+          courtName: data.courtName,
+        },
+      };
+    case 'SPOT_AVAILABLE':
+      return {
+        messageType: 'spot_opened',
+        details: {
+          matchType: data.matchType,
+          date: data.date,
+          courtName: data.courtName,
+        },
+      };
+    case 'NEW_MESSAGE':
+      return {
+        messageType: 'direct_message',
+        details: {
+          senderName: data.inviterName,
+          message: data.messagePreview,
+        },
+      };
+    default:
+      return null;
   }
 }
 
@@ -194,7 +273,7 @@ export async function sendNotification(options: SendNotificationOptions): Promis
   }
   
   // Send SMS notification when user enabled SMS and Twilio is configured
-  if (prefs.channels.sms && template.smsBody && userData.phone) {
+  if (prefs.channels.sms && userData.phone) {
     try {
       // Dynamic import to avoid issues when Twilio isn't configured
       const { sendSmsMessage, normalizeToE164, isTwilioConfigured } = await import('@/server/twilio');
@@ -204,12 +283,21 @@ export async function sendNotification(options: SendNotificationOptions): Promis
       } else {
         const normalizedPhone = normalizeToE164(userData.phone);
         if (normalizedPhone) {
-          await sendSmsMessage({
-            to: normalizedPhone,
-            body: template.smsBody,
-          });
-          channelsUsed.push('sms');
-          console.log(`SMS notification sent to ${normalizedPhone}`);
+          // Generate Robin-voiced SMS dynamically
+          const robinContext = mapToRobinSmsContext(type, { ...templateData, webLink });
+          if (robinContext) {
+            // Add recipient name context
+            const recipientName = userData.firstName || 'there';
+            robinContext.details.recipientName = recipientName;
+            
+            const smsBody = await generateRobinSms(robinContext);
+            await sendSmsMessage({
+              to: normalizedPhone,
+              body: appendStopFooter(smsBody),
+            });
+            channelsUsed.push('sms');
+            console.log(`SMS notification sent to ${normalizedPhone}`);
+          }
         } else {
           console.warn(`Invalid phone number for user ${userId}: ${userData.phone}`);
         }

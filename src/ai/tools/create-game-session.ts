@@ -10,6 +10,7 @@ import { getAdminDb } from '@/firebase/admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { normalizeToE164, sendSmsMessage, isTwilioConfigured } from '@/server/twilio';
 import { sendGameInviteNotifications } from '@/lib/notifications';
+import { generateRobinSms, appendStopFooter } from '@/ai/flows/robin-sms';
 
 const CreateGameSessionToolSchema = z.object({
   courtId: z.string().describe('The ID of the court where the game will be played.'),
@@ -23,6 +24,10 @@ const CreateGameSessionToolSchema = z.object({
   })).describe('Array of attendees with their source (user or player).'),
   playerStatuses: z.record(z.enum(['CONFIRMED', 'DECLINED', 'PENDING'])).describe('Initial RSVP status for each player.'),
   durationMinutes: z.number().optional().describe('Duration of the game in minutes. Defaults to 120.'),
+  recurring: z.object({
+    enabled: z.boolean(),
+    frequency: z.enum(['weekly', 'biweekly']),
+  }).optional().describe('Whether this is a recurring game (e.g. every week or every two weeks).'),
 });
 
 export const createGameSessionTool = ai.defineTool(
@@ -65,7 +70,7 @@ export const createGameSessionTool = ai.defineTool(
 
       // Create the game session document
       const sessionRef = adminDb.collection('game-sessions').doc();
-      await sessionRef.set({
+      const sessionData: Record<string, any> = {
         courtId: input.courtId,
         organizerId: input.organizerId,
         startTime: Timestamp.fromDate(startDate),
@@ -83,7 +88,18 @@ export const createGameSessionTool = ai.defineTool(
         invitesSentAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+
+      // Add recurring info if specified
+      if (input.recurring?.enabled) {
+        sessionData.recurring = {
+          enabled: true,
+          frequency: input.recurring.frequency,
+          dayOfWeek: startDate.getDay(),
+        };
+      }
+
+      await sessionRef.set(sessionData);
 
       // Look up court and organizer info for notifications
       const courtSnap = await adminDb.collection('courts').doc(input.courtId).get();
@@ -122,9 +138,6 @@ export const createGameSessionTool = ai.defineTool(
 
       // Send SMS invitations
       const smsCandidates = input.attendees.filter(a => a.id !== input.organizerId);
-      const locationLabel = [courtName, courtLocation]
-        .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-        .join(' • ');
 
       const notifiedPlayers: Array<{ playerId: string; phone: string; messageSid: string }> = [];
       const skippedPlayers: Array<{ playerId: string; reason: string }> = [];
@@ -158,16 +171,21 @@ export const createGameSessionTool = ai.defineTool(
 
         const playerName = (typeof playerData?.firstName === 'string' ? playerData.firstName : '') || 'there';
         const isRegisteredUser = candidate.source === 'user' || !!playerData?.linkedUserId;
-        const bodyParts = [
-          `Hi ${playerName}!`,
-          `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ''}.`,
-          `It starts ${startTimeDisplay}.`,
-          `Reply Y if you can play or N if you need to pass.`,
-          `- ${organizerName}`,
-          // Add signup CTA for unregistered players
-          ...(!isRegisteredUser ? [`Schedule your own games at localdink.com/login`] : []),
-          `Reply STOP to opt out`,
-        ];
+
+        // Generate Robin-voiced game invite SMS
+        const smsBody = await generateRobinSms({
+          messageType: 'game_invite',
+          details: {
+            recipientName: playerName,
+            organizerName,
+            matchType,
+            date: dateDisplay,
+            time: timeDisplay,
+            courtName: courtName || 'the courts',
+            courtLocation: courtLocation || undefined,
+          },
+          isFirstContact: !isRegisteredUser,
+        });
 
         if (!smsConfigured) {
           skippedPlayers.push({ playerId: snap.id, reason: 'Twilio is not configured' });
@@ -175,7 +193,7 @@ export const createGameSessionTool = ai.defineTool(
         }
 
         try {
-          const message = await sendSmsMessage({ to: phone, body: bodyParts.join(' ') });
+          const message = await sendSmsMessage({ to: phone, body: appendStopFooter(smsBody) });
           notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message?.sid ?? 'unknown' });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'SMS send failed';

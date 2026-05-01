@@ -265,6 +265,7 @@ export default function GameSessionsPage() {
         type: s.isDoubles ? 'Doubles' : 'Singles',
         players: dedupedPlayers,
         alternates,
+        recurring: s.recurring,
       } as GameSession;
     });
   }
