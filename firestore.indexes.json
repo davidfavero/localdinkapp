@@ -23,6 +23,20 @@
           "arrayConfig": "CONTAINS"
         },
         {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "game-sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "playerIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
           "fieldPath": "status",
           "order": "ASCENDING"
         },

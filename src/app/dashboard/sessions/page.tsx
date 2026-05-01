@@ -69,10 +69,11 @@ export default function GameSessionsPage() {
     if (!firestore || !user) return null;
     console.log('[Sessions Query] Fetching organized sessions for user:', user.uid);
     
-    // Show sessions where user is the organizer
+    // Show sessions where user is the organizer, ordered by start time (newest first)
     return query(
       collection(firestore, 'game-sessions'),
       where('organizerId', '==', user.uid),
+      orderBy('startTime', 'desc'),
       limit(pageSize)
     );
   }, [firestore, user, pageSize]);
@@ -82,10 +83,11 @@ export default function GameSessionsPage() {
     if (!firestore || !user) return null;
     console.log('[Sessions Query] Fetching invites for user:', user.uid);
     
-    // Show sessions where user is in playerIds array
+    // Show sessions where user is in playerIds array, ordered by start time (newest first)
     return query(
       collection(firestore, 'game-sessions'),
       where('playerIds', 'array-contains', user.uid),
+      orderBy('startTime', 'desc'),
       limit(pageSize)
     );
   }, [firestore, user, pageSize]);

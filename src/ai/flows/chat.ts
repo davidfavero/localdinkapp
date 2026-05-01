@@ -853,6 +853,17 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
       console.log('[chat] Using regex time:', regexTime);
       extractedDetails.time = regexTime;
     }
+
+    // GUARD: If the AI inferred a time that wasn't actually stated by the user,
+    // strip it so Robin asks instead of silently assuming.
+    if (extractedDetails.time && !regexTime) {
+      // Check if the user's current message contains any time-like pattern
+      const hasTimeLikePattern = /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|noon|midnight|morning|afternoon|evening|night)\b/i.test(processedInput);
+      if (!hasTimeLikePattern) {
+        console.log(`[chat] AI inferred time "${extractedDetails.time}" but user didn't state one — clearing`);
+        extractedDetails.time = null;
+      }
+    }
     if (regexLocation && !extractedDetails.location) {
       console.log('[chat] Using regex location:', regexLocation.location);
       extractedDetails.location = regexLocation.location;
