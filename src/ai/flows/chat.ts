@@ -599,11 +599,28 @@ export async function chat(
       // ======================================================================
       // DISAMBIGUATION RESPONSE HANDLER
       // Robin asked "Do you mean X or Y?" — interpret the user's answer.
+      // Also injects the resolution into disambiguationMemory so the player
+      // resolution code downstream doesn't re-trigger disambiguation.
       // ======================================================================
       const disambigMatch = lastRobinMessage.text.match(/Do you mean (.+?)(?:\?|$)/i);
       if (disambigMatch) {
         const options = disambigMatch[1].split(/ or /i).map(s => s.trim().replace(/\?$/, ''));
         const lowerReply = input.message.toLowerCase().trim();
+        
+        // Helper: resolve selected option into disambiguationMemory
+        const resolveDisambiguation = (selectedOption: string) => {
+          const playerData = knownPlayers.find(
+            p => `${p.firstName} ${p.lastName}`.toLowerCase() === selectedOption.toLowerCase()
+          );
+          if (playerData?.id) {
+            // Extract the ambiguous first name from the original question
+            // e.g., both options share "David" as first name
+            const firstName = selectedOption.split(' ')[0].toLowerCase();
+            disambiguationMemory[firstName] = playerData.id;
+            disambiguationMemory[selectedOption.toLowerCase()] = playerData.id;
+            console.log(`[chat] Injected disambiguation memory: "${firstName}" → ${playerData.id} (${selectedOption})`);
+          }
+        };
         
         // Check if user is identifying themselves: "I'm X", "I am X", "It's me, X", "This is X"
         const selfIdentifyMatch = lowerReply.match(
@@ -618,6 +635,7 @@ export async function chat(
           );
           if (selectedOption) {
             console.log(`[chat] User identified as "${identifiedName}", inferring intended player: "${selectedOption}"`);
+            resolveDisambiguation(selectedOption);
             // Find the original scheduling request
             const originalRequest = historyToConsider
               .filter(h => h.sender === 'user')
@@ -638,6 +656,7 @@ export async function chat(
           });
           if (selectedOption) {
             console.log(`[chat] User selected disambiguation option: "${selectedOption}"`);
+            resolveDisambiguation(selectedOption);
             const originalRequest = historyToConsider
               .filter(h => h.sender === 'user')
               .slice(0, -1)
@@ -1137,6 +1156,8 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
             undoExpiresAt: Date.now() + 10 * 60 * 1000,
             notifiedCount: createResult.notifiedCount || 0,
             skippedPlayers: createResult.skippedPlayers || [],
+            disambiguationMemoryUpdates: Object.keys(disambiguationMemoryUpdates).length > 0
+              ? disambiguationMemoryUpdates : undefined,
           };
         } else {
           return {

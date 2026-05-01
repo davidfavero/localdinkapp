@@ -14,6 +14,7 @@ export type SmsIntent =
   | 'decline'     // Player doesn't want to join
   | 'cancel'      // Player was confirmed but wants out
   | 'scheduling'  // Player wants to schedule/set up a game
+  | 'relay'       // Player wants to send a message to their game group
   | 'question'    // Player is asking a question
   | 'unknown';    // Can't determine intent
 
@@ -50,7 +51,7 @@ export async function detectComplianceKeyword(message: string): Promise<'stop' |
 
 // Common patterns we can detect without AI
 const ACCEPT_PATTERNS = [
-  /^(y|yes|yep|yeah|yea|ya|yup|sure|ok|okay|k|in|im in|i'm in|count me in|i'll be there|see you there|confirmed|accept|joining|join|down|let's go|lets go|absolutely|definitely|for sure|👍|✅|🎾|🏓)$/i,
+  /^(y|yes|yep|yeah|yea|ya|yup|sure|ok|okay|k|in|im in|i'm in|count me in|i'll be there|see you there|confirmed|accept|joining|join|down|let's go|lets go|absolutely|definitely|for sure|👍|✅|🎾)$/i,
 ];
 
 const DECLINE_PATTERNS = [
@@ -95,7 +96,23 @@ function quickPatternMatch(message: string): SmsIntentResult | null {
     /\b(invite|send\s+invite|get\s+a\s+game)\b/i,
   ];
   
-  if (trimmed.length > 15) { // Scheduling messages are always longer than single-word RSVP replies
+  // Relay patterns — detect messages intended for the game group
+  const RELAY_INDICATORS = [
+    /\b(tell|let)\s+(everyone|the\s+group|them|the\s+team|everybody)\b/i,
+    /\b(let)\s+(everyone|the\s+group|them|the\s+team|everybody)\s+know\b/i,
+    /\b(send|relay|forward|pass\s+along)\s+(to|this\s+to)\s+(the\s+group|everyone|them)\b/i,
+    /\b(running\s+late|running\s+\d+\s+min|be\s+there\s+in)\b/i,
+    /\b(tell|ask)\s+\w+\s+(if|to|that|about)\b/i,
+  ];
+  
+  if (trimmed.length > 15) { // These messages are always longer than single-word RSVP replies
+    // Check relay patterns first (more specific)
+    for (const pattern of RELAY_INDICATORS) {
+      if (pattern.test(trimmed)) {
+        return { intent: 'relay', confidence: 'high' };
+      }
+    }
+    
     for (const pattern of SCHEDULING_INDICATORS) {
       if (pattern.test(trimmed)) {
         return { intent: 'scheduling', confidence: 'high' };
@@ -141,6 +158,7 @@ Determine their intent. Options:
 - "accept" = They want to join/accept an existing game invitation
 - "decline" = They don't want to join an existing game invitation
 - "cancel" = They previously accepted but now want to back out
+- "relay" = They want to send a message to their game group (e.g. "tell everyone I'm late", "running 10 minutes late")
 - "question" = They're asking for more information or chatting
 - "unknown" = Can't determine what they want
 
@@ -148,13 +166,13 @@ Also determine confidence (high/medium/low) and if we need to ask a follow-up qu
 
 Respond in JSON format only:
 {
-  "intent": "scheduling|accept|decline|cancel|question|unknown",
+  "intent": "scheduling|accept|decline|cancel|relay|question|unknown",
   "confidence": "high|medium|low",
   "followUpQuestion": "optional question if intent is unclear"
 }`,
       output: {
         schema: z.object({
-          intent: z.enum(['scheduling', 'accept', 'decline', 'cancel', 'question', 'unknown']),
+          intent: z.enum(['scheduling', 'accept', 'decline', 'cancel', 'relay', 'question', 'unknown']),
           confidence: z.enum(['high', 'medium', 'low']),
           followUpQuestion: z.string().optional(),
         }),

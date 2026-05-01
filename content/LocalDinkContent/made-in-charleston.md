@@ -4,7 +4,7 @@ I kept running into the same challenges everywhere I play: my hometown games in 
 
 Shouldn't there be a frictionless solution to schedule pickleball games?
 
-So I started to build something - something that doesn't disrupt anyone's normal flow - it must be rooted in SMS texts; something utilizes AI in teh right way - to coordinate RSVPs, cancellations, and all the silly communication across that. I want to build a better way to organize groups, coordinate games, and cut through the noise. SMS because it's natural to us all plus an AI Agent to coordinate it all - I named it Robin.
+So I started to build something - something that doesn't disrupt anyone's normal flow - it must be rooted in SMS texts; something utilizes AI in the right way - to coordinate RSVPs, cancellations, and all the silly communication across that. I want to build a better way to organize groups, coordinate games, and cut through the noise. SMS because it's natural to us all plus an AI Agent to coordinate it all - I named it Robin.
 
 It's something simple, social, and built specifically for pickleball.
 
