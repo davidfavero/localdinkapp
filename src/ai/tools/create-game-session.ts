@@ -193,7 +193,7 @@ export const createGameSessionTool = ai.defineTool(
         }
 
         try {
-          const message = await sendSmsMessage({ to: phone, body: appendStopFooter(smsBody) });
+          const message = await sendSmsMessage({ to: phone, body: await appendStopFooter(smsBody) });
           notifiedPlayers.push({ playerId: candidate.id, phone, messageSid: message?.sid ?? 'unknown' });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'SMS send failed';

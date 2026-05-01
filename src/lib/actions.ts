@@ -508,7 +508,7 @@ export async function addPlayerAction(
                     isFirstContact: true,
                 });
 
-                await sendSmsMessage({ to: normalizedPhone, body: appendStopFooter(inviteBody) });
+                await sendSmsMessage({ to: normalizedPhone, body: await appendStopFooter(inviteBody) });
                 console.log(`[add-player] Sent Robin welcome SMS to ${normalizedPhone} for ${playerData.firstName}`);
             } catch (smsError) {
                 // Don't fail the player creation if SMS fails
@@ -841,7 +841,7 @@ export async function sendMessageNotificationAction(params: {
                                 });
                                 await sendSmsMessage({
                                     to: phone,
-                                    body: appendStopFooter(robinMsg),
+                                    body: await appendStopFooter(robinMsg),
                                 });
                                 console.log(`Robin SMS sent to player ${playerId} at ${phone}`);
                             }
@@ -895,7 +895,7 @@ export async function sendMessageNotificationAction(params: {
                             });
                             await sendSmsMessage({
                                 to: phone,
-                                body: appendStopFooter(robinMsg),
+                                body: await appendStopFooter(robinMsg),
                             });
                             console.log(`Robin SMS sent to user ${recipientId} at ${phone}`);
                         }
@@ -938,7 +938,7 @@ export async function sendDirectSmsAction(params: {
                 message: params.text,
             },
         });
-        await sendSmsMessage({ to: normalized, body: appendStopFooter(robinMsg) });
+        await sendSmsMessage({ to: normalized, body: await appendStopFooter(robinMsg) });
         return { success: true, message: 'SMS sent' };
     } catch (error: any) {
         console.error('Error sending direct SMS:', error);

@@ -244,6 +244,6 @@ function getFallbackMessage(context: RobinSmsContext): string {
  * Append the STOP footer to any Robin SMS message.
  * Call this on EVERY outbound SMS.
  */
-export function appendStopFooter(message: string): string {
+export async function appendStopFooter(message: string): Promise<string> {
   return `${message}\n\nReply STOP to opt out`;
 }

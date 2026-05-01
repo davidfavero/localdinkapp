@@ -426,7 +426,7 @@ export async function handleCancel(
         date: session.startTimeDisplay || 'upcoming',
       },
     });
-    await sendSmsNotification(organizer.phone, appendStopFooter(organizerMsg));
+    await sendSmsNotification(organizer.phone, await appendStopFooter(organizerMsg));
   }
   
   // Notify other confirmed players
@@ -446,7 +446,7 @@ export async function handleCancel(
           date: session.startTimeDisplay || 'upcoming',
         },
       });
-      await sendSmsNotification(confirmedPlayer.phone, appendStopFooter(playerMsg));
+      await sendSmsNotification(confirmedPlayer.phone, await appendStopFooter(playerMsg));
     }
   }
   
@@ -494,7 +494,7 @@ async function notifyGameFull(
           confirmedPlayers: confirmedNames,
         },
       });
-      await sendSmsNotification(player.phone, appendStopFooter(gameFullMsg));
+      await sendSmsNotification(player.phone, await appendStopFooter(gameFullMsg));
     }
   }
   
@@ -513,7 +513,7 @@ async function notifyGameFull(
           date: session.startTimeDisplay || 'upcoming',
         },
       });
-      await sendSmsNotification(player.phone, appendStopFooter(waitlistMsg));
+      await sendSmsNotification(player.phone, await appendStopFooter(waitlistMsg));
     }
   }
 }
@@ -561,7 +561,7 @@ async function promoteFromWaitlistOrNotify(
           courtName: session.courtName,
         },
       });
-      await sendSmsNotification(promoted.phone, appendStopFooter(promoMsg));
+      await sendSmsNotification(promoted.phone, await appendStopFooter(promoMsg));
     }
     
     // Send in-app notification for the promotion

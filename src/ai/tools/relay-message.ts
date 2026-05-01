@@ -160,7 +160,7 @@ export async function relayMessage(params: RelayMessageParams): Promise<RelayMes
 
     for (const phone of recipientPhones) {
       try {
-        await sendSmsMessage({ to: phone, body: appendStopFooter(relayText) });
+        await sendSmsMessage({ to: phone, body: await appendStopFooter(relayText) });
         sentCount++;
       } catch (err) {
         console.error(`[relay-message] Failed to send to ${phone}:`, err);

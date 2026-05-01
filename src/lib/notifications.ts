@@ -293,7 +293,7 @@ export async function sendNotification(options: SendNotificationOptions): Promis
             const smsBody = await generateRobinSms(robinContext);
             await sendSmsMessage({
               to: normalizedPhone,
-              body: appendStopFooter(smsBody),
+              body: await appendStopFooter(smsBody),
             });
             channelsUsed.push('sms');
             console.log(`SMS notification sent to ${normalizedPhone}`);
