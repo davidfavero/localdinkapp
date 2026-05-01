@@ -595,6 +595,59 @@ export async function chat(
             // Re-run the initial request with the new phone number appended.
              processedInput = `${lastUserMessage.text} (and the phone number for the new person is ${input.message})`;
         }
+    } else if (lastRobinMessage && /do you mean .+ or /i.test(lastRobinMessage.text)) {
+      // ======================================================================
+      // DISAMBIGUATION RESPONSE HANDLER
+      // Robin asked "Do you mean X or Y?" — interpret the user's answer.
+      // ======================================================================
+      const disambigMatch = lastRobinMessage.text.match(/Do you mean (.+?)(?:\?|$)/i);
+      if (disambigMatch) {
+        const options = disambigMatch[1].split(/ or /i).map(s => s.trim().replace(/\?$/, ''));
+        const lowerReply = input.message.toLowerCase().trim();
+        
+        // Check if user is identifying themselves: "I'm X", "I am X", "It's me, X", "This is X"
+        const selfIdentifyMatch = lowerReply.match(
+          /^(?:i'?m|i am|it'?s me,?\s*(?:i'?m)?|this is|that'?s me)\s+(.+)$/i
+        );
+        
+        if (selfIdentifyMatch) {
+          const identifiedName = selfIdentifyMatch[1].replace(/[.!]$/, '').trim().toLowerCase();
+          // User identified themselves — the OTHER option is the intended player
+          const selectedOption = options.find(
+            opt => !opt.toLowerCase().includes(identifiedName)
+          );
+          if (selectedOption) {
+            console.log(`[chat] User identified as "${identifiedName}", inferring intended player: "${selectedOption}"`);
+            // Find the original scheduling request
+            const originalRequest = historyToConsider
+              .filter(h => h.sender === 'user')
+              .slice(0, -1) // Exclude current disambiguation response
+              .pop();
+            if (originalRequest) {
+              processedInput = `[User clarified disambiguation] They said "${input.message}" meaning they ARE one of the options, so the OTHER person "${selectedOption}" is the player they want to invite. Original request: "${originalRequest.text}". Use player "${selectedOption}" for the invite.`;
+            } else {
+              processedInput = `[User clarified disambiguation] The player they want to invite is "${selectedOption}". "${input.message}" means they are identifying themselves. Schedule with "${selectedOption}".`;
+            }
+          }
+        } else {
+          // User picked one directly: "David Thompson", "Thompson", "the first one"
+          const selectedOption = options.find(opt => {
+            const optLower = opt.toLowerCase();
+            return optLower.includes(lowerReply) || lowerReply.includes(optLower) ||
+              optLower.split(' ').some(word => word === lowerReply);
+          });
+          if (selectedOption) {
+            console.log(`[chat] User selected disambiguation option: "${selectedOption}"`);
+            const originalRequest = historyToConsider
+              .filter(h => h.sender === 'user')
+              .slice(0, -1)
+              .pop();
+            if (originalRequest) {
+              processedInput = `[User clarified disambiguation] They picked "${selectedOption}". Original request: "${originalRequest.text}". Use player "${selectedOption}" for the invite.`;
+            }
+          }
+        }
+      }
     }
 
     const today = getCurrentAppDate(userTimezone);
@@ -671,7 +724,15 @@ ${processedInput}
 ## OUTPUT
 Extract ALL details from ALL messages in the conversation. Check both history AND current message.
 If you have all details, set confirmationText to summarize what you're scheduling.
-Only ask a question if something is genuinely missing from ALL messages.`,
+Only ask a question if something is genuinely missing from ALL messages.
+
+## MESSAGE RELAY
+If the user wants to send a message to their game group (e.g. "tell everyone I'm running late",
+"let the group know I'm bringing extra balls", "running 10 min late"):
+- Set relayMessage to the cleaned-up message to relay
+- Set relayTargetGame to "nearest"
+- Set confirmationText to acknowledge you're sending it (e.g. "Done! I let your group know.")
+- Do NOT set scheduling fields (players, date, time, location)`,
         model: geminiFlash!,
         output: {
           schema: ChatOutputSchema,
@@ -820,8 +881,13 @@ Only ask a question if something is genuinely missing from ALL messages.`,
     }
 
     // If it's just a conversational response with no scheduling details, return it
+    // This also covers relay messages — Robin sets confirmationText + relayMessage but no scheduling fields
     if (extractedDetails.confirmationText && !extractedDetails.players && !extractedDetails.date && !extractedDetails.time && !extractedDetails.location) {
-      return { confirmationText: extractedDetails.confirmationText };
+      return {
+        confirmationText: extractedDetails.confirmationText,
+        relayMessage: extractedDetails.relayMessage,
+        relayTargetGame: extractedDetails.relayTargetGame,
+      };
     }
 
     let { players, date, time, location } = extractedDetails;
