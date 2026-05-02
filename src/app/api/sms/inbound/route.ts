@@ -16,6 +16,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import type { Player, Group, Court, ChatHistory } from '@/lib/types';
 import { relayMessage as relayMessageFn } from '@/ai/tools/relay-message';
+import { chat } from '@/ai/flows/chat';
 
 // Twilio webhook signature validation
 function validateTwilioRequest(req: NextRequest, rawBody: string): boolean {
@@ -427,10 +428,13 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
       ownerId: resolvedUserId,
     };
 
-    // Load user's players (contacts)
-    const playersSnap = await adminDb.collection('players')
-      .where('ownerId', '==', resolvedUserId)
-      .get();
+    // Load user data in parallel for speed
+    const [playersSnap, courtsSnap, groupsSnap, sessionDoc] = await Promise.all([
+      adminDb.collection('players').where('ownerId', '==', resolvedUserId).get(),
+      adminDb.collection('courts').where('ownerId', '==', resolvedUserId).get(),
+      adminDb.collection('groups').where('ownerId', '==', resolvedUserId).get(),
+      adminDb.collection('sms-robin-sessions').doc(resolvedUserId).get(),
+    ]);
     const players: Player[] = [
       currentUser,
       ...playersSnap.docs.map(doc => ({
@@ -439,28 +443,19 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
       } as Player)),
     ];
 
-    // Load user's courts
-    const courtsSnap = await adminDb.collection('courts')
-      .where('ownerId', '==', resolvedUserId)
-      .get();
     const courts: Court[] = courtsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     } as Court));
 
-    // Load user's groups
-    const groupsSnap = await adminDb.collection('groups')
-      .where('ownerId', '==', resolvedUserId)
-      .get();
     const groups: (Group & { id: string })[] = groupsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     } as Group & { id: string }));
 
     // Load or create SMS Robin session for conversation continuity
-    const sessionRef = adminDb.collection('sms-robin-sessions').doc(resolvedUserId);
-    const sessionDoc = await sessionRef.get();
     let history: ChatHistory[] = [];
+    const sessionRef = adminDb.collection('sms-robin-sessions').doc(resolvedUserId);
 
     if (sessionDoc.exists) {
       const sessionData = sessionDoc.data()!;
@@ -474,8 +469,85 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
     }
 
     // Call Robin
-    const { chat } = await import('@/ai/flows/chat');
     const disambiguationMemory = userData.nameDisambiguationMemory || {};
+    
+    // Check if the user is confirming a court addition from a previous message
+    const lastRobinMsg = history.filter(h => h.sender === 'robin').pop();
+    const isCourtConfirmation = lastRobinMsg?.text?.includes("couldn't find a court called") &&
+      /\b(yes|yeah|yep|sure|ok|add|please)\b/i.test(message);
+    
+    if (isCourtConfirmation) {
+      // Extract court name from Robin's previous message
+      const courtNameMatch = lastRobinMsg!.text.match(/court called "([^"]+)"/);
+      if (courtNameMatch) {
+        const newCourtName = courtNameMatch[1];
+        // Create the court in Firestore
+        const newCourtRef = await adminDb.collection('courts').add({
+          name: newCourtName,
+          location: '',
+          ownerId: resolvedUserId,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        console.log(`[sms-robin] Created court "${newCourtName}" with id: ${newCourtRef.id}`);
+        
+        // Add to local courts array for immediate use
+        courts.push({ id: newCourtRef.id, name: newCourtName, location: '', ownerId: resolvedUserId } as Court);
+        
+        // Find the original scheduling request from history to re-run it
+        const originalRequest = history
+          .filter(h => h.sender === 'user')
+          .pop();
+        
+        if (originalRequest) {
+          // Re-run chat with original request + new court available
+          const retryResponse = await chat(
+            players,
+            { message: originalRequest.text, history: history.slice(0, -2) }, // Remove the court question exchange
+            groups,
+            courts,
+            disambiguationMemory,
+            {}
+          );
+          
+          const retryReply = retryResponse.confirmationText || `Added "${newCourtName}" to your courts! But I need a bit more info to schedule the game.`;
+          
+          // Update session history
+          const updatedHistory: ChatHistory[] = [
+            ...history,
+            { sender: 'user' as const, text: message },
+            { sender: 'robin' as const, text: retryReply },
+          ].slice(-10);
+          
+          await sessionRef.set({
+            userId: resolvedUserId,
+            history: updatedHistory,
+            lastActivityAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+          
+          // Persist disambiguation memory from retry
+          if (retryResponse.disambiguationMemoryUpdates && Object.keys(retryResponse.disambiguationMemoryUpdates).length > 0) {
+            const mergedMemory = { ...disambiguationMemory, ...retryResponse.disambiguationMemoryUpdates };
+            await adminDb.collection('users').doc(resolvedUserId).set(
+              { nameDisambiguationMemory: mergedMemory },
+              { merge: true }
+            );
+          }
+          
+          return retryReply;
+        } else {
+          // No original request — just confirm the court was added
+          const confirmReply = `Done! I've added "${newCourtName}" to your courts. Now, what game would you like me to schedule there?`;
+          const updatedHistory: ChatHistory[] = [
+            ...history,
+            { sender: 'user' as const, text: message },
+            { sender: 'robin' as const, text: confirmReply },
+          ].slice(-10);
+          await sessionRef.set({ userId: resolvedUserId, history: updatedHistory, lastActivityAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          return confirmReply;
+        }
+      }
+    }
     
     const response = await chat(
       players,
