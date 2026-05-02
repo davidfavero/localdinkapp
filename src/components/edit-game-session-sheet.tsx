@@ -14,11 +14,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useFirestore, useUser } from '@/firebase';
-import { doc, updateDoc, deleteDoc, Timestamp, collection, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, collection, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, CalendarIcon } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Court, Player, GameSessionAttendee, RsvpStatus } from '@/lib/types';
+import { deleteGameSessionAction } from '@/lib/actions';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -231,26 +232,28 @@ export function EditGameSessionSheet({
   };
 
   const handleDelete = async () => {
-    if (!firestore || !sessionId) return;
+    if (!firestore || !sessionId || !user) return;
 
     setIsDeleting(true);
 
     try {
-      // Delete the players subcollection first
-      const playersCollectionRef = collection(firestore, 'game-sessions', sessionId, 'players');
-      const playersSnapshot = await getDocs(playersCollectionRef);
-      const deletePlayerPromises = playersSnapshot.docs.map(playerDoc => 
-        deleteDoc(doc(firestore, 'game-sessions', sessionId, 'players', playerDoc.id))
-      );
-      await Promise.all(deletePlayerPromises);
+      const result = await deleteGameSessionAction({
+        gameSessionId: sessionId,
+        organizerId: user.uid,
+      });
 
-      // Delete the main session document
-      const sessionRef = doc(firestore, 'game-sessions', sessionId);
-      await deleteDoc(sessionRef);
+      if (!result.success) {
+        toast({
+          variant: 'destructive',
+          title: 'Delete Failed',
+          description: result.message,
+        });
+        return;
+      }
 
       toast({
         title: 'Session Deleted',
-        description: 'The game session has been deleted successfully.',
+        description: result.message,
       });
 
       setShowDeleteDialog(false);

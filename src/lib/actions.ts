@@ -4,10 +4,6 @@ import type {
   ProfilePreferenceExtractionInput,
   ProfilePreferenceExtractionOutput,
 } from "@/ai/flows/profile-preference-extraction";
-import type {
-  HandleCancellationInput,
-  HandleCancellationOutput,
-} from "@/ai/flows/automated-cancellation-management";
 import { getAdminDb } from "@/firebase/admin";
 import { players, mockCourts } from "@/lib/data";
 import type { ChatInput, ChatOutput, Player, Group, Court } from "./types";
@@ -27,14 +23,118 @@ export async function extractPreferencesAction(
 }
 
 export async function handleCancellationAction(
-  input: HandleCancellationInput
-): Promise<HandleCancellationOutput> {
+  input: { gameSessionId: string; playerId: string }
+): Promise<{ success: boolean; message: string }> {
   try {
-    const { handleCancellation } = await import("@/ai/flows/automated-cancellation-management");
-    return await handleCancellation(input);
+    const { handleCancel } = await import("@/lib/rsvp-handler");
+    const result = await handleCancel(input.playerId, input.gameSessionId);
+    return { success: result.success, message: result.message };
   } catch (error) {
     console.error("Error in handleCancellationAction:", error);
-    throw new Error("Failed to handle cancellation with AI.");
+    throw new Error("Failed to process cancellation.");
+  }
+}
+
+export async function deleteGameSessionAction(
+  input: { gameSessionId: string; organizerId: string }
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const adminDb = await getAdminDb();
+    if (!adminDb) throw new Error("Database not available");
+
+    const sessionRef = adminDb.collection('game-sessions').doc(input.gameSessionId);
+    const sessionDoc = await sessionRef.get();
+    if (!sessionDoc.exists) {
+      return { success: false, message: 'Game session not found.' };
+    }
+
+    const session = sessionDoc.data()!;
+
+    // Verify the requester is the organizer
+    if (session.organizerId !== input.organizerId) {
+      return { success: false, message: 'Only the organizer can delete a game session.' };
+    }
+
+    // Collect all player IDs who need to be notified (exclude organizer)
+    const playerIds = Object.entries(session.playerStatuses || {})
+      .filter(([id, status]) => id !== input.organizerId && status !== 'CANCELLED' && status !== 'DECLINED')
+      .map(([id]) => id);
+
+    // Get court name for notification
+    let courtName = 'the court';
+    if (session.courtId) {
+      const courtDoc = await adminDb.collection('courts').doc(session.courtId).get();
+      if (courtDoc.exists) courtName = courtDoc.data()!.name || courtName;
+    }
+
+    // Format date for notifications
+    const startTime = session.startTime?.toDate ? session.startTime.toDate() : new Date(session.startTime);
+    const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    // Notify all affected players via SMS
+    const { generateRobinSms, appendStopFooter } = await import('@/ai/flows/robin-sms');
+    
+    for (const playerId of playerIds) {
+      try {
+        // Try users collection first, then players collection
+        let playerDoc = await adminDb.collection('users').doc(playerId).get();
+        let phone: string | undefined;
+        let firstName: string | undefined;
+
+        if (playerDoc.exists) {
+          phone = playerDoc.data()!.phone;
+          firstName = playerDoc.data()!.firstName;
+        } else {
+          playerDoc = await adminDb.collection('players').doc(playerId).get();
+          if (playerDoc.exists) {
+            phone = playerDoc.data()!.phone;
+            firstName = playerDoc.data()!.firstName;
+          }
+        }
+
+        if (phone) {
+          const smsBody = await generateRobinSms({
+            messageType: 'game_cancelled',
+            details: {
+              recipientName: firstName || 'there',
+              matchType: session.isDoubles ? 'Doubles' : 'Singles',
+              date: `${dateStr} at ${timeStr}`,
+              courtName,
+            },
+          });
+          const normalized = normalizeToE164(phone);
+          if (normalized) {
+            await sendSmsMessage({ to: normalized, body: await appendStopFooter(smsBody) });
+          }
+        }
+
+        // Send in-app notification
+        await adminDb.collection('notifications').add({
+          userId: playerId,
+          type: 'GAME_CANCELLED',
+          title: 'Game Cancelled',
+          body: `The ${session.isDoubles ? 'doubles' : 'singles'} game at ${courtName} on ${dateStr} at ${timeStr} has been cancelled by the organizer.`,
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+          data: { gameSessionId: input.gameSessionId },
+        });
+      } catch (err) {
+        console.error(`[deleteGameSession] Failed to notify player ${playerId}:`, err);
+      }
+    }
+
+    // Delete players subcollection
+    const playersSnap = await sessionRef.collection('players').get();
+    const batch = adminDb.batch();
+    playersSnap.docs.forEach(d => batch.delete(d.ref));
+    batch.delete(sessionRef);
+    await batch.commit();
+
+    return { success: true, message: `Game deleted. ${playerIds.length > 0 ? `Notified ${playerIds.length} player${playerIds.length === 1 ? '' : 's'}.` : ''}` };
+  } catch (error) {
+    console.error("Error in deleteGameSessionAction:", error);
+    throw new Error("Failed to delete game session.");
   }
 }
 
