@@ -61,7 +61,6 @@ export default function GameSessionsPage() {
     playerStatuses?: Record<string, RsvpStatus>;
     maxPlayers?: number;
   } | null>(null);
-  const [pageSize] = useState(24);
   const [error, setError] = useState<string | null>(null);
 
   // Filter sessions by organizer (user's own sessions)
@@ -74,23 +73,22 @@ export default function GameSessionsPage() {
       collection(firestore, 'game-sessions'),
       where('organizerId', '==', user.uid),
       orderBy('startTime', 'desc'),
-      limit(pageSize)
+      limit(100)
     );
-  }, [firestore, user, pageSize]);
+  }, [firestore, user]);
 
   // Query for sessions where user is invited (in playerIds but not organizer)
   const invitesQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     console.log('[Sessions Query] Fetching invites for user:', user.uid);
     
-    // Show sessions where user is in playerIds array, ordered by start time (newest first)
+    // Show sessions where user is in playerIds array, ordered client-side after fetch
     return query(
       collection(firestore, 'game-sessions'),
       where('playerIds', 'array-contains', user.uid),
-      orderBy('startTime', 'desc'),
-      limit(pageSize)
+      limit(100)
     );
-  }, [firestore, user, pageSize]);
+  }, [firestore, user]);
 
   // Subscribe to collection (first page). If you want true infinite scroll, capture the last visible doc and requery.
   const { data: rawSessions, isLoading: isLoadingSessions } = useCollection(baseQuery);
