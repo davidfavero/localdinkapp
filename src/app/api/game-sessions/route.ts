@@ -239,7 +239,7 @@ export async function POST(request: Request) {
         `Hi ${playerName}!`,
         `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ''}.`,
         `It starts ${formattedStartTime}.`,
-        `Reply YES if you can play or NO if you need to pass.`,
+        `Reply Y to join or N to pass.`,
         `- ${organizerName}`,
         `Reply STOP to opt out`,
       ];

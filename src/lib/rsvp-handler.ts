@@ -502,6 +502,24 @@ async function notifyGameFull(
   const otherIds = Object.entries(playerStatuses)
     .filter(([_, status]) => status === 'PENDING' || status === 'DECLINED')
     .map(([id]) => id);
+
+  // Update remaining PENDING players to DECLINED since game is full
+  if (otherIds.length > 0) {
+    const adminDb = await getAdminDb();
+    if (adminDb) {
+      const sessionRef = adminDb.collection('game-sessions').doc(sessionId);
+      const statusUpdates: Record<string, string> = {};
+      for (const id of otherIds) {
+        if (playerStatuses[id] === 'PENDING') {
+          statusUpdates[`playerStatuses.${id}`] = 'DECLINED';
+        }
+      }
+      if (Object.keys(statusUpdates).length > 0) {
+        await sessionRef.update(statusUpdates);
+        console.log(`[rsvp] Marked ${Object.keys(statusUpdates).length} pending players as DECLINED (game full)`);
+      }
+    }
+  }
   
   for (const pendingId of otherIds) {
     const player = await getPlayerDetails(pendingId);
@@ -612,7 +630,7 @@ async function promoteFromWaitlistOrNotify(
     if (player?.phone) {
       await sendSmsNotification(
         player.phone,
-        `� Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply YES to join!\nReply STOP to opt out`
+        `🎾 Spot available! Pickleball on ${session.startTimeDisplay || 'upcoming'}. Reply Y to join or N to pass.\nReply STOP to opt out`
       );
     }
   }
@@ -641,11 +659,11 @@ export async function sendGameInvites(
       continue;
     }
     
-    const message = `� ${organizerName} invited you to play pickleball!
+    const message = `🎾 ${organizerName} invited you to play pickleball!
 📍 ${courtName}
 📅 ${dateTime}
 
-Reply YES to join or NO to decline.
+Reply Y to join or N to pass.
 Reply STOP to opt out`;
     
     const success = await sendSmsNotification(player.phone, message);

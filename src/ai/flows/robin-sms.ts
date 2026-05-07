@@ -90,7 +90,7 @@ export async function generateRobinSms(context: RobinSmsContext): Promise<string
       prompt,
       config: {
         temperature: 0.7, // More creative for personality
-        maxOutputTokens: 200,
+        maxOutputTokens: 500,
       },
     });
 
@@ -99,7 +99,15 @@ export async function generateRobinSms(context: RobinSmsContext): Promise<string
       : ('text' in result ? (result as any).text?.trim() : null) || getFallbackMessage(context);
 
     // Ensure it doesn't include STOP (we add that separately)
-    return text.replace(/\n?Reply STOP to opt out\.?/gi, '').trim();
+    const cleaned = text.replace(/\n?Reply STOP to opt out\.?/gi, '').trim();
+
+    // If AI output looks truncated (too short or ends mid-sentence), use fallback
+    if (!cleaned || cleaned.length < 20 || (!cleaned.match(/[.!?'"]$/) && !cleaned.match(/[YN]$/))) {
+      console.warn('[robin-sms] AI output appears truncated, using fallback:', cleaned);
+      return getFallbackMessage(context);
+    }
+
+    return cleaned;
   } catch (error) {
     console.error('[robin-sms] AI generation failed, using fallback:', error);
     return getFallbackMessage(context);
@@ -125,7 +133,7 @@ function buildRobinSmsPrompt(context: RobinSmsContext): string {
       instruction = `Generate a game invite SMS for ${d.recipientName || 'a player'}.
 Details: ${d.organizerName || 'The organizer'} is inviting them to play ${d.matchType || 'pickleball'}${d.courtName ? ` at ${d.courtName}` : ''}${d.courtLocation ? ` (${d.courtLocation})` : ''}. Game starts ${d.date || ''} ${d.time || ''}.
 ${isFirstContact ? 'This is the FIRST time Robin is texting this person — briefly introduce yourself as Robin, their AI pickleball coordinator from LocalDink.' : ''}
-Tell them to reply Y to join or N to pass.`;
+IMPORTANT: You MUST end the message with clear instructions to "Reply Y to join or N to pass." — this is required for every game invite.`;
       break;
 
     case 'rsvp_accepted':
@@ -199,7 +207,7 @@ function getFallbackMessage(context: RobinSmsContext): string {
       const intro = isFirstContact
         ? `Hey ${d.recipientName || 'there'}! I'm Robin from LocalDink — ${d.organizerName || 'your friend'}'s pickleball coordinator. `
         : '';
-      return `${intro}${d.organizerName || 'Your crew'} has a ${d.matchType || 'game'} going${d.courtName ? ` at ${d.courtName}` : ''}, ${d.date || ''} ${d.time || ''}. You in? Reply Y or N`;
+      return `${intro}${d.organizerName || 'Your crew'} has a ${d.matchType || 'game'} going${d.courtName ? ` at ${d.courtName}` : ''}, ${d.date || ''} ${d.time || ''}. Reply Y to join or N to pass`;
     }
 
     case 'rsvp_accepted':
