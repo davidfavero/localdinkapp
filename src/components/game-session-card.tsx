@@ -19,6 +19,9 @@ const statusStyles: { [key in RsvpStatus]: string } = {
     CONFIRMED: 'border-green-500',
     PENDING: 'border-yellow-500',
     DECLINED: 'border-red-500 opacity-50',
+    CANCELLED: 'border-red-500 opacity-50',
+    WAITLIST: 'border-blue-500 opacity-70',
+    EXPIRED: 'border-gray-500 opacity-50',
 };
 
 const getDisplayName = (player: GameSession['organizer']) => {
@@ -55,7 +58,8 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
 
   // Overall game confirmation status
   const allConfirmed = session.players.length > 0 && session.players.every(p => p.status === 'CONFIRMED');
-  const unconfirmedCount = session.players.filter(p => p.status !== 'CONFIRMED' && p.status !== 'DECLINED').length;
+  // Only count PENDING players as "awaiting response" — WAITLIST is handled separately
+  const unconfirmedCount = session.players.filter(p => p.status === 'PENDING').length;
 
   const cardContent = (
     <Card className={cn(

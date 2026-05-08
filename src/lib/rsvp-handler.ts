@@ -503,7 +503,7 @@ async function notifyGameFull(
     .filter(([_, status]) => status === 'PENDING' || status === 'DECLINED')
     .map(([id]) => id);
 
-  // Update remaining PENDING players to DECLINED since game is full
+  // Add remaining PENDING players to WAITLIST since game is full
   if (otherIds.length > 0) {
     const adminDb = await getAdminDb();
     if (adminDb) {
@@ -511,12 +511,12 @@ async function notifyGameFull(
       const statusUpdates: Record<string, string> = {};
       for (const id of otherIds) {
         if (playerStatuses[id] === 'PENDING') {
-          statusUpdates[`playerStatuses.${id}`] = 'DECLINED';
+          statusUpdates[`playerStatuses.${id}`] = 'WAITLIST';
         }
       }
       if (Object.keys(statusUpdates).length > 0) {
         await sessionRef.update(statusUpdates);
-        console.log(`[rsvp] Marked ${Object.keys(statusUpdates).length} pending players as DECLINED (game full)`);
+        console.log(`[rsvp] Marked ${Object.keys(statusUpdates).length} pending players as WAITLIST (game full)`);
       }
     }
   }

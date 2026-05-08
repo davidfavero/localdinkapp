@@ -237,7 +237,7 @@ export async function POST(request: Request) {
 
       const bodyParts = [
         `Hi ${playerName}!`,
-        `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ''}.`,
+        `You're invited to a LocalDink pickleball game${locationLabel ? ` at ${locationLabel}` : ' at the courts'}.`,
         `It starts ${formattedStartTime}.`,
         `Reply Y to join or N to pass.`,
         `- ${organizerName}`,
