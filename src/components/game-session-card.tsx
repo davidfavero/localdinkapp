@@ -37,6 +37,7 @@ const getDisplayName = (player: GameSession['organizer']) => {
 
 export function GameSessionCard({ session, currentUserStatus, onAccept, onDecline }: GameSessionCardProps) {
   const confirmedPlayers = session.players.filter(p => p.status === 'CONFIRMED');
+  const capacity = session.maxPlayers ?? session.players.length;
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDeclining, setIsDeclining] = useState(false);
 
@@ -57,7 +58,7 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
   };
 
   // Overall game confirmation status
-  const allConfirmed = session.players.length > 0 && session.players.every(p => p.status === 'CONFIRMED');
+  const allConfirmed = capacity > 0 && confirmedPlayers.length >= capacity;
   // Only count PENDING players as "awaiting response" — WAITLIST is handled separately
   const unconfirmedCount = session.players.filter(p => p.status === 'PENDING').length;
 
@@ -89,6 +90,9 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
           </div>
           <div className="flex flex-col items-end gap-1">
             <Badge variant="secondary">{session.type}</Badge>
+            {session.courtCount && session.courtCount > 1 && (
+              <Badge variant="outline" className="text-xs">{session.courtCount} Courts</Badge>
+            )}
             {session.recurring?.enabled && (
               <Badge variant="outline" className="text-xs gap-1">
                 <Repeat className="h-3 w-3" />
@@ -106,7 +110,7 @@ export function GameSessionCard({ session, currentUserStatus, onAccept, onDeclin
           </div>
 
           <div className="mb-4">
-            <h4 className="text-sm font-semibold mb-2">Players ({confirmedPlayers.length}/{session.players.length})</h4>
+            <h4 className="text-sm font-semibold mb-2">Players ({confirmedPlayers.length}/{capacity})</h4>
             <div className="flex items-center -space-x-2">
               {session.players.map(({ player, status }) => (
                 <div key={player.id} className={cn('rounded-full transition-all', status === 'DECLINED' ? 'opacity-40 grayscale' : '')}>

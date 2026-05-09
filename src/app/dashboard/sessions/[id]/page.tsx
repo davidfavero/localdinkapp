@@ -203,6 +203,8 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           date: sessionDate.toLocaleDateString([], { month: 'short', day: 'numeric' }),
           time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
           type: rawSession.isDoubles ? 'Doubles' : 'Singles',
+          courtCount: rawSession.courtCount,
+          maxPlayers: rawSession.maxPlayers,
           players: normalizedPlayers,
           alternates: alternates,
         });

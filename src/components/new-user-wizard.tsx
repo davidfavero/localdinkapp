@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { RobinIcon } from '@/components/icons/robin-icon';
 import { PickleballBallIcon } from '@/components/icons/pickleball-ball-icon';
 import { Check, ChevronRight, MapPin, Users, Calendar, Sparkles, Bell, MessageSquare } from 'lucide-react';
@@ -16,7 +24,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { addCourtAction, addPlayerAction, sendSmsOptInAction } from '@/lib/actions';
 import { useRouter } from 'next/navigation';
 
-type WizardStep = 'welcome' | 'profile' | 'notifications' | 'court' | 'players' | 'complete';
+type WizardStep = 'welcome' | 'profile' | 'preferences' | 'notifications' | 'court' | 'players' | 'complete';
 
 interface NewUserWizardProps {
   open: boolean;
@@ -35,6 +43,10 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [dinkRating, setDinkRating] = useState('3.5');
+  const [doublesPreference, setDoublesPreference] = useState(true);
+  const [availability, setAvailability] = useState('');
+  const [profileVisibility, setProfileVisibility] = useState<'private' | 'friends'>('private');
   
   // Court form state
   const [courtName, setCourtName] = useState('');
@@ -72,6 +84,10 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
       setFirstName(profile.firstName || '');
       setLastName(profile.lastName || '');
       setPhone(profile.phone || '');
+      setDinkRating(profile.dinkRating || '3.5');
+      setDoublesPreference(profile.doublesPreference ?? true);
+      setAvailability(profile.availability || '');
+      setProfileVisibility(profile.profileVisibility || 'private');
     }
   }, [profile]);
   
@@ -87,9 +103,29 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
         phone: normalizePhoneForStorage(phone),
         timezone: profile?.timezone || detectedTimezone || 'America/New_York',
       });
-      setStep('notifications');
+      setStep('preferences');
     } catch (error) {
       console.error('Error saving profile:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    if (!user || !firestore) return;
+
+    setIsLoading(true);
+    try {
+      const userRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userRef, {
+        dinkRating: dinkRating.trim(),
+        doublesPreference,
+        availability: availability.trim(),
+        profileVisibility,
+      });
+      setStep('notifications');
+    } catch (error) {
+      console.error('Error saving preferences:', error);
     } finally {
       setIsLoading(false);
     }
@@ -129,11 +165,18 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
     
     setIsLoading(true);
     try {
-      await addCourtAction({
+      const result = await addCourtAction({
         name: courtName.trim(),
         location: courtLocation.trim(),
         timezone: profile?.timezone || detectedTimezone || 'America/New_York',
       }, user.uid);
+
+      if (result.success && result.courtId && firestore) {
+        const userRef = doc(firestore, 'users', user.uid);
+        await updateDoc(userRef, {
+          homeCourtId: result.courtId,
+        });
+      }
       setStep('players');
     } catch (error) {
       console.error('Error adding court:', error);
@@ -282,6 +325,74 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
             </div>
           </>
         )}
+
+        {step === 'preferences' && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Set your playing preferences</DialogTitle>
+              <DialogDescription>
+                These are optional, but they help Robin make better suggestions right away.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium">Level</label>
+                <Select value={dinkRating} onValueChange={setDinkRating}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select your level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2.5">2.5</SelectItem>
+                    <SelectItem value="3.0">3.0</SelectItem>
+                    <SelectItem value="3.5">3.5</SelectItem>
+                    <SelectItem value="4.0">4.0</SelectItem>
+                    <SelectItem value="4.5">4.5</SelectItem>
+                    <SelectItem value="5.0">5.0+</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <label className="text-sm font-medium">Prefer doubles</label>
+                  <p className="text-xs text-muted-foreground">Robin can bias suggestions toward doubles games.</p>
+                </div>
+                <Switch checked={doublesPreference} onCheckedChange={setDoublesPreference} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Availability</label>
+                <Textarea
+                  value={availability}
+                  onChange={(e) => setAvailability(e.target.value)}
+                  placeholder="Weeknights after 5, Saturdays before lunch, etc."
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Connection visibility</label>
+                <Select value={profileVisibility} onValueChange={(value: 'private' | 'friends') => setProfileVisibility(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">Private</SelectItem>
+                    <SelectItem value="friends">Opt in to friend suggestions</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Opting in lets LocalDink suggest connections later without exposing your full profile by default.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep('profile')}>
+                Back
+              </Button>
+              <Button onClick={handleSavePreferences} disabled={isLoading} className="flex-1">
+                {isLoading ? 'Saving...' : 'Continue'}
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
         
         {step === 'notifications' && (
           <>
@@ -353,7 +464,7 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep('profile')}>
+              <Button variant="outline" onClick={() => setStep('preferences')}>
                 Back
               </Button>
               <Button onClick={handleSaveNotifications} disabled={isLoading} className="flex-1">
@@ -380,6 +491,9 @@ export function NewUserWizard({ open, onComplete }: NewUserWizardProps) {
                   onChange={(e) => setCourtName(e.target.value)}
                   placeholder="e.g., I'On Courts, Central Park"
                 />
+                <p className="text-xs text-muted-foreground mt-2">
+                  We&apos;ll try to match common variations like ION, I&apos;On Club, or I&apos;On Courts automatically.
+                </p>
               </div>
               <div>
                 <label className="text-sm font-medium">Location (optional)</label>

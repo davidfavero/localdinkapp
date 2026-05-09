@@ -153,7 +153,7 @@ export default function DashboardLayout({
     
     if (!wizardDismissed) {
       // Consider showing wizard if profile seems incomplete
-      const isIncomplete = !currentUser.phone;
+      const isIncomplete = !currentUser.phone || !currentUser.dinkRating || !currentUser.homeCourtId;
       if (isIncomplete) {
         setShowNewUserWizard(true);
       }

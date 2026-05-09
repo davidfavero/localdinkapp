@@ -270,15 +270,47 @@ export async function addCourtAction(
             return { success: false, message: 'Database not available' };
         }
 
+        const normalizeCourtKey = (value: string) =>
+            value
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim();
+
+        const requestedName = courtData.name.trim();
+        const requestedKey = normalizeCourtKey(requestedName);
+
         let fallbackTimezone = '';
         const userDoc = await adminDb.collection('users').doc(userId).get();
         if (userDoc.exists) {
             fallbackTimezone = userDoc.data()?.timezone || '';
         }
 
+        let canonicalName = requestedName;
+        let canonicalLocation = courtData.location || courtData.city || '';
+
+        if (requestedKey) {
+            const existingCourts = await adminDb.collection('courts').limit(200).get();
+            const similarCourt = existingCourts.docs
+                .map((doc) => doc.data() as Record<string, any>)
+                .find((court) => {
+                    const existingKey = normalizeCourtKey(typeof court.name === 'string' ? court.name : '');
+                    if (!existingKey) return false;
+                    return (
+                        existingKey === requestedKey ||
+                        existingKey.includes(requestedKey) ||
+                        requestedKey.includes(existingKey)
+                    );
+                });
+
+            if (similarCourt) {
+                canonicalName = similarCourt.name || canonicalName;
+                canonicalLocation = similarCourt.location || similarCourt.city || canonicalLocation;
+            }
+        }
+
         const newCourt = {
-            name: courtData.name,
-            location: courtData.location || courtData.city || '',
+            name: canonicalName,
+            location: canonicalLocation,
             address: courtData.address || '',
             city: courtData.city || '',
             state: courtData.state || '',
@@ -292,7 +324,7 @@ export async function addCourtAction(
         return { 
             success: true, 
             courtId: courtRef.id,
-            message: `Added "${courtData.name}" to your courts!`
+            message: `Added "${canonicalName}" to your courts!`
         };
     } catch (error: any) {
         console.error('Error adding court:', error);

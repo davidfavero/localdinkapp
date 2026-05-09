@@ -22,6 +22,7 @@ const CreateGameSessionSchema = z.object({
   courtName: z.string().optional().default(''),
   courtLocation: z.string().optional().default(''),
   isDoubles: z.boolean(),
+  courtCount: z.number().int().positive().optional().default(1),
   durationMinutes: z.number().int().positive(),
   status: z.enum(['open', 'full', 'cancelled', 'completed']).optional().default('open'),
   playerIds: z.array(z.string().min(1)),
@@ -107,16 +108,21 @@ export async function POST(request: Request) {
     const sessionRef = adminDb.collection('game-sessions').doc();
     
     // Calculate max/min players
-    const maxPlayers = data.maxPlayers ?? (data.isDoubles ? 4 : 2);
+    const playersPerCourt = data.isDoubles ? 4 : 2;
+    const courtCount = data.courtCount ?? 1;
+    const maxPlayers = data.maxPlayers ?? (playersPerCourt * courtCount);
     const minPlayers = data.minPlayers ?? maxPlayers;
     
     try {
       await sessionRef.set({
         courtId: data.courtId,
+        courtName: data.courtName ?? '',
+        courtLocation: data.courtLocation ?? '',
         organizerId: data.organizerId,
         startTime: Timestamp.fromDate(startDate),
         startTimeDisplay: data.startTimeDisplay ?? formatFallback(startDate),
         isDoubles: data.isDoubles,
+        courtCount,
         durationMinutes: data.durationMinutes,
         status: data.status ?? 'open',
         playerIds: data.playerIds,
@@ -145,6 +151,11 @@ export async function POST(request: Request) {
     const resolvedCourtLocation =
       data.courtLocation ??
       (typeof courtRecord?.location === 'string' ? courtRecord.location : undefined);
+
+    await sessionRef.update({
+      courtName: resolvedCourtName || '',
+      courtLocation: resolvedCourtLocation || '',
+    });
 
     const organizerSnap = await adminDb.collection('users').doc(data.organizerId).get();
     const organizerRecord = organizerSnap.exists ? organizerSnap.data() ?? {} : {};

@@ -1124,15 +1124,21 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
             playerStatuses[a.id] = 'PENDING';
           });
 
+        const requestedCourtCountMatch = message.match(/\b(\d+)\s+(?:doubles|singles)\s+games?\b/i);
+        const courtCount = requestedCourtCountMatch ? Math.max(1, Number.parseInt(requestedCourtCountMatch[1], 10) || 1) : 1;
+
         // Determine if doubles (default to true if 4+ players, false if 2 players)
         const totalPlayers = attendees.length;
-        const isDoubles = totalPlayers >= 4;
+        const explicitlySingles = /\bsingles\b/i.test(message);
+        const explicitlyDoubles = /\bdoubles\b/i.test(message);
+        const isDoubles = explicitlySingles ? false : explicitlyDoubles ? true : totalPlayers >= 4;
 
         const createResult = await createGameSessionTool({
           courtId,
           organizerId: currentUser.id,
           startTime: dateTime.toISOString(),
           isDoubles,
+          courtCount,
           playerIds: attendees.map(a => a.id),
           attendees,
           playerStatuses,
@@ -1159,8 +1165,9 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
             nonSelfInvitedPlayers.length > 0 && !notifiedMsg && !skippedMsg
               ? " I'll send SMS invitations to your invitees."
               : '';
+          const gameCountMsg = courtCount > 1 ? ` across ${courtCount} courts` : '';
           return {
-            confirmationText: `Perfect! I've scheduled the game for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}. You're inviting${inviteeSummary}.${notifiedMsg}${skippedMsg}${smsIntentMsg} You can view it in your Game Sessions.`,
+            confirmationText: `Perfect! I've scheduled the game${gameCountMsg} for ${formattedPlayerNames} at ${courtName} on ${date} at ${time}. You're inviting${inviteeSummary}.${notifiedMsg}${skippedMsg}${smsIntentMsg} You can view it in your Game Sessions.`,
             createdSessionId: createResult.sessionId,
             createdSessionStartTime: dateTime.toISOString(),
             createdSessionCourtName: courtName,

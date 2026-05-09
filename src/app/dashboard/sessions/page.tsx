@@ -263,6 +263,8 @@ export default function GameSessionsPage() {
         time: sessionDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         startDate: sessionDate,
         type: s.isDoubles ? 'Doubles' : 'Singles',
+        courtCount: s.courtCount,
+        maxPlayers: s.maxPlayers,
         players: dedupedPlayers,
         alternates,
         recurring: s.recurring,

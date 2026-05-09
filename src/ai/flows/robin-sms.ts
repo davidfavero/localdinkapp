@@ -126,13 +126,13 @@ function buildRobinSmsPrompt(context: RobinSmsContext): string {
   switch (messageType) {
     case 'first_contact':
     case 'welcome':
-      instruction = `Generate a welcome SMS for ${d.recipientName || 'a new player'}. ${d.adderName || 'Someone'} just added them to LocalDink. Introduce yourself as Robin — their AI pickleball coordinator from LocalDink. Keep it warm and brief. Mention that when they get invited to games, they can just reply Y or N. If they want to schedule their own games, they can sign up at localdink.com/login.`;
+      instruction = `Generate a welcome SMS for ${d.recipientName || 'a new player'}. ${d.adderName || 'Someone'} just added them to LocalDink. Introduce yourself as Robin — their AI pickleball coordinator from LocalDink. Keep it warm and brief. Tell them they can reply Y or N when game invites arrive. End with a short first-time setup nudge to create their profile at localdink.com/login.`;
       break;
 
     case 'game_invite':
       instruction = `Generate a game invite SMS for ${d.recipientName || 'a player'}.
 Details: ${d.organizerName || 'The organizer'} is inviting them to play ${d.matchType || 'pickleball'}${d.courtName ? ` at ${d.courtName}` : ''}${d.courtLocation ? ` (${d.courtLocation})` : ''}. Game starts ${d.date || ''} ${d.time || ''}.
-${isFirstContact ? 'This is the FIRST time Robin is texting this person — briefly introduce yourself as Robin, their AI pickleball coordinator from LocalDink.' : ''}
+${isFirstContact ? 'This is the FIRST time Robin is texting this person — briefly introduce yourself as Robin, make clear this is their first LocalDink game invite, and add a short sign-up nudge for localdink.com/login after the RSVP instruction.' : ''}
 IMPORTANT: You MUST end the message with clear instructions to "Reply Y to join or N to pass." — this is required for every game invite.`;
       break;
 
@@ -201,13 +201,14 @@ function getFallbackMessage(context: RobinSmsContext): string {
   switch (messageType) {
     case 'first_contact':
     case 'welcome':
-      return `Hey ${d.recipientName || 'there'}! 👋 I'm Robin, your AI pickleball coordinator from LocalDink. ${d.adderName || 'Your friend'} just added you — when you get invited to a game, just reply Y or N. Easy as that! Want to schedule your own games? Sign up at localdink.com/login`;
+      return `Hey ${d.recipientName || 'there'}! 👋 I'm Robin from LocalDink. ${d.adderName || 'Your friend'} just added you, so when game invites come through you can simply reply Y or N. Want your own profile too? Set it up at localdink.com/login`;
 
     case 'game_invite': {
       const intro = isFirstContact
-        ? `Hey ${d.recipientName || 'there'}! I'm Robin from LocalDink — ${d.organizerName || 'your friend'}'s pickleball coordinator. `
+        ? `Hey ${d.recipientName || 'there'}! I'm Robin from LocalDink — ${d.organizerName || 'your friend'} invited you to your first LocalDink game. `
         : '';
-      return `${intro}${d.organizerName || 'Your crew'} has a ${d.matchType || 'game'} going${d.courtName ? ` at ${d.courtName}` : ''}, ${d.date || ''} ${d.time || ''}. Reply Y to join or N to pass`;
+      const signupNudge = isFirstContact ? ' New here? Set up your profile at localdink.com/login.' : '';
+      return `${intro}${d.organizerName || 'Your crew'} has a ${d.matchType || 'game'} going${d.courtName ? ` at ${d.courtName}` : ''}, ${d.date || ''} ${d.time || ''}. Reply Y to join or N to pass.${signupNudge}`;
     }
 
     case 'rsvp_accepted':

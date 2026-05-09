@@ -509,13 +509,18 @@ async function notifyGameFull(
     if (adminDb) {
       const sessionRef = adminDb.collection('game-sessions').doc(sessionId);
       const statusUpdates: Record<string, string> = {};
+      const promotedToWaitlist: string[] = [];
       for (const id of otherIds) {
         if (playerStatuses[id] === 'PENDING') {
           statusUpdates[`playerStatuses.${id}`] = 'WAITLIST';
+          promotedToWaitlist.push(id);
         }
       }
       if (Object.keys(statusUpdates).length > 0) {
-        await sessionRef.update(statusUpdates);
+        await sessionRef.update({
+          ...statusUpdates,
+          alternates: FieldValue.arrayUnion(...promotedToWaitlist),
+        });
         console.log(`[rsvp] Marked ${Object.keys(statusUpdates).length} pending players as WAITLIST (game full)`);
       }
     }

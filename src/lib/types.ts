@@ -59,6 +59,7 @@ export type Player = {
   doublesPreference?: boolean;
   homeCourtId?: string;
   availability?: string;
+  profileVisibility?: 'private' | 'friends';
   ownerId?: string; // User who created this player contact
   linkedUserId?: string; // Links to a registered user account (if email/phone matches)
   notificationPreferences?: NotificationPreferences; // User's notification settings
@@ -118,11 +119,14 @@ export type GameSessionStatus =
 export type GameSession_Firestore = {
   id: string;
   courtId: string;
+  courtName?: string;
+  courtLocation?: string;
   organizerId: string;
   startTime: Timestamp;
   startTimeDisplay?: string;
   isDoubles: boolean;
   durationMinutes?: number;
+  courtCount?: number;
   
   // Player management
   playerIds: string[];
@@ -161,6 +165,8 @@ export type GameSession = {
   time: string;
   startDate: Date;
   type: 'Singles' | 'Doubles' | 'Custom';
+  courtCount?: number;
+  maxPlayers?: number;
   players: {
     player: Player;
     status: RsvpStatus;

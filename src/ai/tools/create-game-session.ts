@@ -17,6 +17,7 @@ const CreateGameSessionToolSchema = z.object({
   organizerId: z.string().describe('The user ID of the person organizing the game.'),
   startTime: z.string().describe('ISO 8601 formatted date-time string for when the game starts.'),
   isDoubles: z.boolean().describe('Whether this is a doubles game (true) or singles (false).'),
+  courtCount: z.number().int().positive().optional().describe('How many courts or simultaneous games share this invite pool. Defaults to 1.'),
   playerIds: z.array(z.string()).describe('Array of user/player IDs to invite to the game.'),
   attendees: z.array(z.object({
     id: z.string(),
@@ -61,7 +62,9 @@ export const createGameSessionTool = ai.defineTool(
       }
 
       const durationMinutes = input.durationMinutes || 120;
-      const maxPlayers = input.isDoubles ? 4 : 2;
+      const playersPerCourt = input.isDoubles ? 4 : 2;
+      const courtCount = input.courtCount || 1;
+      const maxPlayers = playersPerCourt * courtCount;
       const startTimeDisplay = new Intl.DateTimeFormat('en-US', {
         dateStyle: 'full',
         timeStyle: 'short',
@@ -76,6 +79,7 @@ export const createGameSessionTool = ai.defineTool(
         startTime: Timestamp.fromDate(startDate),
         startTimeDisplay,
         isDoubles: input.isDoubles,
+        courtCount,
         durationMinutes,
         status: 'open',
         playerIds: input.playerIds,
@@ -106,6 +110,11 @@ export const createGameSessionTool = ai.defineTool(
       const courtRecord = courtSnap.exists ? courtSnap.data() ?? {} : {};
       const courtName = typeof courtRecord?.name === 'string' ? courtRecord.name : undefined;
       const courtLocation = typeof courtRecord?.location === 'string' ? courtRecord.location : undefined;
+
+      await sessionRef.update({
+        courtName: courtName || '',
+        courtLocation: courtLocation || '',
+      });
 
       const organizerSnap = await adminDb.collection('users').doc(input.organizerId).get();
       const organizerRecord = organizerSnap.exists ? organizerSnap.data() ?? {} : {};

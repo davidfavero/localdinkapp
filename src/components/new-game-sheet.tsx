@@ -42,6 +42,7 @@ const gameSchema = z.object({
   date: z.date({ required_error: 'Please select a date.' }),
   time: z.string().min(1, 'Please select a time.'),
   isDoubles: z.string().default('true'),
+  courtCount: z.coerce.number().int().min(1).max(12).default(1),
   playerIds: z.array(z.string()).default([]),
   groupIds: z.array(z.string()).default([]),
   recurring: z.enum(['none', 'weekly', 'biweekly']).default('none'),
@@ -115,6 +116,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
     resolver: zodResolver(gameSchema),
     defaultValues: {
       isDoubles: 'true',
+      courtCount: 1,
       time: '05:00 PM',
       playerIds: [],
       groupIds: [],
@@ -265,12 +267,15 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       courtName: selectedCourt?.name || '',
       courtLocation: selectedCourt?.location || '',
       isDoubles: data.isDoubles === 'true',
+      courtCount: data.courtCount,
       durationMinutes: 120, // Default duration
       status: 'open',  // Must be: 'open' | 'full' | 'cancelled' | 'completed'
       playerIds,
       attendees,
       groupIds,
       playerStatuses,
+      minPlayers: (data.isDoubles === 'true' ? 4 : 2) * data.courtCount,
+      maxPlayers: (data.isDoubles === 'true' ? 4 : 2) * data.courtCount,
       ...(data.recurring !== 'none' && {
         recurring: {
           enabled: true,
@@ -317,6 +322,7 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
       });
       form.reset({
         isDoubles: 'true',
+        courtCount: 1,
         time: '05:00 PM',
         courtId: '',
         date: undefined,
@@ -551,6 +557,29 @@ export function NewGameSheet({ open, onOpenChange, courts, isLoadingCourts }: Ne
                         You haven&apos;t added any players yet. Visit the Groups &amp; Players page to build your roster.
                       </p>
                     )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="courtCount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>How Many Courts?</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={12}
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.valueAsNumber || 1)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Use more than 1 to run a shared waitlist across multiple games at the same time.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
