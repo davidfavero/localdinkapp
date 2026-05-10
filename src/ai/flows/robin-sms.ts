@@ -35,6 +35,7 @@ export type RobinSmsContext = {
     | 'game_invite'        // Inviting to a game
     | 'rsvp_accepted'      // Someone accepted an invite (notify organizer)
     | 'rsvp_declined'      // Someone declined an invite (notify organizer)
+    | 'game_full_organizer' // Game reached capacity (notify organizer)
     | 'game_full'          // Game is now confirmed/full (notify all)
     | 'player_cancelled'   // Someone cancelled their spot
     | 'spot_opened'        // Waitlist player promoted
@@ -45,6 +46,7 @@ export type RobinSmsContext = {
     | 'direct_message'     // Player-to-player message forwarded
     | 'welcome'            // New player added to system
     | 'spot_available_pending' // Game full, you're on waitlist / notification for pending
+    | 'spot_filled_waitlist' // Waitlist race ended, spot already claimed
   ;
   /** Key details for the message */
   details: {
@@ -144,6 +146,10 @@ IMPORTANT: You MUST end the message with clear instructions to "Reply Y to join 
       instruction = `Notify ${d.recipientName || 'the organizer'} that ${d.playerName || 'a player'} can't make their ${d.matchType || 'game'}${d.date ? ` on ${d.date}` : ''}. Be brief, don't be overly sympathetic. Mention you're keeping an eye on finding a replacement if needed.`;
       break;
 
+    case 'game_full_organizer':
+      instruction = `Notify ${d.recipientName || 'the organizer'} that the game just filled. Keep it to one short line and make clear new replies will go to waitlist.`;
+      break;
+
     case 'game_full':
       instruction = `Notify ${d.recipientName || 'a player'} that their game is locked in — all spots filled!
 Details: ${d.matchType || 'Pickleball'} at ${d.courtName || 'the courts'}, ${d.date || ''} ${d.time || ''}.
@@ -156,7 +162,7 @@ Be excited but brief. This is the "it's happening!" moment.`;
       break;
 
     case 'spot_opened':
-      instruction = `Tell ${d.recipientName || 'a player'} great news — a spot opened up and they've been promoted from the waitlist! They're now confirmed for ${d.matchType || 'the game'}${d.date ? ` on ${d.date}` : ''}${d.courtName ? ` at ${d.courtName}` : ''}. Be enthusiastic!`;
+      instruction = `Tell ${d.recipientName || 'a player'} a spot opened and this is first-come-first-served from the waitlist. Require this exact action: reply Y to claim it. Keep urgency clear but do NOT mention a timer. Include ${d.date || 'the date/time'} and ${d.courtName || 'the court name'}.`;
       break;
 
     case 'game_reminder':
@@ -181,6 +187,10 @@ Be excited but brief. This is the "it's happening!" moment.`;
 
     case 'spot_available_pending':
       instruction = `Let ${d.recipientName || 'a player'} know the game${d.date ? ` on ${d.date}` : ''} is now full. They're on the list if a spot opens. Brief and reassuring.`;
+      break;
+
+    case 'spot_filled_waitlist':
+      instruction = `Tell ${d.recipientName || 'a player'} the opened spot was just claimed by someone else and they are still on the waitlist for the next opening. Keep it short and clear.`;
       break;
 
     default:
@@ -217,6 +227,9 @@ function getFallbackMessage(context: RobinSmsContext): string {
     case 'rsvp_declined':
       return `${d.playerName || 'Someone'} can't make ${d.date || 'the game'}. I'll keep an eye out for a replacement.`;
 
+    case 'game_full_organizer':
+      return `Game is full at ${d.confirmedCount || ''}${d.maxPlayers ? `/${d.maxPlayers}` : ''}. New replies will be added to the waitlist.`.replace(' at /', ' ').trim();
+
     case 'game_full':
       return `Game on! 🎉 ${d.matchType || 'Pickleball'} at ${d.courtName || 'the courts'}, ${d.date || ''} ${d.time || ''}. Everyone's confirmed — see you there!`;
 
@@ -224,7 +237,7 @@ function getFallbackMessage(context: RobinSmsContext): string {
       return `Heads up — ${d.playerName || 'someone'} bailed on ${d.date || 'the game'}. Spot's reopened, I'm on it.`;
 
     case 'spot_opened':
-      return `Great news, ${d.recipientName || ''}! 🎉 A spot opened up — you're confirmed for ${d.matchType || 'the game'}${d.date ? ` on ${d.date}` : ''}. See you there!`;
+      return `Spot opened. First to reply Y is in for ${d.date || 'the game'}${d.courtName ? ` at ${d.courtName}` : ''}.`;
 
     case 'game_reminder':
       return `⏰ Heads up — ${d.matchType || 'your game'} at ${d.courtName || 'the courts'} is coming up${d.time ? ` at ${d.time}` : ' soon'}!`;
@@ -243,6 +256,9 @@ function getFallbackMessage(context: RobinSmsContext): string {
 
     case 'spot_available_pending':
       return `The game${d.date ? ` on ${d.date}` : ''} just filled up. You're on the list — I'll let you know if a spot opens!`;
+
+    case 'spot_filled_waitlist':
+      return `Spot has been filled. You're still on the waitlist for the next opening.`;
 
     default:
       return `Hey! You have an update on LocalDink. Check the app for details.`;

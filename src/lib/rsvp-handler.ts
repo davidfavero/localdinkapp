@@ -248,6 +248,11 @@ export async function handleAccept(
   const updates: any = {
     [`playerStatuses.${playerId}`]: 'CONFIRMED',
   };
+
+  // If this player was on waitlist, remove from alternates queue on confirm.
+  if (currentStatus === 'WAITLIST') {
+    updates.alternates = FieldValue.arrayRemove(playerId);
+  }
   
   // Check if game should now be marked as full
   const playerStatuses = { ...session.playerStatuses, [playerId]: 'CONFIRMED' };
@@ -290,6 +295,21 @@ export async function handleAccept(
   // If game is now full, notify everyone
   if (gameNowFull) {
     await notifyGameFull(sessionId, session, playerStatuses);
+
+    // If a waitlisted player claimed a reopened spot, notify remaining waitlist players.
+    if (currentStatus === 'WAITLIST') {
+      const remainingWaitlistIds = Object.entries(playerStatuses)
+        .filter(([id, status]) => id !== playerId && status === 'WAITLIST')
+        .map(([id]) => id);
+
+      for (const waitlistId of remainingWaitlistIds) {
+        const waitlistPlayer = await getPlayerDetails(waitlistId);
+        if (waitlistPlayer?.phone) {
+          const claimedMsg = "Spot has been filled. You're still on the waitlist for the next opening.";
+          await sendSmsNotification(waitlistPlayer.phone, await appendStopFooter(claimedMsg));
+        }
+      }
+    }
   }
   
   return { 
@@ -481,19 +501,22 @@ async function notifyGameFull(
     .filter(p => p)
     .map(p => `${p!.firstName} ${p!.lastName}`.trim());
 
-  // Notify confirmed players with Robin-voiced "game on!" message
+  // Notify confirmed players with Robin-voiced "game on!" message.
+  // Organizer gets a milestone-style full/waitlist update.
   for (const player of confirmedPlayers) {
     if (player?.phone) {
-      const gameFullMsg = await generateRobinSms({
-        messageType: 'game_full',
-        details: {
-          recipientName: player.firstName || 'there',
-          matchType: session.isDoubles ? 'Doubles' : 'Singles',
-          date: session.startTimeDisplay || 'upcoming',
-          courtName: session.courtName,
-          confirmedPlayers: confirmedNames,
-        },
-      });
+      const gameFullMsg = player.id === session.organizerId
+        ? 'Game is full, but I can put you on the waitlist.'
+        : await generateRobinSms({
+            messageType: 'game_full',
+            details: {
+              recipientName: player.firstName || 'there',
+              matchType: session.isDoubles ? 'Doubles' : 'Singles',
+              date: session.startTimeDisplay || 'upcoming',
+              courtName: session.courtName,
+              confirmedPlayers: confirmedNames,
+            },
+          });
       await sendSmsNotification(player.phone, await appendStopFooter(gameFullMsg));
     }
   }
@@ -542,7 +565,7 @@ async function notifyGameFull(
 }
 
 /**
- * Auto-promote the first waitlisted player when a spot opens.
+ * Notify waitlisted players when a spot opens (first reply Y gets in).
  * If no one is on the waitlist, notify pending players about the opening.
  */
 async function promoteFromWaitlistOrNotify(
@@ -557,70 +580,40 @@ async function promoteFromWaitlistOrNotify(
   
   const alternates: string[] = session.alternates || [];
   const sessionRef = adminDb.collection('game-sessions').doc(sessionId);
-  
-  // Auto-promote the first waitlisted player
+
+  // Notify all waitlist players: first person to reply Y claims the open spot.
   if (alternates.length > 0) {
-    const promotedId = alternates[0];
-    const remainingAlternates = alternates.slice(1);
-    
-    await sessionRef.update({
-      [`playerStatuses.${promotedId}`]: 'CONFIRMED',
-      alternates: remainingAlternates,
-    });
-    
-    const promoted = await getPlayerDetails(promotedId);
-    const promotedName = promoted ? `${promoted.firstName} ${promoted.lastName}`.trim() : 'A player';
-    
-    console.log(`[rsvp] Auto-promoted ${promotedName} from waitlist`);
-    
-    // Notify the promoted player
-    if (promoted?.phone) {
-      const promoMsg = await generateRobinSms({
-        messageType: 'spot_opened',
-        details: {
-          recipientName: promoted.firstName || 'there',
-          matchType: session.isDoubles ? 'Doubles' : 'Singles',
-          date: session.startTimeDisplay || 'upcoming',
-          courtName: session.courtName,
-        },
-      });
-      await sendSmsNotification(promoted.phone, await appendStopFooter(promoMsg));
+    for (const waitlistId of alternates) {
+      const waitlistPlayer = await getPlayerDetails(waitlistId);
+      if (!waitlistPlayer?.phone) {
+        continue;
+      }
+
+      const promoMsg = `Spot opened. First to reply Y is in for ${session.startTimeDisplay || 'the game'}${session.courtName ? ` at ${session.courtName}` : ''}.`;
+      await sendSmsNotification(waitlistPlayer.phone, await appendStopFooter(promoMsg));
+
+      try {
+        await sendNotification({
+          userId: waitlistId,
+          type: 'SPOT_AVAILABLE',
+          data: {
+            gameSessionId: sessionId,
+            matchType: session.isDoubles ? 'Doubles' : 'Singles',
+            gameDate: session.startTimeDisplay,
+          },
+          templateData: {
+            matchType: session.isDoubles ? 'Doubles' : 'Singles',
+            date: session.startTimeDisplay,
+            courtName: session.courtName,
+          },
+        });
+      } catch (error) {
+        console.error('[rsvp] Error sending spot-available notification:', error);
+      }
     }
-    
-    // Send in-app notification for the promotion
-    try {
-      await sendNotification({
-        userId: promotedId,
-        type: 'SPOT_AVAILABLE',
-        data: {
-          gameSessionId: sessionId,
-          matchType: session.isDoubles ? 'Doubles' : 'Singles',
-          gameDate: session.startTimeDisplay,
-        },
-        templateData: {
-          matchType: session.isDoubles ? 'Doubles' : 'Singles',
-          date: session.startTimeDisplay,
-          courtName: session.courtName,
-        },
-      });
-    } catch (error) {
-      console.error('[rsvp] Error sending spot-available notification:', error);
-    }
-    
-    // Check if game is full again after promotion
-    const updatedSessionDoc = await sessionRef.get();
-    const updatedSession = updatedSessionDoc.data()!;
-    const confirmedCount = Object.values(updatedSession.playerStatuses || {})
-      .filter(s => s === 'CONFIRMED').length;
-    const maxPlayers = updatedSession.maxPlayers || (updatedSession.isDoubles ? 4 : 2);
-    
-    if (confirmedCount >= maxPlayers) {
-      await sessionRef.update({
-        status: 'full',
-        gameFullNotifiedAt: FieldValue.serverTimestamp(),
-      });
-    }
-    
+
+    console.log(`[rsvp] Notified ${alternates.length} waitlist players about the open spot (first to reply Y wins)`);
+
     return;
   }
   
