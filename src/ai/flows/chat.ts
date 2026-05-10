@@ -303,6 +303,30 @@ function findGroupByName(searchName: string, groups: (Group & { id: string })[])
   return wordMatch;
 }
 
+function extractGroupsFromText(text: string, groups: (Group & { id: string })[]): string[] {
+  const lower = text.toLowerCase();
+  const matches: string[] = [];
+
+  for (const group of groups) {
+    const matchedGroup = findGroupByName(group.name, groups);
+    if (!matchedGroup) continue;
+
+    const groupName = matchedGroup.name.toLowerCase().trim();
+    const cleanGroupName = groupName.replace(/[''`]/g, '').replace(/\s*(groups?|teams?)$/i, '').trim();
+    const words = cleanGroupName.split(/\s+/).filter((word) => word.length >= 3);
+
+    if (
+      lower.includes(groupName) ||
+      lower.includes(cleanGroupName) ||
+      words.some((word) => new RegExp(`\\b${word}\\b`, 'i').test(lower))
+    ) {
+      matches.push(matchedGroup.name);
+    }
+  }
+
+  return [...new Set(matches)];
+}
+
 // Helper to match a court by name (case-insensitive, flexible matching)
 function findCourtByName(searchName: string, courts: Court[]): Court | undefined {
   if (!searchName || !courts.length) return undefined;
@@ -533,6 +557,7 @@ export async function chat(
     const lastRobinMessage = historyToConsider.filter(h => h.sender === 'robin').pop();
     const currentMessageText = input.message.trim();
     const currentMessagePlayers = extractPlayersFromText(currentMessageText, knownPlayers);
+    const currentMessageGroups = extractGroupsFromText(currentMessageText, knownGroups);
     const shouldUseCurrentMessageForPlayers =
       !isConfirmation(currentMessageText) &&
       !isPhoneNumber(currentMessageText) &&
@@ -564,6 +589,8 @@ export async function chat(
     const regexPlayers = shouldUseCurrentMessageForPlayers
       ? currentMessagePlayers
       : extractPlayersFromText(combinedText, knownPlayers);
+    const regexGroups = extractGroupsFromText(currentMessageText, knownGroups)
+      .concat(extractGroupsFromText(combinedText, knownGroups));
     
     console.log('[chat] Regex extraction results:', {
       date: regexDate,
@@ -571,6 +598,7 @@ export async function chat(
       location: regexLocation?.location || null,
       matchedCourt: regexLocation?.matchedCourt?.name || null,
       players: regexPlayers,
+      groups: regexGroups,
     });
 
     // Build the message to send to the AI
@@ -728,6 +756,7 @@ ${processedInput}
 ## EXTRACTION REQUIREMENTS
 
 **Players**: Always include "me" (the current user) when scheduling. Extract all other names mentioned.
+**Groups**: If the user mentions a named group or team (for example, "Singles Slammers"), include that group name in players even if they do NOT say "with". Group names are scheduling targets too.
 
 **Date**: Convert to "Month Day, Year" format.
 - "tomorrow" → "${tomorrowFormatted}"
@@ -871,6 +900,13 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
     if (regexPlayers.length > 0 && (!extractedDetails.players || extractedDetails.players.length === 0)) {
       console.log('[chat] Using regex players:', regexPlayers);
       extractedDetails.players = regexPlayers;
+    }
+    if (regexGroups.length > 0) {
+      const mergedPlayers = new Set(extractedDetails.players || []);
+      for (const groupName of regexGroups) {
+        mergedPlayers.add(groupName);
+      }
+      extractedDetails.players = [...mergedPlayers];
     }
     if (shouldUseCurrentMessageForPlayers && currentMessagePlayers.length > 0) {
       // Explicit names in a new user request should override stale conversation carry-over.
