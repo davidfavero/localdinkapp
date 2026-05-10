@@ -17,9 +17,14 @@ import { createGameSessionTool } from '@/ai/tools/create-game-session';
 import { ROBIN_SYSTEM_PROMPT } from '@/ai/robin-prompt';
 
 const APP_TIME_ZONE = 'America/New_York';
+const APOSTROPHE_CHARS_REGEX = /['\u2018\u2019`]/g;
 
 function getCurrentAppDate(timeZone: string = APP_TIME_ZONE): Date {
   return new Date(new Date().toLocaleString('en-US', { timeZone }));
+}
+
+function stripApostrophes(value: string): string {
+  return value.replace(APOSTROPHE_CHARS_REGEX, '');
 }
 
 // ============================================================================
@@ -175,14 +180,20 @@ function extractTimeFromText(text: string): string | null {
  */
 function extractLocationFromText(text: string, knownCourts: Court[]): { location: string; matchedCourt: Court | null } | null {
   const lower = text.toLowerCase();
+  const lowerWithoutApostrophes = stripApostrophes(lower);
   
   // Try to match known courts first
   for (const court of knownCourts) {
     const courtNameLower = court.name.toLowerCase();
-    const courtNameClean = courtNameLower.replace(/['''`]/g, '').replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+    const courtNameNoApostrophes = stripApostrophes(courtNameLower);
+    const courtNameClean = courtNameNoApostrophes.replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
     
     // Check if court name appears in text
-    if (lower.includes(courtNameLower) || lower.includes(courtNameClean)) {
+    if (
+      lower.includes(courtNameLower) ||
+      lowerWithoutApostrophes.includes(courtNameNoApostrophes) ||
+      lowerWithoutApostrophes.includes(courtNameClean)
+    ) {
       return { location: court.name, matchedCourt: court };
     }
     
@@ -203,8 +214,8 @@ function extractLocationFromText(text: string, knownCourts: Court[]): { location
     if (!/(am|pm|\d{1,2}:\d{2}|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(locationCandidate)) {
       // Try to match against known courts
       for (const court of knownCourts) {
-        const courtClean = court.name.toLowerCase().replace(/['''`]/g, '').replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
-        const candidateClean = locationCandidate.replace(/['''`]/g, '').replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+        const courtClean = stripApostrophes(court.name.toLowerCase()).replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
+        const candidateClean = stripApostrophes(locationCandidate).replace(/\s*(courts?|tennis|center|park|club)$/i, '').trim();
         if (courtClean.includes(candidateClean) || candidateClean.includes(courtClean)) {
           return { location: court.name, matchedCourt: court };
         }
@@ -280,15 +291,15 @@ function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] 
 
 // Helper to match a group by name
 function findGroupByName(searchName: string, groups: (Group & { id: string })[]): (Group & { id: string }) | undefined {
-  const normalized = searchName.toLowerCase().trim();
+  const normalized = stripApostrophes(searchName.toLowerCase()).trim();
   
   // Exact match
-  const exactMatch = groups.find(g => g.name.toLowerCase().trim() === normalized);
+  const exactMatch = groups.find(g => stripApostrophes(g.name.toLowerCase()).trim() === normalized);
   if (exactMatch) return exactMatch;
   
   // Partial match (search term is in group name or vice versa)
   const partialMatch = groups.find(g => {
-    const groupName = g.name.toLowerCase().trim();
+    const groupName = stripApostrophes(g.name.toLowerCase()).trim();
     return groupName.includes(normalized) || normalized.includes(groupName);
   });
   if (partialMatch) return partialMatch;
@@ -296,7 +307,7 @@ function findGroupByName(searchName: string, groups: (Group & { id: string })[])
   // Word match (any significant word matches)
   const words = normalized.split(/\s+/).filter(w => w.length > 2);
   const wordMatch = groups.find(g => {
-    const groupWords = g.name.toLowerCase().split(/\s+/);
+    const groupWords = stripApostrophes(g.name.toLowerCase()).split(/\s+/);
     return words.some(w => groupWords.includes(w));
   });
   
@@ -312,7 +323,7 @@ function extractGroupsFromText(text: string, groups: (Group & { id: string })[])
     if (!matchedGroup) continue;
 
     const groupName = matchedGroup.name.toLowerCase().trim();
-    const cleanGroupName = groupName.replace(/[''`]/g, '').replace(/\s*(groups?|teams?)$/i, '').trim();
+    const cleanGroupName = stripApostrophes(groupName).replace(/\s*(groups?|teams?)$/i, '').trim();
     const words = cleanGroupName.split(/\s+/).filter((word) => word.length >= 3);
 
     if (
@@ -336,7 +347,7 @@ function findCourtByName(searchName: string, courts: Court[]): Court | undefined
     return str
       .toLowerCase()
       .trim()
-      .replace(/['''`]/g, '')  // Remove all apostrophe variations
+      .replace(APOSTROPHE_CHARS_REGEX, '')  // Remove all apostrophe variations
       .replace(/\s+/g, '')     // Remove ALL spaces for matching
       .replace(/(courts?|tennis|center|park|club|the)$/gi, '') // Remove suffixes
       .replace(/^(the)/gi, '') // Remove prefix "the"
@@ -348,13 +359,13 @@ function findCourtByName(searchName: string, courts: Court[]): Court | undefined
     return str
       .toLowerCase()
       .trim()
-      .replace(/['''`]/g, '')
+      .replace(APOSTROPHE_CHARS_REGEX, '')
       .replace(/\s+/g, ' ')
       .replace(/\s*(courts?|tennis|center|park|club)$/gi, '')
       .trim();
   };
 
-  const searchNormalized = searchName.toLowerCase().trim();
+  const searchNormalized = stripApostrophes(searchName.toLowerCase()).trim();
   const searchCleaned = cleanForMatching(searchName);
   const searchSpaced = normalizeSpaces(searchName);
 
