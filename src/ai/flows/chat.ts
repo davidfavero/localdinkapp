@@ -1124,13 +1124,13 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
             playerStatuses[a.id] = 'PENDING';
           });
 
-        const requestedCourtCountMatch = message.match(/\b(\d+)\s+(?:doubles|singles)\s+games?\b/i);
+        const requestedCourtCountMatch = input.message.match(/\b(\d+)\s+(?:doubles|singles)\s+games?\b/i);
         const courtCount = requestedCourtCountMatch ? Math.max(1, Number.parseInt(requestedCourtCountMatch[1], 10) || 1) : 1;
 
         // Determine if doubles (default to true if 4+ players, false if 2 players)
         const totalPlayers = attendees.length;
-        const explicitlySingles = /\bsingles\b/i.test(message);
-        const explicitlyDoubles = /\bdoubles\b/i.test(message);
+        const explicitlySingles = /\bsingles\b/i.test(input.message);
+        const explicitlyDoubles = /\bdoubles\b/i.test(input.message);
         const isDoubles = explicitlySingles ? false : explicitlyDoubles ? true : totalPlayers >= 4;
 
         const createResult = await createGameSessionTool({
