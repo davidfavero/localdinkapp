@@ -75,6 +75,32 @@ function isDuplicate(messageSid: string): boolean {
   return false;
 }
 
+async function claimInboundMessageSid(messageSid: string): Promise<boolean> {
+  if (!messageSid) return true;
+
+  const adminDb = await getAdminDb();
+  if (!adminDb) {
+    // If DB is unavailable, allow processing rather than dropping inbound messages.
+    return true;
+  }
+
+  try {
+    await adminDb.collection('sms-inbound-dedup').doc(messageSid).create({
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  } catch (error: any) {
+    // Firestore create() throws already-exists when another request already claimed this SID.
+    const code = String(error?.code || '').toLowerCase();
+    if (code === '6' || code.includes('already')) {
+      console.log('[sms-inbound] Duplicate MessageSid claimed in Firestore, skipping:', messageSid);
+      return false;
+    }
+    console.warn('[sms-inbound] Dedup claim failed, continuing processing:', error?.message || error);
+    return true;
+  }
+}
+
 export async function POST(req: NextRequest) {
   console.log('[sms-inbound] Received webhook');
   
@@ -105,6 +131,17 @@ export async function POST(req: NextRequest) {
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         { headers: { 'Content-Type': 'text/xml' } }
       );
+    }
+
+    // Durable dedup across instances (in-memory cache only works per container).
+    if (messageSid) {
+      const claimed = await claimInboundMessageSid(messageSid);
+      if (!claimed) {
+        return new NextResponse(
+          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+          { headers: { 'Content-Type': 'text/xml' } }
+        );
+      }
     }
     
     if (!from || !body) {

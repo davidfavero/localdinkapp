@@ -908,9 +908,9 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
       }
       extractedDetails.players = [...mergedPlayers];
     }
-    if (shouldUseCurrentMessageForPlayers && currentMessagePlayers.length > 0) {
-      // Explicit names in a new user request should override stale conversation carry-over.
-      extractedDetails.players = currentMessagePlayers;
+    if (shouldUseCurrentMessageForPlayers && (currentMessagePlayers.length > 0 || currentMessageGroups.length > 0)) {
+      // Explicit names/groups in a new user request should override stale conversation carry-over.
+      extractedDetails.players = [...new Set([...currentMessagePlayers, ...currentMessageGroups])];
     }
     
     // Also check if regex found better/more complete data even if AI found something
