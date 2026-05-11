@@ -231,6 +231,19 @@ export async function handleAccept(
   
   // Check if game is already full
   if (session.status === 'full' && currentStatus !== 'CONFIRMED') {
+    // Organizer should never be waitlisted on their own game.
+    if (playerId === session.organizerId) {
+      await sessionRef.update({
+        [`playerStatuses.${playerId}`]: 'CONFIRMED',
+      });
+      return {
+        success: true,
+        message: "You're confirmed as organizer. The game is currently full.",
+        newStatus: 'CONFIRMED',
+        gameStatus: 'full',
+      };
+    }
+
     // Add to waitlist instead
     await sessionRef.update({
       [`playerStatuses.${playerId}`]: 'WAITLIST',
@@ -506,7 +519,7 @@ async function notifyGameFull(
   for (const player of confirmedPlayers) {
     if (player?.phone) {
       const gameFullMsg = player.id === session.organizerId
-        ? 'Game is full, but I can put you on the waitlist.'
+        ? 'Game is full and locked in.'
         : await generateRobinSms({
             messageType: 'game_full',
             details: {
@@ -523,7 +536,7 @@ async function notifyGameFull(
   
   // Notify pending/declined players that game is full
   const otherIds = Object.entries(playerStatuses)
-    .filter(([_, status]) => status === 'PENDING' || status === 'DECLINED')
+    .filter(([id, status]) => id !== session.organizerId && (status === 'PENDING' || status === 'DECLINED'))
     .map(([id]) => id);
 
   // Add remaining PENDING players to WAITLIST since game is full
