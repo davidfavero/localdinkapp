@@ -447,6 +447,30 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
           }
         }
       }
+
+      // Fallback: resolve owner user account by sender phone.
+      // This handles cases where inbound identity resolves to a player doc without linkedUserId.
+      if (!userData) {
+        const normalizedSender = normalizeToE164(senderPhone);
+        const senderCandidates = new Set<string>();
+        if (senderPhone) senderCandidates.add(senderPhone);
+        if (normalizedSender) senderCandidates.add(normalizedSender);
+        const digitsOnly = senderPhone.replace(/\D/g, '');
+        if (digitsOnly) senderCandidates.add(digitsOnly);
+        if (digitsOnly.length === 10) senderCandidates.add(`+1${digitsOnly}`);
+
+        for (const candidate of senderCandidates) {
+          const userByPhone = await adminDb.collection('users')
+            .where('phone', '==', candidate)
+            .limit(1)
+            .get();
+          if (!userByPhone.empty) {
+            resolvedUserId = userByPhone.docs[0].id;
+            userData = userByPhone.docs[0].data()!;
+            break;
+          }
+        }
+      }
     }
 
     if (!userData) {
@@ -489,6 +513,13 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
       id: doc.id,
       ...doc.data(),
     } as Group & { id: string }));
+
+    console.log('[sms-robin] Context loaded:', {
+      resolvedUserId,
+      players: players.length,
+      groups: groups.length,
+      courts: courts.length,
+    });
 
     // Load or create SMS Robin session for conversation continuity
     let history: ChatHistory[] = [];

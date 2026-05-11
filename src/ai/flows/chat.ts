@@ -1034,8 +1034,17 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
         // Expand group to all its members
         if (matchedGroup.members && matchedGroup.members.length > 0) {
           for (const memberId of matchedGroup.members) {
-            const memberPlayer = knownPlayers.find(p => p.id === memberId);
+            const memberPlayer = knownPlayers.find((p) => {
+              const linkedUserId = (p as any).linkedUserId as string | undefined;
+              return p.id === memberId || linkedUserId === memberId;
+            });
             if (memberPlayer) {
+              const linkedUserId = (memberPlayer as any).linkedUserId as string | undefined;
+              const isOrganizer = currentUser && (memberPlayer.id === currentUser.id || linkedUserId === currentUser.id || memberId === currentUser.id);
+              if (isOrganizer) {
+                continue;
+              }
+
               allResults.push({
                 id: memberPlayer.id,
                 name: `${memberPlayer.firstName} ${memberPlayer.lastName}`,
