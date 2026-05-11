@@ -51,6 +51,10 @@ export async function getPlayerByPhone(phone: string): Promise<(Player & { id: s
   if (digitsOnly.length === 10) {
     candidatePhones.add(`+1${digitsOnly}`);
     candidatePhones.add(`1${digitsOnly}`);
+    candidatePhones.add(`${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`);
+    candidatePhones.add(`(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`);
+    candidatePhones.add(`${digitsOnly.slice(0, 3)} ${digitsOnly.slice(3, 6)} ${digitsOnly.slice(6)}`);
+    candidatePhones.add(`${digitsOnly.slice(0, 3)}.${digitsOnly.slice(3, 6)}.${digitsOnly.slice(6)}`);
   }
   if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
     candidatePhones.add(`+${digitsOnly}`);

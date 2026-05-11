@@ -180,6 +180,7 @@ export async function POST(req: NextRequest) {
     // - linked user UID (if the player contact is linked to a registered user)
     // Game sessions may reference either depending on how the invite was created.
     const linkedUserId: string | undefined = (player as any).linkedUserId;
+    const ownerUserId: string | undefined = (player as any).ownerId;
     const allPlayerIds = [player.id];
     if (linkedUserId && linkedUserId !== player.id) {
       allPlayerIds.push(linkedUserId);
@@ -211,6 +212,10 @@ export async function POST(req: NextRequest) {
     }
     
     console.log('[sms-inbound] All resolved IDs:', allPlayerIds);
+
+    // For Robin scheduling/question flows, prefer an actual user/owner context.
+    // This prevents loading empty groups when inbound phone resolves to a player contact doc.
+    const resolvedRobinUserId = linkedUserId || ownerUserId || player.id;
     
     // Detect intent from the message
     const intentResult = await detectSmsIntent(body);
@@ -223,7 +228,7 @@ export async function POST(req: NextRequest) {
     // Return 200 to Twilio immediately, process Robin in background.
     // ==========================================
     if (intentResult.intent === 'scheduling' || intentResult.intent === 'relay') {
-      const resolvedUserId = linkedUserId || player.id;
+      const resolvedUserId = resolvedRobinUserId;
       
       // Send immediate acknowledgment so the user knows we're on it
       const ackMessage = intentResult.intent === 'relay'
@@ -259,7 +264,7 @@ export async function POST(req: NextRequest) {
     
     // If it's not a clear RSVP and not a cancel, route everything to Robin
     if (!isHighConfidenceRsvp && intentResult.intent !== 'cancel') {
-      const resolvedUserId = linkedUserId || player.id;
+      const resolvedUserId = resolvedRobinUserId;
       
       // Route to Robin — she handles scheduling, questions, relays, everything
       handleSmsChatWithRobin(resolvedUserId, body, from)
@@ -328,7 +333,7 @@ export async function POST(req: NextRequest) {
       case 'question':
       default: {
         // Not a clear RSVP intent — route to Robin AI (async)
-        const resolvedUserId = linkedUserId || player.id;
+        const resolvedUserId = resolvedRobinUserId;
         handleSmsChatWithRobin(resolvedUserId, body, from)
           .then(async (robinResult) => {
             await sendSmsReply(from, robinResult);
