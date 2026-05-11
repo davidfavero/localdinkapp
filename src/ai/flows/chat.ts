@@ -1088,21 +1088,58 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
     extractedDetails.unknownPlayers = unknownPlayersList.length > 0 ? unknownPlayersList : undefined;
     // Clear the AI's unknownCourt — the code handles court resolution below.
     extractedDetails.unknownCourt = undefined;
-    
-    if (questions.length > 0) {
-      return { ...extractedDetails, confirmationText: questions.join(' ') };
-    }
 
     const invitedPlayers: { id?: string; name: string; phone?: string }[] = allResults.filter(r => r.name && !r.question);
 
-    const uniqueInvitedPlayers = invitedPlayers.reduce((acc, player) => {
+    let uniqueInvitedPlayers = invitedPlayers.reduce((acc, player) => {
       if (player.name && !acc.some(p => p.name === player.name)) {
         acc.push(player);
       }
       return acc;
     }, [] as { id?: string; name: string; phone?: string }[]);
-    const nonSelfInvitedPlayers = uniqueInvitedPlayers.filter((p) => p.id !== currentUser?.id);
+    let nonSelfInvitedPlayers = uniqueInvitedPlayers.filter((p) => p.id !== currentUser?.id);
     const userAskedToInviteOthers = /\b(with|invite|inviting|add|include)\b/i.test(processedInput);
+
+    // Hard fallback: if invite intent is present and no invitees were resolved,
+    // force-expand any known group names found in the raw text/history.
+    if (currentUser && userAskedToInviteOthers && nonSelfInvitedPlayers.length === 0 && knownGroups.length > 0) {
+      const forcedGroupNames = extractGroupsFromText(`${processedInput} ${combinedText}`, knownGroups);
+      if (forcedGroupNames.length > 0) {
+        console.log('[chat] Fallback group expansion from text:', forcedGroupNames);
+
+        for (const groupName of forcedGroupNames) {
+          const matchedGroup = findGroupByName(groupName, knownGroups);
+          if (!matchedGroup?.members?.length) continue;
+
+          for (const memberId of matchedGroup.members) {
+            const memberPlayer = knownPlayers.find((p) => {
+              const linkedUserId = (p as any).linkedUserId as string | undefined;
+              return p.id === memberId || linkedUserId === memberId;
+            });
+            if (!memberPlayer) continue;
+
+            const linkedUserId = (memberPlayer as any).linkedUserId as string | undefined;
+            const isOrganizer = memberPlayer.id === currentUser.id || linkedUserId === currentUser.id || memberId === currentUser.id;
+            if (isOrganizer) continue;
+
+            const fullName = `${memberPlayer.firstName} ${memberPlayer.lastName}`.trim();
+            if (!uniqueInvitedPlayers.some((p) => p.id === memberPlayer.id || p.name === fullName)) {
+              uniqueInvitedPlayers.push({
+                id: memberPlayer.id,
+                name: fullName,
+                phone: memberPlayer.phone,
+              });
+            }
+          }
+        }
+
+        nonSelfInvitedPlayers = uniqueInvitedPlayers.filter((p) => p.id !== currentUser.id);
+      }
+    }
+
+    if (questions.length > 0 && nonSelfInvitedPlayers.length === 0) {
+      return { ...extractedDetails, confirmationText: questions.join(' ') };
+    }
     
     extractedDetails.invitedPlayers = uniqueInvitedPlayers;
     extractedDetails.currentUser = currentUser;
