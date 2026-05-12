@@ -1077,3 +1077,138 @@ export async function sendDirectSmsAction(params: {
         return { success: false, message: error.message || 'Failed to send SMS' };
     }
 }
+
+// ============================================================================
+// SHARE GROUP
+// ============================================================================
+
+export async function shareGroupAction(params: {
+  groupId: string;
+  sharerUserId: string;
+  targetIdentifier: string; // phone or email of recipient
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    const adminDb = await getAdminDb();
+    if (!adminDb) return { success: false, message: 'Database not available' };
+
+    // 1. Load the source group
+    const groupDoc = await adminDb.collection('groups').doc(params.groupId).get();
+    if (!groupDoc.exists) return { success: false, message: 'Group not found' };
+    const groupData = groupDoc.data()!;
+
+    if (groupData.ownerId !== params.sharerUserId) {
+      return { success: false, message: 'You can only share groups you own' };
+    }
+
+    // 2. Find target user by phone or email
+    const identifier = params.targetIdentifier.trim();
+    let targetUserId: string | null = null;
+    let targetUserData: Record<string, any> | null = null;
+
+    // Try email first
+    if (identifier.includes('@')) {
+      const snap = await adminDb.collection('users')
+        .where('email', '==', identifier.toLowerCase())
+        .limit(1).get();
+      if (!snap.empty) {
+        targetUserId = snap.docs[0].id;
+        targetUserData = snap.docs[0].data();
+      }
+    }
+
+    // Try phone
+    if (!targetUserId) {
+      const normalized = normalizeToE164(identifier);
+      const candidates = new Set<string>();
+      if (identifier) candidates.add(identifier);
+      if (normalized) candidates.add(normalized);
+      const digits = identifier.replace(/\D/g, '');
+      if (digits.length === 10) candidates.add(`+1${digits}`);
+      if (digits.length === 11 && digits.startsWith('1')) candidates.add(`+${digits}`);
+
+      for (const c of candidates) {
+        const snap = await adminDb.collection('users').where('phone', '==', c).limit(1).get();
+        if (!snap.empty) {
+          targetUserId = snap.docs[0].id;
+          targetUserData = snap.docs[0].data();
+          break;
+        }
+      }
+    }
+
+    if (!targetUserId) {
+      return { success: false, message: 'No LocalDink user found with that phone or email. They need to create an account first.' };
+    }
+
+    if (targetUserId === params.sharerUserId) {
+      return { success: false, message: "You can't share a group with yourself" };
+    }
+
+    // 3. Load source group members (player docs)
+    const sourceMembers: string[] = groupData.members || [];
+    const newMemberIds: string[] = [];
+
+    for (const sourceMemberId of sourceMembers) {
+      const playerDoc = await adminDb.collection('players').doc(sourceMemberId).get();
+      if (!playerDoc.exists) continue;
+      const playerData = playerDoc.data()!;
+
+      // Check if target user already has a player with the same phone
+      const phone = normalizeToE164(playerData.phone);
+      let existingPlayerId: string | null = null;
+
+      if (phone) {
+        const existing = await adminDb.collection('players')
+          .where('ownerId', '==', targetUserId)
+          .where('phone', '==', phone)
+          .limit(1).get();
+        if (!existing.empty) {
+          existingPlayerId = existing.docs[0].id;
+        }
+      }
+
+      if (existingPlayerId) {
+        newMemberIds.push(existingPlayerId);
+      } else {
+        // Create a copy of the player contact for the target user
+        const newPlayerRef = adminDb.collection('players').doc();
+        await newPlayerRef.set({
+          firstName: playerData.firstName || '',
+          lastName: playerData.lastName || '',
+          phone: playerData.phone || '',
+          email: playerData.email || '',
+          avatarUrl: playerData.avatarUrl || '',
+          ownerId: targetUserId,
+          linkedUserId: playerData.linkedUserId || undefined,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        newMemberIds.push(newPlayerRef.id);
+      }
+    }
+
+    // 4. Create the group copy for the target user
+    await adminDb.collection('groups').add({
+      name: groupData.name,
+      description: groupData.description || '',
+      members: newMemberIds,
+      admins: [targetUserId],
+      homeCourtId: groupData.homeCourtId || null,
+      avatarUrl: groupData.avatarUrl || '',
+      ownerId: targetUserId,
+      sharedFrom: params.sharerUserId,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    const targetName = targetUserData?.firstName
+      ? `${targetUserData.firstName} ${targetUserData.lastName || ''}`.trim()
+      : 'the user';
+
+    return {
+      success: true,
+      message: `"${groupData.name}" has been shared with ${targetName}. They now have their own copy with ${newMemberIds.length} member(s).`,
+    };
+  } catch (error: any) {
+    console.error('Error sharing group:', error);
+    return { success: false, message: error.message || 'Failed to share group' };
+  }
+}

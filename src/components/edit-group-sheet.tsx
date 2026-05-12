@@ -34,8 +34,9 @@ import { useToast } from '@/hooks/use-toast';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { UserAvatar } from '@/components/user-avatar';
 import type { Player, Group, Court } from '@/lib/types';
+import { shareGroupAction } from '@/lib/actions';
 import { useState, useEffect } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Share2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const groupSchema = z.object({
@@ -60,6 +61,9 @@ export function EditGroupSheet({ group, open, onOpenChange }: EditGroupSheetProp
   const { user: authUser } = useFirebase();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareTarget, setShareTarget] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
 
   // Fetch available players
   const playersQuery = useMemoFirebase(() => {
@@ -367,7 +371,16 @@ export function EditGroupSheet({ group, open, onOpenChange }: EditGroupSheetProp
                   )}
                 />
 
-                <div className="pt-4 border-t">
+                <div className="pt-4 border-t space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowShareDialog(true)}
+                    className="w-full"
+                  >
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share Group
+                  </Button>
                   <Button
                     type="button"
                     variant="destructive"
@@ -394,6 +407,57 @@ export function EditGroupSheet({ group, open, onOpenChange }: EditGroupSheetProp
           </Form>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Share {group.name}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter the phone number or email of the LocalDink user you want to share this group with. They&apos;ll get their own copy of the group and all its player contacts.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder="Phone or email"
+              value={shareTarget}
+              onChange={(e) => setShareTarget(e.target.value)}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSharing} onClick={() => setShareTarget('')}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSharing || !shareTarget.trim()}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!authUser?.uid || !shareTarget.trim()) return;
+                setIsSharing(true);
+                try {
+                  const result = await shareGroupAction({
+                    groupId: group.id,
+                    sharerUserId: authUser.uid,
+                    targetIdentifier: shareTarget.trim(),
+                  });
+                  toast({
+                    variant: result.success ? 'default' : 'destructive',
+                    title: result.success ? 'Group Shared!' : 'Share Failed',
+                    description: result.message,
+                  });
+                  if (result.success) {
+                    setShowShareDialog(false);
+                    setShareTarget('');
+                  }
+                } catch (err: any) {
+                  toast({ variant: 'destructive', title: 'Error', description: err.message });
+                } finally {
+                  setIsSharing(false);
+                }
+              }}
+            >
+              {isSharing ? 'Sharing...' : 'Share'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
