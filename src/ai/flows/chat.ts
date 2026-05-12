@@ -289,6 +289,88 @@ function extractPlayersFromText(text: string, knownPlayers: Player[]): string[] 
   return [...new Set(players)]; // Remove duplicates
 }
 
+// ============================================================================
+// SCHEDULING CONFLICT DETECTION
+// ============================================================================
+
+type PlayerConflict = {
+  playerId: string;
+  playerName: string;
+  existingGameTime: string;
+  existingCourtName: string;
+  existingGameId: string;
+};
+
+/**
+ * Check if any invited players are already CONFIRMED for another game
+ * that overlaps with the proposed time window.
+ */
+async function checkSchedulingConflicts(
+  playerIds: string[],
+  proposedStart: Date,
+  durationMinutes: number = 120,
+): Promise<PlayerConflict[]> {
+  try {
+    const { getAdminDb } = await import('@/firebase/admin');
+    const { Timestamp } = await import('firebase-admin/firestore');
+    const adminDb = await getAdminDb();
+    if (!adminDb) return [];
+
+    const proposedEnd = new Date(proposedStart.getTime() + durationMinutes * 60 * 1000);
+    
+    // Query games on the same day (wider window, then filter in code)
+    const dayStart = new Date(proposedStart);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(proposedStart);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const gamesSnap = await adminDb
+      .collection('game-sessions')
+      .where('startTime', '>=', Timestamp.fromDate(dayStart))
+      .where('startTime', '<=', Timestamp.fromDate(dayEnd))
+      .where('status', 'in', ['open', 'full'])
+      .get();
+
+    if (gamesSnap.empty) return [];
+
+    const conflicts: PlayerConflict[] = [];
+
+    for (const doc of gamesSnap.docs) {
+      const session = doc.data();
+      const sessionStart = session.startTime?.toDate?.();
+      if (!sessionStart) continue;
+
+      const sessionDuration = session.durationMinutes || 120;
+      const sessionEnd = new Date(sessionStart.getTime() + sessionDuration * 60 * 1000);
+
+      // Check time overlap
+      if (proposedStart >= sessionEnd || proposedEnd <= sessionStart) continue;
+
+      // Check if any of our players are CONFIRMED in this session
+      const statuses: Record<string, string> = session.playerStatuses || {};
+      for (const pid of playerIds) {
+        if (statuses[pid] === 'CONFIRMED') {
+          const timeDisplay = sessionStart.toLocaleTimeString('en-US', {
+            hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
+          });
+          conflicts.push({
+            playerId: pid,
+            playerName: '', // filled in by caller
+            existingGameTime: timeDisplay,
+            existingCourtName: session.courtName || 'another court',
+            existingGameId: doc.id,
+          });
+        }
+      }
+    }
+
+    return conflicts;
+  } catch (err) {
+    console.error('[chat] Conflict check failed:', err);
+    return []; // Don't block game creation on conflict check failure
+  }
+}
+
 // Helper to match a group by name
 function findGroupByName(searchName: string, groups: (Group & { id: string })[]): (Group & { id: string }) | undefined {
   const normalized = stripApostrophes(searchName.toLowerCase()).trim();
@@ -1219,6 +1301,39 @@ If the user wants to send a message to their game group (e.g. "tell everyone I'm
 
         const requestedCourtCountMatch = input.message.match(/\b(\d+)\s+(?:doubles|singles)\s+games?\b/i);
         const courtCount = requestedCourtCountMatch ? Math.max(1, Number.parseInt(requestedCourtCountMatch[1], 10) || 1) : 1;
+
+        // ================================================================
+        // CONFLICT DETECTION — check if any player is already committed
+        // Skip if user already acknowledged a conflict warning.
+        // ================================================================
+        const lastBotMsg = historyToConsider.filter(h => h.sender === 'robin').pop()?.text || '';
+        const userAcknowledgedConflict = isConfirmation(currentMessageText) && /already confirmed for a game/i.test(lastBotMsg);
+
+        if (!userAcknowledgedConflict) {
+          const allPlayerIds = attendees.map(a => a.id);
+          const conflicts = await checkSchedulingConflicts(allPlayerIds, dateTime);
+          if (conflicts.length > 0) {
+            // Resolve player names for the conflict message
+            for (const c of conflicts) {
+              const player = uniqueInvitedPlayers.find(p => p.id === c.playerId);
+              if (player) {
+                c.playerName = player.name;
+              } else if (c.playerId === currentUser.id) {
+                c.playerName = 'You';
+              }
+            }
+            const conflictMsgs = conflicts.map(c =>
+              c.playerName === 'You'
+                ? `You're already confirmed for a game at ${c.existingGameTime} at ${c.existingCourtName}`
+                : `${c.playerName} is already confirmed for a game at ${c.existingGameTime} at ${c.existingCourtName}`
+            );
+            const conflictWarning = conflictMsgs.join('. ');
+            console.log('[chat] Scheduling conflicts detected:', conflicts);
+            return {
+              confirmationText: `Heads up — ${conflictWarning}. Want me to schedule this game anyway?`,
+            };
+          }
+        }
 
         // Determine if doubles (default to true if 4+ players, false if 2 players)
         const totalPlayers = attendees.length;
