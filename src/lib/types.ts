@@ -154,6 +154,8 @@ export type GameSession_Firestore = {
   invitesSentAt?: Timestamp;
   lastReminderAt?: Timestamp;
   gameFullNotifiedAt?: Timestamp;
+  eveningReminderSentAt?: Timestamp;
+  hourBeforeReminderSentAt?: Timestamp;
 }
 
 // This is the fully "hydrated" shape used in the UI

@@ -36,3 +36,5 @@ env:
     secret: TWILIO_MESSAGING_SERVICE_SID
   - variable: FIREBASE_SERVICE_ACCOUNT
     secret: FIREBASE_SERVICE_ACCOUNT
+  - variable: CRON_SECRET
+    secret: CRON_SECRET
