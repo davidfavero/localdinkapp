@@ -424,7 +424,7 @@ function escapeXml(text: string): string {
 const SMS_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes — sessions expire after inactivity
 
 async function handleSmsChatWithRobin(userId: string, message: string, senderPhone: string): Promise<string> {
-  console.log('[sms-robin] Starting for user:', userId, 'message:', message.substring(0, 80));
+  console.log('[sms-robin] Starting for user:', userId, 'phone:', senderPhone, 'message:', message.substring(0, 80));
   
   const adminDb = await getAdminDb();
   if (!adminDb) {
@@ -432,51 +432,79 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
   }
 
   try {
-    // Load user profile — userId might be a user doc ID or a player doc ID
+    // ================================================================
+    // IDENTITY RESOLUTION — phone-first approach
+    // Twilio always sends E.164 phone. We use that as the primary key
+    // to find the real user account that owns groups/courts/players.
+    // ================================================================
     let userData: Record<string, any> | undefined;
     let resolvedUserId = userId;
     
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (userDoc.exists) {
-      userData = userDoc.data()!;
-    } else {
-      // userId is a player doc ID — check for linkedUserId
+    // Build every reasonable phone format from the Twilio E.164 number
+    const phoneCandidates = new Set<string>();
+    if (senderPhone) phoneCandidates.add(senderPhone);
+    const normalizedSender = normalizeToE164(senderPhone);
+    if (normalizedSender) phoneCandidates.add(normalizedSender);
+    const digitsOnly = senderPhone.replace(/\D/g, '');
+    if (digitsOnly) phoneCandidates.add(digitsOnly);
+    // 11-digit with leading 1 → also try 10-digit and formatted versions
+    if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+      const ten = digitsOnly.slice(1);
+      phoneCandidates.add(ten);
+      phoneCandidates.add(`+${digitsOnly}`);
+      phoneCandidates.add(`+1${ten}`);
+      phoneCandidates.add(`${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`);
+      phoneCandidates.add(`(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`);
+    }
+    if (digitsOnly.length === 10) {
+      phoneCandidates.add(`+1${digitsOnly}`);
+      phoneCandidates.add(`1${digitsOnly}`);
+      phoneCandidates.add(`${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`);
+      phoneCandidates.add(`(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`);
+    }
+
+    // Strategy 1: Find user account directly by phone (most reliable)
+    for (const candidate of phoneCandidates) {
+      const userByPhone = await adminDb.collection('users')
+        .where('phone', '==', candidate)
+        .limit(1)
+        .get();
+      if (!userByPhone.empty) {
+        resolvedUserId = userByPhone.docs[0].id;
+        userData = userByPhone.docs[0].data()!;
+        console.log('[sms-robin] Found user by phone:', resolvedUserId, 'phone format:', candidate);
+        break;
+      }
+    }
+
+    // Strategy 2: Try the passed-in userId as a user doc ID
+    if (!userData) {
+      const userDoc = await adminDb.collection('users').doc(userId).get();
+      if (userDoc.exists) {
+        resolvedUserId = userId;
+        userData = userDoc.data()!;
+        console.log('[sms-robin] Found user by doc ID:', resolvedUserId);
+      }
+    }
+
+    // Strategy 3: userId is a player doc — follow linkedUserId or ownerId
+    if (!userData) {
       const playerDoc = await adminDb.collection('players').doc(userId).get();
       if (playerDoc.exists) {
         const playerData = playerDoc.data()!;
-        if (playerData.linkedUserId) {
-          resolvedUserId = playerData.linkedUserId;
-          const linkedUserDoc = await adminDb.collection('users').doc(resolvedUserId).get();
+        const targetUserId = playerData.linkedUserId || playerData.ownerId;
+        if (targetUserId) {
+          const linkedUserDoc = await adminDb.collection('users').doc(targetUserId).get();
           if (linkedUserDoc.exists) {
+            resolvedUserId = targetUserId;
             userData = linkedUserDoc.data()!;
-          }
-        }
-      }
-
-      // Fallback: resolve owner user account by sender phone.
-      // This handles cases where inbound identity resolves to a player doc without linkedUserId.
-      if (!userData) {
-        const normalizedSender = normalizeToE164(senderPhone);
-        const senderCandidates = new Set<string>();
-        if (senderPhone) senderCandidates.add(senderPhone);
-        if (normalizedSender) senderCandidates.add(normalizedSender);
-        const digitsOnly = senderPhone.replace(/\D/g, '');
-        if (digitsOnly) senderCandidates.add(digitsOnly);
-        if (digitsOnly.length === 10) senderCandidates.add(`+1${digitsOnly}`);
-
-        for (const candidate of senderCandidates) {
-          const userByPhone = await adminDb.collection('users')
-            .where('phone', '==', candidate)
-            .limit(1)
-            .get();
-          if (!userByPhone.empty) {
-            resolvedUserId = userByPhone.docs[0].id;
-            userData = userByPhone.docs[0].data()!;
-            break;
+            console.log('[sms-robin] Found user via player link:', resolvedUserId);
           }
         }
       }
     }
+
+    console.log('[sms-robin] Identity resolved:', { resolvedUserId, hasUserData: !!userData, phoneCandidatesCount: phoneCandidates.size });
 
     if (!userData) {
       return "I don't have your profile set up yet. Please open the LocalDink app to get started.";
@@ -522,8 +550,11 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
     console.log('[sms-robin] Context loaded:', {
       resolvedUserId,
       players: players.length,
+      playerNames: players.map(p => `${p.firstName} ${p.lastName}`.trim()),
       groups: groups.length,
+      groupNames: groups.map(g => `${g.name} (${g.members?.length || 0} members)`),
       courts: courts.length,
+      courtNames: courts.map(c => c.name),
     });
 
     // Load or create SMS Robin session for conversation continuity
