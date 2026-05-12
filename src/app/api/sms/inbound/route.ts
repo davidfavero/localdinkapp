@@ -529,7 +529,7 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
       adminDb.collection('groups').where('ownerId', '==', resolvedUserId).get(),
       adminDb.collection('sms-robin-sessions').doc(resolvedUserId).get(),
     ]);
-    const players: Player[] = [
+    let players: Player[] = [
       currentUser,
       ...playersSnap.docs.map(doc => ({
         id: doc.id,
@@ -537,15 +537,70 @@ async function handleSmsChatWithRobin(userId: string, message: string, senderPho
       } as Player)),
     ];
 
-    const courts: Court[] = courtsSnap.docs.map(doc => ({
+    let courts: Court[] = courtsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     } as Court));
 
-    const groups: (Group & { id: string })[] = groupsSnap.docs.map(doc => ({
+    let groups: (Group & { id: string })[] = groupsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     } as Group & { id: string }));
+
+    // ================================================================
+    // OWNER FALLBACK: If no groups found, the phone may have resolved to
+    // the wrong user account. Search for a player record with the same
+    // phone and follow its ownerId to the account that has the real data.
+    // ================================================================
+    if (groups.length === 0) {
+      console.log('[sms-robin] No groups found for user, trying player-phone fallback...');
+      for (const candidate of phoneCandidates) {
+        const playerByPhone = await adminDb.collection('players')
+          .where('phone', '==', candidate)
+          .limit(5)
+          .get();
+        if (!playerByPhone.empty) {
+          for (const pDoc of playerByPhone.docs) {
+            const pData = pDoc.data();
+            const altOwnerId = pData.ownerId;
+            if (altOwnerId && altOwnerId !== resolvedUserId) {
+              // Check if this owner actually has groups
+              const altGroupsSnap = await adminDb.collection('groups')
+                .where('ownerId', '==', altOwnerId)
+                .get();
+              if (!altGroupsSnap.empty) {
+                console.log(`[sms-robin] Found groups via player-phone fallback: owner=${altOwnerId}, groups=${altGroupsSnap.size}`);
+                // Reload ALL context under the real owner
+                const altOwnerDoc = await adminDb.collection('users').doc(altOwnerId).get();
+                if (altOwnerDoc.exists) {
+                  resolvedUserId = altOwnerId;
+                  userData = altOwnerDoc.data()!;
+                  currentUser.id = resolvedUserId;
+                  currentUser.firstName = userData.firstName || '';
+                  currentUser.lastName = userData.lastName || '';
+                  currentUser.phone = userData.phone || '';
+                  currentUser.email = userData.email || '';
+                  currentUser.ownerId = resolvedUserId;
+
+                  const [altPlayersSnap, altCourtsSnap] = await Promise.all([
+                    adminDb.collection('players').where('ownerId', '==', resolvedUserId).get(),
+                    adminDb.collection('courts').where('ownerId', '==', resolvedUserId).get(),
+                  ]);
+                  players.length = 0;
+                  players.push(currentUser);
+                  players.push(...altPlayersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
+                  courts.length = 0;
+                  courts.push(...altCourtsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Court)));
+                  groups = altGroupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Group & { id: string }));
+                }
+                break;
+              }
+            }
+          }
+          if (groups.length > 0) break;
+        }
+      }
+    }
 
     console.log('[sms-robin] Context loaded:', {
       resolvedUserId,
